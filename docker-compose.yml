@@ -1,0 +1,4 @@
+include:
+  - monitoring/docker-compose.yml
+  - homepage/docker-compose.yml
+  - wallabag/docker-compose.yml

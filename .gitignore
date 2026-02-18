@@ -8,7 +8,7 @@ fitbit-exporter/export.log
 fitbit-exporter/venv/
 
 # Logs
-homepage-config/logs/
+homepage/config/logs/
 
 # Python
 **/__pycache__/

@@ -1,0 +1,14 @@
+services:
+  wallabag:
+    image: wallabag/wallabag
+    container_name: wallabag
+    ports:
+      - 8082:80
+    volumes:
+      - wallabag-data:/var/www/wallabag/data
+    environment:
+      - SYMFONY__ENV__DOMAIN_NAME=http://${PI_IP}:8082
+    restart: unless-stopped
+
+volumes:
+  wallabag-data:
