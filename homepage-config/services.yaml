@@ -1,0 +1,31 @@
+- Network:
+    - Pi-hole:
+        icon: pi-hole.png
+        href: http://192.168.68.66/admin
+        description: Network-wide ad blocking
+
+    - Grafana:
+        icon: grafana.png
+        href: http://192.168.68.66:3000
+        description: Monitoring dashboards
+- Reading:
+    - Wallabag:
+        icon: wallabag.png
+        href: http://192.168.68.66:8082
+        description: Read articles without clutter
+
+- FitbitDashboard:
+    - Fitbit:
+        icon: mdi-heart-pulse
+        href: http://192.168.68.66:3000/d/fitbit-main-dashboard
+        description: Actividad, sueño y ejercicios
+
+    - FitbitInsights:
+        icon: mdi-chart-line
+        href: http://192.168.68.66:3000/d/fitbit-insights-dashboard
+        description: Correlaciones y tendencias
+- Tools:
+    - System Stats:
+        icon: raspberry-pi.png
+        href: http://192.168.68.66:3000/d/rYdddlPWk/node-exporter-full
+        description: Pi system monitoring

@@ -1,0 +1,882 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_FITBIT",
+      "label": "Fitbit SQLite",
+      "description": "",
+      "type": "datasource",
+      "pluginId": "frser-sqlite-datasource",
+      "pluginName": "SQLite"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "frser-sqlite-datasource",
+      "name": "SQLite",
+      "version": "3.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "barchart",
+      "name": "Bar chart",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "piechart",
+      "name": "Pie chart",
+      "version": ""
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "description": "Dashboard completo con datos de Fitbit: actividad, sueño, frecuencia cardíaca y ejercicios",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "📊 Actividad Diaria",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 80, "lineWidth": 1 },
+          "displayName": "Promedio",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 0, "y": 1 },
+      "id": 101,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Pasos",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(pasos)) as pasos FROM actividad",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 6, "y": 1 },
+      "id": 102,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Calorías",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(calorias)) as calorias FROM actividad",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "lengthkm"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 12, "y": 1 },
+      "id": 103,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Distancia",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(distancia_km), 1) as distancia FROM actividad",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "m"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 18, "y": 1 },
+      "id": 104,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Min. Activos",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(minutos_activos)) as minutos FROM actividad",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#5794F2", "mode": "fixed" },
+          "custom": { "fillOpacity": 70, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 3 },
+      "id": 105,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0
+      },
+      "title": "Pasos por Día",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, pasos FROM actividad ORDER BY fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FF9830", "mode": "fixed" },
+          "custom": { "fillOpacity": 70, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 3 },
+      "id": 106,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": -45,
+        "xTickLabelSpacing": 0
+      },
+      "title": "Calorías por Día",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, calorias FROM actividad ORDER BY fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 10 },
+      "id": 200,
+      "title": "😴 Sueño",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 0, "y": 11 },
+      "id": 201,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Horas Dormidas",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(total_min) / 60.0, 1) as horas FROM sueno WHERE total_min > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 6, "y": 11 },
+      "id": 202,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Eficiencia Promedio",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(eficiencia_pct), 1) as eficiencia FROM sueno WHERE eficiencia_pct > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 12, "y": 11 },
+      "id": 203,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio REM (min)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(rem_min)) as rem FROM sueno WHERE rem_min > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 18, "y": 11 },
+      "id": 204,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio Deep (min)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(deep_min)) as deep FROM sueno WHERE deep_min > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 70, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "deep_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#1F60C4", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "light_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#8AB8FF", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rem_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#B877D9", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "despierto_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF7383", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 13 },
+      "id": 205,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "normal",
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "xTickLabelRotation": -45
+      },
+      "title": "Fases del Sueño por Día",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, deep_min, light_min, rem_min, despierto_min FROM sueno WHERE total_min > 0 ORDER BY fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 70 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 13 },
+      "id": 206,
+      "options": {
+        "displayLabels": ["percent"],
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "title": "Distribución Promedio del Sueño",
+      "type": "piechart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT 'Deep' as fase, ROUND(AVG(deep_min)) as minutos FROM sueno WHERE deep_min > 0 UNION ALL SELECT 'Light', ROUND(AVG(light_min)) FROM sueno WHERE light_min > 0 UNION ALL SELECT 'REM', ROUND(AVG(rem_min)) FROM sueno WHERE rem_min > 0 UNION ALL SELECT 'Despierto', ROUND(AVG(despierto_min)) FROM sueno WHERE despierto_min > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "id": 300,
+      "title": "❤️ Frecuencia Cardíaca",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 80 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 8, "x": 0, "y": 22 },
+      "id": 301,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Resting HR Promedio (bpm)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(resting_hr)) as bpm FROM heart_rate WHERE resting_hr > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 8, "x": 8, "y": 22 },
+      "id": 302,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["min"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Resting HR Mínimo",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT MIN(resting_hr) as bpm FROM heart_rate WHERE resting_hr > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 8, "x": 16, "y": 22 },
+      "id": 303,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Total Min. en Zona Cardio",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT SUM(cardio_min) as minutos FROM heart_rate",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#F2495C", "mode": "fixed" },
+          "custom": { "fillOpacity": 70, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 24 },
+      "id": 304,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": -45
+      },
+      "title": "Resting Heart Rate por Día",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, resting_hr FROM heart_rate WHERE resting_hr > 0 ORDER BY fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 70 },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "out_of_range_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }, { "id": "displayName", "value": "Out of Range" }] },
+          { "matcher": { "id": "byName", "options": "fat_burn_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }, { "id": "displayName", "value": "Fat Burn" }] },
+          { "matcher": { "id": "byName", "options": "cardio_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }, { "id": "displayName", "value": "Cardio" }] },
+          { "matcher": { "id": "byName", "options": "peak_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#8F3BB8", "mode": "fixed" } }, { "id": "displayName", "value": "Peak" }] }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 24 },
+      "id": 305,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "normal",
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "xTickLabelRotation": -45
+      },
+      "title": "Minutos por Zona Cardíaca",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, out_of_range_min, fat_burn_min, cardio_min, peak_min FROM heart_rate ORDER BY fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "id": 400,
+      "title": "🏋️ Ejercicios",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 0, "y": 32 },
+      "id": 401,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["count"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Total Entrenamientos",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT COUNT(*) as entrenamientos FROM ejercicios",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 6, "y": 32 },
+      "id": 402,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Duración Promedio (min)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(duracion_min)) as minutos FROM ejercicios",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 12, "y": 32 },
+      "id": 403,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["sum"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Total Calorías Ejercicio",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT SUM(calorias) as calorias FROM ejercicios",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 2, "w": 6, "x": 18, "y": 32 },
+      "id": 404,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "HR Promedio Ejercicio",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(hr_avg)) as bpm FROM ejercicios WHERE hr_avg > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 70 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 34 },
+      "id": 405,
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "pieType": "pie",
+        "tooltip": { "mode": "single", "sort": "none" },
+  	"reduceOptions": {
+    	"calcs": [],
+    	"fields": "",
+    	"values": true
+  	}
+      },
+      "title": "Actividades más frecuentes",
+      "type": "piechart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT actividad, COUNT(*) as cantidad FROM ejercicios GROUP BY actividad ORDER BY cantidad DESC",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#73BF69", "mode": "fixed" },
+          "custom": { "fillOpacity": 70, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 34 },
+      "id": 406,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": -45
+      },
+      "title": "Duración por Actividad (min promedio)",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT actividad, ROUND(AVG(duracion_min)) as duracion FROM ejercicios GROUP BY actividad ORDER BY duracion DESC",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 34 },
+      "id": 407,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "fecha" }]
+      },
+      "title": "Historial de Ejercicios",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT fecha, hora_inicio, actividad, duracion_min, calorias, hr_avg FROM ejercicios ORDER BY fecha DESC, hora_inicio DESC LIMIT 50",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "tags": ["fitbit", "salud", "actividad"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Fitbit Dashboard",
+  "uid": "fitbit-main-dashboard",
+  "version": 1
+}

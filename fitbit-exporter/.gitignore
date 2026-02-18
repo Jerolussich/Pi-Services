@@ -1,0 +1,13 @@
+# Credentials — never commit
+tokens.json
+
+# Exported data — too large and personal for a repo
+exports/
+
+# Runtime
+export.log
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/

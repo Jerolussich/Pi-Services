@@ -1,0 +1,15 @@
+# Secrets
+**/.env
+**/tokens.json
+
+# Data & exports
+fitbit-exporter/exports/
+fitbit-exporter/export.log
+fitbit-exporter/venv/
+
+# Logs
+homepage-config/logs/
+
+# Python
+**/__pycache__/
+**/*.pyc

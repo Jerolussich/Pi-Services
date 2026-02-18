@@ -1,0 +1,584 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Insights avanzados: correlaciones, tendencias y patrones de actividad",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 10,
+      "title": "😴 Sueño vs Actividad — ¿Dormir bien te hace más activo?",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "calidad_sueno" },
+            "properties": [
+              { "id": "displayName", "value": "Calidad sueño" },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red", "value": null },
+                    { "color": "yellow", "value": 75 },
+                    { "color": "green", "value": 85 }
+                  ]
+                }
+              }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "pasos_siguiente_dia" }, "properties": [{ "id": "displayName", "value": "Pasos día siguiente" }] },
+          { "matcher": { "id": "byName", "options": "horas_dormidas" }, "properties": [{ "id": "displayName", "value": "Horas dormidas" }] },
+          { "matcher": { "id": "byName", "options": "fecha_sueno" }, "properties": [{ "id": "displayName", "value": "Fecha" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 14, "x": 0, "y": 1 },
+      "id": 11,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Fecha" }]
+      },
+      "title": "Sueño vs Pasos del día siguiente",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT s.fecha as fecha_sueno, ROUND(s.total_min / 60.0, 1) as horas_dormidas, s.eficiencia_pct as calidad_sueno, a.pasos as pasos_siguiente_dia FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.total_min > 0 ORDER BY s.fecha DESC",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "pasos_promedio_mal_sueno" }, "properties": [{ "id": "displayName", "value": "Pasos (sueño malo <75%)" }, { "id": "color", "value": { "fixedColor": "#FF7383", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "pasos_promedio_buen_sueno" }, "properties": [{ "id": "displayName", "value": "Pasos (sueño bueno ≥85%)" }, { "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "pasos_promedio_regular_sueno" }, "properties": [{ "id": "displayName", "value": "Pasos (sueño regular 75-84%)" }, { "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 1 },
+      "id": 12,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Pasos promedio según calidad de sueño",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_mal_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct < 75 AND a.pasos IS NOT NULL",
+          "refId": "A",
+          "queryType": "table"
+        },
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_regular_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct >= 75 AND s.eficiencia_pct < 85 AND a.pasos IS NOT NULL",
+          "refId": "B",
+          "queryType": "table"
+        },
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_buen_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct >= 85 AND a.pasos IS NOT NULL",
+          "refId": "C",
+          "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 20,
+      "title": "📈 ¿Tu fitness está mejorando? — Resting HR vs Actividad",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "resting_hr" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }, { "id": "displayName", "value": "Resting HR (bpm)" }] },
+          { "matcher": { "id": "byName", "options": "minutos_activos" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }, { "id": "displayName", "value": "Minutos activos" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 10 },
+      "id": 21,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.6,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "xTickLabelRotation": -45
+      },
+      "title": "Resting HR vs Minutos Activos por día",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT h.fecha, h.resting_hr, a.minutos_activos FROM heart_rate h LEFT JOIN actividad a ON a.fecha = h.fecha WHERE h.resting_hr > 0 ORDER BY h.fecha",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 75 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 10 },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Resting HR Promedio",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(resting_hr), 1) as bpm FROM heart_rate WHERE resting_hr > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 65 },
+              { "color": "red", "value": 75 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 14 },
+      "id": 23,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["min"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Resting HR Mínimo (mejor marca)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT MIN(resting_hr) as bpm FROM heart_rate WHERE resting_hr > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 30,
+      "title": "❤️ Resting HR mes a mes — Evolución cardiovascular",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#F2495C", "mode": "fixed" },
+          "custom": { "fillOpacity": 30, "lineWidth": 2 },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "hr_min" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }, { "id": "displayName", "value": "HR mínimo" }] },
+          { "matcher": { "id": "byName", "options": "hr_avg" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }, { "id": "displayName", "value": "HR promedio" }] },
+          { "matcher": { "id": "byName", "options": "hr_max" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }, { "id": "displayName", "value": "HR máximo" }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "id": 31,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.6,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "xTickLabelRotation": -30
+      },
+      "title": "Resting HR por mes (promedio, mínimo, máximo)",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT strftime('%Y-%m', fecha) as mes, ROUND(AVG(resting_hr), 1) as hr_avg, MIN(resting_hr) as hr_min, MAX(resting_hr) as hr_max FROM heart_rate WHERE resting_hr > 0 GROUP BY strftime('%Y-%m', fecha) ORDER BY mes",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 40,
+      "title": "😴 Horas de sueño — Tendencia semanal",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#B877D9", "mode": "fixed" },
+          "custom": { "fillOpacity": 40, "lineWidth": 2 },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 6 },
+              { "color": "green", "value": 7.5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 28 },
+      "id": 41,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": -30
+      },
+      "title": "Horas de sueño promedio por semana",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT strftime('%Y-W%W', fecha) as semana, ROUND(AVG(total_min) / 60.0, 1) as horas_promedio FROM sueno WHERE total_min > 0 GROUP BY strftime('%Y-W%W', fecha) ORDER BY semana",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "noches_buenas" }, "properties": [{ "id": "displayName", "value": "Noches ≥7.5h" }, { "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "noches_malas" }, "properties": [{ "id": "displayName", "value": "Noches <6h" }, { "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 28 },
+      "id": 42,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "vertical",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Noches buenas vs malas",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT COUNT(*) as noches_buenas FROM sueno WHERE total_min >= 450",
+          "refId": "A",
+          "queryType": "table"
+        },
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT COUNT(*) as noches_malas FROM sueno WHERE total_min < 360 AND total_min > 0",
+          "refId": "B",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 32 },
+      "id": 43,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Promedio horas de sueño",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT ROUND(AVG(total_min) / 60.0, 1) as horas FROM sueno WHERE total_min > 0",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "id": 50,
+      "title": "📅 Heatmap — ¿Qué días de la semana sos más activo?",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#5794F2", "mode": "fixed" },
+          "custom": { "fillOpacity": 80, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 37 },
+      "id": 51,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "title": "Pasos promedio por día de la semana",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT CASE CAST(strftime('%w', fecha) AS INTEGER) WHEN 0 THEN '7-Dom' WHEN 1 THEN '1-Lun' WHEN 2 THEN '2-Mar' WHEN 3 THEN '3-Mie' WHEN 4 THEN '4-Jue' WHEN 5 THEN '5-Vie' WHEN 6 THEN '6-Sab' END as dia, ROUND(AVG(pasos)) as pasos_promedio FROM actividad GROUP BY strftime('%w', fecha) ORDER BY strftime('%w', fecha)",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FF9830", "mode": "fixed" },
+          "custom": { "fillOpacity": 80, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 37 },
+      "id": 52,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0
+      },
+      "title": "Calorías promedio por día de la semana",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT CASE CAST(strftime('%w', fecha) AS INTEGER) WHEN 0 THEN '7-Dom' WHEN 1 THEN '1-Lun' WHEN 2 THEN '2-Mar' WHEN 3 THEN '3-Mie' WHEN 4 THEN '4-Jue' WHEN 5 THEN '5-Vie' WHEN 6 THEN '6-Sab' END as dia, ROUND(AVG(calorias)) as calorias_promedio FROM actividad GROUP BY strftime('%w', fecha) ORDER BY strftime('%w', fecha)",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 60,
+      "title": "🏋️ Distribución de ejercicios por semana",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 80, "lineWidth": 1 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 45 },
+      "id": 61,
+      "options": {
+        "barRadius": 0.1,
+        "barWidth": 0.7,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "normal",
+        "tooltip": { "mode": "multi", "sort": "none" },
+        "xTickLabelRotation": -30
+      },
+      "title": "Tipos de ejercicio por semana (cantidad)",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT strftime('%Y-W%W', fecha) as semana, actividad, COUNT(*) as cantidad FROM ejercicios GROUP BY semana, actividad ORDER BY semana",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 70 },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 45 },
+      "id": 62,
+      "options": {
+        "displayLabels": ["name", "percent"],
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": true
+        }
+      },
+      "title": "Distribución total de ejercicios",
+      "type": "piechart",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "rawQueryText": "SELECT actividad as metric, COUNT(*) as value FROM ejercicios GROUP BY actividad ORDER BY value DESC",
+          "refId": "A",
+          "queryType": "table"
+        }
+      ]
+    }
+
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "tags": ["fitbit", "insights", "correlaciones"],
+  "templating": { "list": [] },
+  "time": { "from": "now-90d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Fitbit Insights",
+  "uid": "fitbit-insights-dashboard",
+  "version": 1
+}

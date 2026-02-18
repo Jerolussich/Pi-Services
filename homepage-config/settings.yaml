@@ -1,0 +1,17 @@
+title: Jero's Server
+theme: dark
+color: slate
+target: _blank
+
+# Allow access from your IP
+useEqualHeights: false
+headerStyle: boxed
+
+providers:
+  openweathermap: 
+  weatherapi: 
+
+# This fixes the host validation error
+allowedHosts:
+  - 192.168.68.66
+  - localhost
