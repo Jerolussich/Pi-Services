@@ -53,27 +53,27 @@ news/
 │   ├── .env                  ← gitignored
 │   └── .env.example
 │
-├── news-filter/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── filter.py
-│   ├── requirements.txt
-│   ├── .env                  ← gitignored
-│   ├── .env.example
-│   ├── config/
-│   │   └── keywords.txt      ← bind-mount, editar directo desde host o via UI
-│   └── data/
-│       ├── seen.db           ← SQLite deduplicación (gitignored)
-│       ├── filter.log        ← log de ejecuciones (gitignored)
-│       └── paused            ← archivo centinela para pausar el cron (gitignored)
-│
-└── news-filter-ui/
-    ├── Dockerfile
-    ├── docker-compose.yml
-    ├── app.py
+└── news-filter/
+    ├── docker-compose.yml    ← define both news-filter AND news-filter-ui
+    ├── Dockerfile            ← cron container
+    ├── filter.py
     ├── requirements.txt
-    └── templates/
-        └── index.html
+    ├── .env                  ← gitignored
+    ├── .env.example
+    ├── config/
+    │   └── keywords.txt      ← bind-mount, editar directo desde host o via UI
+    ├── data/                 ← gitignored
+    │   ├── seen.db
+    │   ├── filter.log
+    │   └── paused            ← archivo centinela para pausar el cron
+    └── ui/
+        ├── Dockerfile        ← Flask UI container
+        ├── app.py
+        ├── requirements.txt
+        ├── .env              ← gitignored (UI_USERNAME, UI_PASSWORD)
+        ├── .env.example
+        └── templates/
+            └── index.html
 ```
 
 ---
@@ -85,6 +85,7 @@ news/
 ```bash
 cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
+cp news/news-filter/ui/.env.example news/news-filter/ui/.env
 ```
 
 **`news/wallabag/.env`**
@@ -106,6 +107,12 @@ EXTRA_KEYWORDS=
 MIN_CONTENT_LENGTH=500
 SEEN_RETENTION_DAYS=30
 LOG_RETENTION_DAYS=90
+```
+
+**`news/news-filter/ui/.env`**
+```
+UI_USERNAME=admin
+UI_PASSWORD=your_ui_password
 ```
 
 ### 2. Crear carpetas necesarias
@@ -240,19 +247,36 @@ docker exec news-filter python /app/filter.py
 
 ## news-filter-ui — Detalles técnicos
 
-Aplicación Flask liviana que comparte los volúmenes bind-mount de `news-filter`:
+Aplicación Flask liviana ubicada en `ui/` dentro de `news-filter/`. Comparte los mismos bind-mounts que el contenedor del cron y se define en el mismo `docker-compose.yml`.
 
 | Volumen | Descripción |
 |---|---|
-| `../news-filter/config` | Lee y escribe `keywords.txt` |
-| `../news-filter/data` | Lee `filter.log`, lee/escribe `seen.db`, crea/borra `paused` |
-| `../news-filter/filter.py` | Ejecuta el script vía **Run filter now** |
-| `../news-filter/.env` | Env vars necesarias para ejecutar `filter.py` y reset |
+| `./config` | Lee y escribe `keywords.txt` |
+| `./data` | Lee `filter.log`, lee/escribe `seen.db`, crea/borra `paused` |
+| `./filter.py` | Ejecuta el script vía **Run filter now** |
+| `.env` (news-filter) | Env vars para ejecutar `filter.py` y reset |
+| `ui/.env` | `UI_USERNAME` y `UI_PASSWORD` para autenticación |
+
+### Autenticación
+
+La UI está protegida con HTTP Basic Auth. Las credenciales se configuran en `ui/.env`:
+
+```
+UI_USERNAME=admin
+UI_PASSWORD=your_password
+```
+
+El browser muestra un popup de login al acceder a `http://<pi_ip>:8084`.
+
+### Auto-refresh del log
+
+Al hacer click en **Run filter now**, la página redirige con `?running=1`. JavaScript hace polling al endpoint `/log` cada 2 segundos durante 30 segundos, actualizando el panel del log en tiempo real. Un indicador **● live** aparece en la esquina del panel mientras está activo.
 
 Endpoints:
 - `GET /` — muestra keywords actuales, últimas 100 líneas del log, y estado de pausa
+- `GET /log` — devuelve JSON con el contenido actual del log (usado por el poller)
 - `POST /save` — guarda keywords editadas
-- `POST /run` — ejecuta `filter.py` en background (bloqueado si está pausado)
+- `POST /run` — ejecuta `filter.py` en background, redirige con `?running=1`
 - `POST /toggle-pause` — crea o borra `/app/data/paused` para pausar/resumir el cron
 - `POST /reset` — borra artículos de Wallabag trackeados, limpia seen.db, borra log, y marca todos los artículos de FreshRSS como leídos
 

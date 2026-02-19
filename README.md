@@ -132,27 +132,27 @@ pi-services/
     │   ├── .env                    ← gitignored
     │   └── .env.example
     │
-    ├── news-filter/
-    │   ├── Dockerfile
-    │   ├── docker-compose.yml
-    │   ├── filter.py
-    │   ├── requirements.txt
-    │   ├── .env                    ← gitignored
-    │   ├── .env.example
-    │   ├── config/
-    │   │   └── keywords.txt        ← editar directo o via UI
-    │   └── data/                   ← gitignored
-    │       ├── seen.db
-    │       ├── filter.log
-    │       └── paused              ← centinela para pausar el cron
-    │
-    └── news-filter-ui/
-        ├── Dockerfile
-        ├── docker-compose.yml
-        ├── app.py
+    └── news-filter/
+        ├── docker-compose.yml      ← defines both news-filter AND news-filter-ui
+        ├── Dockerfile              ← cron container
+        ├── filter.py
         ├── requirements.txt
-        └── templates/
-            └── index.html
+        ├── .env                    ← gitignored
+        ├── .env.example
+        ├── config/
+        │   └── keywords.txt
+        ├── data/                   ← gitignored
+        │   ├── seen.db
+        │   ├── filter.log
+        │   └── paused
+        └── ui/
+            ├── Dockerfile          ← Flask UI container
+            ├── app.py
+            ├── requirements.txt
+            ├── .env                ← gitignored (UI_USERNAME, UI_PASSWORD)
+            ├── .env.example
+            └── templates/
+                └── index.html
 ```
 
 ---
@@ -181,6 +181,7 @@ cp homepage/.env.example homepage/.env
 cp monitoring/.env.example monitoring/.env
 cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
+cp news/news-filter/ui/.env.example news/news-filter/ui/.env
 ```
 
 **`homepage/.env`**
