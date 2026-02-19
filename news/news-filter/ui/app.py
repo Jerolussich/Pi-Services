@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, Response, jsonify
 import subprocess
 import sqlite3
 import os
@@ -10,6 +10,24 @@ LOG_FILE      = "/app/data/filter.log"
 DB_PATH       = "/app/data/seen.db"
 PAUSE_FILE    = "/app/data/paused"
 
+UI_USERNAME   = os.environ.get("UI_USERNAME", "admin")
+UI_PASSWORD   = os.environ.get("UI_PASSWORD", "admin")
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+def check_auth(username, password):
+    return username == UI_USERNAME and password == UI_PASSWORD
+
+@app.before_request
+def require_auth():
+    auth = request.authorization
+    if not auth or not check_auth(auth.username, auth.password):
+        return Response(
+            "Authentication required.",
+            401,
+            {"WWW-Authenticate": 'Basic realm="News Filter"'},
+        )
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def read_keywords():
     if not os.path.exists(KEYWORDS_FILE):
         return []
@@ -30,12 +48,18 @@ def read_log():
 def is_paused():
     return os.path.exists(PAUSE_FILE)
 
+# ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def index():
     keywords = read_keywords()
     log      = read_log()
     paused   = is_paused()
-    return render_template("index.html", keywords=keywords, log=log, paused=paused)
+    running  = request.args.get("running", "0") == "1"
+    return render_template("index.html", keywords=keywords, log=log, paused=paused, running=running)
+
+@app.route("/log", methods=["GET"])
+def log_content():
+    return jsonify({"log": read_log()})
 
 @app.route("/save", methods=["POST"])
 def save():
@@ -55,7 +79,7 @@ def run():
             stdout=log,
             stderr=log,
         )
-    return redirect(url_for("index"))
+    return redirect(url_for("index", running=1))
 
 @app.route("/toggle-pause", methods=["POST"])
 def toggle_pause():
@@ -78,7 +102,6 @@ def reset():
     freshrss_user = os.environ["FRESHRSS_USERNAME"]
     freshrss_pass = os.environ["FRESHRSS_API_PASSWORD"]
 
-    # ── Delete Wallabag entries ───────────────────────────────────────────────
     try:
         resp  = req.post(f"{wallabag_url}/oauth/v2/token", data={
             "grant_type":    "password",
@@ -88,23 +111,19 @@ def reset():
             "password":      password,
         })
         token = resp.json()["access_token"]
-
         if os.path.exists(DB_PATH):
             conn = sqlite3.connect(DB_PATH)
             rows = conn.execute("SELECT wallabag_id FROM seen WHERE wallabag_id IS NOT NULL").fetchall()
             conn.close()
             for (wallabag_id,) in rows:
                 try:
-                    req.delete(
-                        f"{wallabag_url}/api/entries/{wallabag_id}.json",
-                        headers={"Authorization": f"Bearer {token}"},
-                    )
+                    req.delete(f"{wallabag_url}/api/entries/{wallabag_id}.json",
+                               headers={"Authorization": f"Bearer {token}"})
                 except Exception:
                     pass
     except Exception:
         pass
 
-    # ── Mark all FreshRSS articles as read ───────────────────────────────────
     try:
         auth_resp = req.post(
             f"{freshrss_url}/api/greader.php/accounts/ClientLogin",
@@ -115,7 +134,6 @@ def reset():
             if line.startswith("Auth="):
                 fr_token = line[5:]
                 break
-
         if fr_token:
             req.post(
                 f"{freshrss_url}/api/greader.php/reader/api/0/mark-all-as-read",
@@ -125,14 +143,12 @@ def reset():
     except Exception:
         pass
 
-    # ── Clear seen.db ─────────────────────────────────────────────────────────
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         conn.execute("DELETE FROM seen")
         conn.commit()
         conn.close()
 
-    # ── Clear log ─────────────────────────────────────────────────────────────
     if os.path.exists(LOG_FILE):
         open(LOG_FILE, "w").close()
 

@@ -1,10 +1,28 @@
 services:
   news-filter:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: news-filter
     volumes:
       - ./config:/app/config
       - ./data:/app/data
     env_file:
       - .env
+    restart: unless-stopped
+
+  news-filter-ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: news-filter-ui
+    ports:
+      - 8084:8084
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./filter.py:/app/filter.py
+    env_file:
+      - .env
+      - ./ui/.env
     restart: unless-stopped

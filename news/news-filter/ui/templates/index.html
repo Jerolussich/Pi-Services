@@ -28,6 +28,10 @@
     .btn-reset  { background: #e53e3e; color: #fff; }
     .btn-reset:hover { background: #c53030; }
     .log { background: #0f3460; border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; min-height: 300px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; color: #a0e0a0; border: 1px solid #2d3748; }
+    .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .log-header h2 { margin-bottom: 0; }
+    .refresh-badge { font-size: 0.75rem; color: #48bb78; display: none; }
+    .refresh-badge.active { display: inline; }
     .paused-banner { background: #744210; color: #fbd38d; padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.9rem; }
     .danger-zone { margin-top: 2rem; border-top: 1px solid #2d3748; padding-top: 1.5rem; }
     .danger-zone h2 { color: #fc8181; margin-bottom: 1rem; }
@@ -68,8 +72,11 @@
     </div>
 
     <div class="card">
-      <h2>Last run log</h2>
-      <div class="log">{{ log }}</div>
+      <div class="log-header">
+        <h2>Last run log</h2>
+        <span class="refresh-badge" id="refresh-badge">● live</span>
+      </div>
+      <div class="log" id="log-content">{{ log }}</div>
     </div>
   </div>
 
@@ -80,5 +87,34 @@
       <button type="submit" class="btn-reset">🗑 Reset everything</button>
     </form>
   </div>
+
+  <script>
+    const running = {{ 'true' if running else 'false' }};
+
+    function scrollLogToBottom() {
+      const log = document.getElementById("log-content");
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function pollLog(duration) {
+      const badge = document.getElementById("refresh-badge");
+      badge.classList.add("active");
+      const interval = setInterval(() => {
+        fetch("/log")
+          .then(r => r.json())
+          .then(data => {
+            document.getElementById("log-content").textContent = data.log;
+            scrollLogToBottom();
+          });
+      }, 2000);
+      setTimeout(() => {
+        clearInterval(interval);
+        badge.classList.remove("active");
+      }, duration);
+    }
+
+    scrollLogToBottom();
+    if (running) pollLog(30000);
+  </script>
 </body>
 </html>
