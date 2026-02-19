@@ -7,11 +7,6 @@
         icon: grafana.png
         href: http://192.168.68.66:3000
         description: Monitoring dashboards
-- Reading:
-    - Wallabag:
-        icon: wallabag.png
-        href: http://192.168.68.66:8082
-        description: Read articles without clutter
 - FitbitDashboard:
     - Fitbit:
         icon: mdi-heart-pulse

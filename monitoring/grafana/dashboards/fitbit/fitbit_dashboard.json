@@ -439,6 +439,11 @@
       "id": 206,
       "options": {
         "displayLabels": ["percent"],
+        "reduceOptions": {
+          "calcs": ["mean"],
+          "fields": "",
+          "values": true
+        },
         "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
         "pieType": "donut",
         "tooltip": { "mode": "single", "sort": "none" }
