@@ -5,3 +5,4 @@ include:
   - news/freshrss/docker-compose.yml
   - news/wallabag/docker-compose.yml
   - news/news-filter/docker-compose.yml
+  - finance/itau-tracker/docker-compose.yml

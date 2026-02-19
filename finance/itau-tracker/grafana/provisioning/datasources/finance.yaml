@@ -1,0 +1,9 @@
+apiVersion: 1
+datasources:
+  - name: Finance SQLite
+    type: frser-sqlite-datasource
+    uid: finance-sqlite
+    access: proxy
+    editable: true
+    jsonData:
+      path: /var/finance/finance.db

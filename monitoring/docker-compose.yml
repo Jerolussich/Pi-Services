@@ -44,8 +44,12 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ${FITBIT_EXPORTS_PATH}:/var/fitbit:ro
+      - ${FINANCE_DATA_PATH}:/var/finance:ro
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ../finance/itau-tracker/grafana/dashboards:/var/lib/grafana/dashboards/finance
+      - ../finance/itau-tracker/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards/finance
+      - ../finance/itau-tracker/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources/finance
     restart: unless-stopped
 
 volumes:

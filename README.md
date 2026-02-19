@@ -1,6 +1,6 @@
 # Pi Services
 
-A collection of self-hosted services running on a Raspberry Pi 5, managed with Docker Compose. Covers network ad-blocking, system monitoring, Fitbit health data export, and a full news reading pipeline.
+A collection of self-hosted services running on a Raspberry Pi 5, managed with Docker Compose. Covers network ad-blocking, system monitoring, Fitbit health data export, a full news reading pipeline, and automatic credit card expense tracking.
 
 ---
 
@@ -12,11 +12,14 @@ Raspberry Pi 5
 ├── homepage        → Unified dashboard (port 3001)
 ├── monitoring      → Prometheus + Grafana + exporters (port 3000)
 ├── fitbit-exporter → Monthly export container (no port, writes to SQLite)
-└── news/
-    ├── freshrss        → RSS feed aggregator (port 8083)
-    ├── wallabag        → Article reader (port 8082)
-    ├── news-filter     → Daily keyword filter (no port, cron)
-    └── news-filter-ui  → Keywords UI + run logs (port 8084)
+├── news/
+│   ├── freshrss        → RSS feed aggregator (port 8083)
+│   ├── wallabag        → Article reader (port 8082)
+│   ├── news-filter     → Daily keyword filter (no port, cron)
+│   └── news-filter-ui  → Keywords UI + run logs (port 8084)
+└── finance/
+    ├── itau-tracker    → Hourly email fetch + parse (no port, cron)
+    └── itau-tracker-ui → Expense dashboard + config UI (port 8085)
 ```
 
 All services run as Docker containers and are managed from a single root `docker-compose.yml`.
@@ -54,9 +57,18 @@ Clean article reading without ads or account barriers. Used by `news-filter` as 
 Daily cron at 8am. Reads articles from FreshRSS, checks them against a keyword list, and saves matches to Wallabag. Uses SQLite (`seen.db`) for deduplication. Falls back to Wallabag's scraper for short/truncated content. Automatically cleans up old entries from both `seen.db` and Wallabag based on retention settings.
 
 ### News Filter UI
-**Image:** built from `news/news-filter-ui/Dockerfile`  
+**Image:** built from `news/news-filter/ui/Dockerfile`  
 **Port:** `8084`  
-Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data.
+Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data. Protected with HTTP Basic Auth.
+
+### Itaú Tracker
+**Image:** built from `finance/itau-tracker/tracker/Dockerfile`  
+Hourly cron. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`).
+
+### Itaú Tracker UI
+**Image:** built from `finance/itau-tracker/ui/Dockerfile`  
+**Port:** `8085`  
+Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth.
 
 ---
 
@@ -72,10 +84,11 @@ Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resumi
 | Homepage | Service dashboard |
 | FreshRSS | RSS feed aggregator |
 | Wallabag | Article reader and scraper |
-| Flask | News filter web UI |
-| Python 3 + Docker | Fitbit export + news filter (containerized) |
-| SQLite | Fitbit data storage + news deduplication |
-| Cron | Monthly Fitbit export + daily news filter |
+| Flask | News filter UI + Finance tracker UI |
+| Python 3 + Docker | Fitbit export + news filter + finance tracker (containerized) |
+| SQLite | Fitbit data + news deduplication + finance transactions |
+| Cron | Monthly Fitbit export + daily news filter + hourly finance fetch |
+| Microsoft Graph API | Email reading for finance tracker |
 
 ---
 
@@ -153,6 +166,37 @@ pi-services/
             ├── .env.example
             └── templates/
                 └── index.html
+
+finance/
+└── itau-tracker/
+    ├── docker-compose.yml          ← defines both itau-tracker AND itau-tracker-ui
+    ├── .env                        ← gitignored (UI_USERNAME, UI_PASSWORD)
+    ├── .env.example
+    ├── tracker/
+    │   ├── Dockerfile              ← cron container
+    │   ├── fetch.py
+    │   ├── auth.py                 ← one-time OAuth2 setup
+    │   └── requirements.txt
+    ├── ui/
+    │   ├── Dockerfile              ← Flask UI container
+    │   ├── app.py
+    │   ├── requirements.txt
+    │   └── templates/
+    │       └── index.html
+    ├── grafana/
+    │   ├── dashboards/
+    │   │   └── finance_dashboard.json
+    │   └── provisioning/
+    │       ├── dashboards/
+    │       │   └── finance.yaml
+    │       └── datasources/
+    │           └── finance.yaml
+    └── data/                       ← gitignored
+        ├── finance.db
+        ├── config.json             ← editable from UI
+        ├── token.json              ← gitignored (OAuth2 tokens)
+        ├── tracker.log
+        └── paused
 ```
 
 ---
@@ -182,6 +226,7 @@ cp monitoring/.env.example monitoring/.env
 cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
 cp news/news-filter/ui/.env.example news/news-filter/ui/.env
+cp finance/itau-tracker/.env.example finance/itau-tracker/.env
 ```
 
 **`homepage/.env`**
@@ -193,6 +238,7 @@ PI_IP=your_pi_ip
 ```
 PIHOLE_PASSWORD=your_pihole_password
 FITBIT_EXPORTS_PATH=/home/youruser/Pi-Services/fitbit-exporter/exports
+FINANCE_DATA_PATH=/home/youruser/Pi-Services/finance/itau-tracker/data
 ```
 
 **`news/wallabag/.env`**
@@ -214,6 +260,12 @@ EXTRA_KEYWORDS=
 MIN_CONTENT_LENGTH=500
 SEEN_RETENTION_DAYS=30
 LOG_RETENTION_DAYS=90
+```
+
+**`finance/itau-tracker/.env`**
+```
+UI_USERNAME=admin
+UI_PASSWORD=your_ui_password
 ```
 
 ### 3. Set up Fitbit exporter
@@ -248,7 +300,8 @@ docker compose up -d
 
 - **FreshRSS** (`http://<pi_ip>:8083`) — complete the install wizard, enable API access in **Settings → Authentication**, set API password in **Settings → Profile**, set archiving to 30 days in **Settings → Archiving**
 - **Wallabag** (`http://<pi_ip>:8082`) — login with `wallabag / wallabag`, change password, create API client in **API clients management**, add credentials to `news/news-filter/.env`
-- **Grafana** (`http://<pi_ip>:3000`) — login with `admin / admin`, change password, install SQLite plugin, configure Fitbit datasource
+- **Grafana** (`http://<pi_ip>:3000`) — login with `admin / admin`, change password, install SQLite plugin, configure Fitbit and Finance datasources
+- **Itaú Tracker** — run one-time authorization: `docker exec -it itau-tracker python /app/auth.py`, follow the device code flow in your browser, then run the first fetch: `docker exec itau-tracker python /app/fetch.py`
 
 See each service's `README.md` for detailed setup instructions.
 
@@ -280,10 +333,11 @@ All containers should show `Up`.
 | Service | URL | Description |
 |---|---|---|
 | Homepage | `http://<pi_ip>:3001` | Unified dashboard |
-| Grafana | `http://<pi_ip>:3000` | Metrics + Fitbit dashboards |
+| Grafana | `http://<pi_ip>:3000` | Metrics + Fitbit + Finance dashboards |
 | FreshRSS | `http://<pi_ip>:8083` | RSS feed reader |
 | Wallabag | `http://<pi_ip>:8082` | Saved articles |
 | News Filter UI | `http://<pi_ip>:8084` | Manage keywords + logs |
+| Itaú Tracker UI | `http://<pi_ip>:8085` | Expense tracking + config |
 | Prometheus | `http://<pi_ip>:9090` | Raw metrics |
 
 ---
@@ -291,11 +345,14 @@ All containers should show `Up`.
 ## Security Notes
 
 - `tokens.json` contains live Fitbit OAuth2 credentials — never commit it
+- `data/token.json` contains live Microsoft OAuth2 tokens — never commit it
 - `.env` files contain passwords — never commit them
+- `data/config.json` in itau-tracker contains the Azure client secret — never commit it
 - All sensitive files are covered by `.gitignore`
 - Use `.env.example` files as templates when setting up on a new machine
 - Wallabag default credentials are `wallabag / wallabag` — change them after first login
 - FreshRSS API password is separate from the login password — set it in **Settings → Profile**
+- Both Flask UIs (news-filter-ui, itau-tracker-ui) are protected with HTTP Basic Auth
 
 ---
 
@@ -307,3 +364,4 @@ Each service has its own `README.md` with detailed setup, technical details, and
 - `monitoring/README.md`
 - `fitbit-exporter/README.md`
 - `news/README.md`
+- `finance/itau-tracker/README.md`

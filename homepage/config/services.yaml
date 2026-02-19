@@ -39,3 +39,12 @@
         icon: mdi-filter
         href: http://192.168.68.66:8084
         description: Manage keywords & view runs
+- Finance:
+    - Itaú Tracker:
+        icon: mdi-credit-card
+        href: http://192.168.68.66:8085
+        description: Gastos con tarjeta de crédito
+    - Finance Dashboard:
+        icon: mdi-chart-bar
+        href: http://192.168.68.66:3000/d/finance-main
+        description: Dashboards de gastos en Grafana

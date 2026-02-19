@@ -16,3 +16,4 @@ news/news-filter/data/
 # Python
 **/__pycache__/
 **/*.pyc
+finance/itau-tracker/data/
