@@ -19,6 +19,8 @@ Microsoft Graph API
 
 Both containers are defined in a single `docker-compose.yml` and share a `data/` bind mount.
 
+The Grafana dashboard and provisioning live in `monitoring/grafana/` alongside the Fitbit dashboards — Grafana is managed entirely from the monitoring service.
+
 ---
 
 ## Directory Structure
@@ -40,20 +42,22 @@ finance/
     │   ├── requirements.txt
     │   └── templates/
     │       └── index.html
-    ├── grafana/
-    │   ├── dashboards/
-    │   │   └── finance_dashboard.json
-    │   └── provisioning/
-    │       ├── dashboards/
-    │       │   └── finance.yaml
-    │       └── datasources/
-    │           └── finance.yaml
     └── data/                       ← gitignored, bind-mounted into both containers
         ├── finance.db              ← SQLite with all transactions
-        ├── config.json             ← runtime config (email, categories) — editable from UI
+        ├── config.json             ← runtime config (credentials, categories) — editable from UI
         ├── token.json              ← gitignored (Microsoft OAuth2 tokens)
         ├── tracker.log
         └── paused                  ← sentinel file to pause the cron
+
+monitoring/
+└── grafana/
+    ├── dashboards/
+    │   ├── fitbit/                 ← Fitbit dashboards
+    │   └── finance/
+    │       └── finance_dashboard.json
+    └── provisioning/
+        └── dashboards/
+            └── fitbit.yaml         ← providers for both Fitbit and Finance folders
 ```
 
 ---
@@ -86,7 +90,7 @@ The tracker uses the Microsoft Graph API to read emails. A one-time Azure setup 
    - Copy the **Value** immediately (shown only once)
 6. Note your **Application (client) ID** from the Overview page
 
-### 2. Configure environment files
+### 2. Configure .env
 
 ```bash
 cp finance/itau-tracker/.env.example finance/itau-tracker/.env
@@ -124,7 +128,7 @@ cat > finance/itau-tracker/data/config.json << 'EOF'
 EOF
 ```
 
-### 4. Add finance paths to monitoring/.env
+### 4. Add finance path to monitoring/.env
 
 ```bash
 echo "FINANCE_DATA_PATH=/home/youruser/pi-services/finance/itau-tracker/data" >> monitoring/.env
@@ -144,7 +148,7 @@ This step authorizes the app to read your Hotmail inbox. Only needs to be done o
 docker exec -it itau-tracker python /app/auth.py
 ```
 
-The script will print a URL and a short code. Open the URL in your browser, enter the code, and sign in with your Hotmail account. Once authorized, `data/token.json` is saved automatically.
+The script will print a URL and a short code. Open the URL in your browser (`https://www.microsoft.com/link`), enter the code, and sign in with your Hotmail account. Once authorized, `data/token.json` is saved automatically.
 
 ### 7. Run first fetch
 
@@ -154,16 +158,16 @@ docker exec itau-tracker python /app/fetch.py
 
 This fetches all historical Itaú purchase emails and populates `finance.db`.
 
-### 8. Configure Grafana
+### 8. Configure Grafana SQLite datasource
 
 1. In Grafana go to **Connections → Data sources → Add data source → SQLite**
 2. Set:
    - Name: `Finance SQLite`
    - Path: `///var/finance/finance.db`
-3. **Save & test** — note the datasource UID from the URL
+3. **Save & test** — note the datasource UID from the browser URL
 4. Update the dashboard JSON to use your UID:
    ```bash
-   sed -i 's/finance-sqlite/your_uid_here/g' finance/itau-tracker/grafana/dashboards/finance_dashboard.json
+   sed -i 's/finance-sqlite/your_uid_here/g' monitoring/grafana/dashboards/finance/finance_dashboard.json
    docker compose restart grafana
    ```
 
@@ -176,13 +180,22 @@ This fetches all historical Itaú purchase emails and populates `finance.db`.
 1. Checks for `data/paused` sentinel file — exits immediately if paused
 2. Loads `config.json` and `token.json`
 3. Uses `refresh_token` to get a new `access_token` from Microsoft — saves updated tokens
-4. Calls Graph API: `GET /me/messages?$search="from:comunicaciones@itau.com.uy AND subject:consumo aprobado"`
+4. Calls Graph API:
+   ```
+   GET /me/messages?$search="from:comunicaciones@itau.com.uy AND subject:consumo aprobado"
+   ```
 5. For each email not already in `finance.db`:
    - Parses HTML body with BeautifulSoup
    - Extracts card type, last 4 digits, amount, currency, merchant
-   - Categorizes merchant by keyword matching
+   - Categorizes merchant by keyword matching against `config.json`
    - Inserts into `finance.db`
 6. Logs results to `data/tracker.log`
+
+### Email filtering
+
+Uses `$search` with both sender and subject filters:
+- `from:comunicaciones@itau.com.uy` — only Itaú emails
+- `AND subject:consumo aprobado` — only purchase notifications, not balance alerts or promotions
 
 ### Token lifecycle
 
@@ -211,11 +224,13 @@ CREATE TABLE transactions (
 
 Merchant names are matched against keyword lists in `config.json`. Categories are fully editable from the UI without rebuilding. If no keyword matches, the transaction is labeled `otros`.
 
+Note: Itaú's system has known typos in merchant names (e.g. `TIENDA INLGESA` instead of `TIENDA INGLESA`) — both variants are included in the default categories.
+
 ---
 
 ## itau-tracker-ui
 
-Flask web UI accessible at `http://<pi_ip>:8085`. Protected with HTTP Basic Auth via `UI_USERNAME` / `UI_PASSWORD` in `.env`.
+Flask web UI at `http://<pi_ip>:8085`. Protected with HTTP Basic Auth via `UI_USERNAME` / `UI_PASSWORD` in `.env`.
 
 **Dashboard tab:**
 - This month's total spending (UYU)
@@ -224,15 +239,16 @@ Flask web UI accessible at `http://<pi_ip>:8085`. Protected with HTTP Basic Auth
 - Monthly spending bar chart (last 12 months)
 - Spending by category bar chart
 - Recent transactions table (last 20)
-- Live run log
+- Live run log with `● live` indicator
 
 **Config tab:**
-- Edit IMAP/Graph API credentials
-- Edit category keyword lists
+- Edit Azure credentials (client_id, client_secret, tenant_id)
+- Edit sender filter
+- Edit category keyword lists (one per line, format: `category: kw1, kw2`)
 - Changes saved directly to `data/config.json` — no rebuild needed
 
-**Controls (header):**
-- **▶ Run now** — triggers `fetch.py` immediately with live log polling
+**Header controls:**
+- **▶ Run now** — triggers `fetch.py` immediately, log panel auto-refreshes for 30 seconds
 - **⏸ Pause / ▶ Resume** — creates/deletes `data/paused` to pause/resume the hourly cron
 
 **Danger Zone:**
@@ -242,8 +258,9 @@ Flask web UI accessible at `http://<pi_ip>:8085`. Protected with HTTP Basic Auth
 
 ## Grafana Dashboards
 
-The **Finance — Itaú Tracker** dashboard is provisioned automatically in the **Finance** folder. It includes:
+The **Finance — Itaú Tracker** dashboard lives in `monitoring/grafana/dashboards/finance/` and is provisioned automatically in the **Finance** folder by the Grafana provider defined in `monitoring/grafana/provisioning/dashboards/fitbit.yaml`.
 
+Panels:
 - Total spending this month (stat)
 - Transactions this month (stat)
 - Average transaction amount (stat)
@@ -253,19 +270,18 @@ The **Finance — Itaú Tracker** dashboard is provisioned automatically in the 
 - Top 10 merchants bar chart
 - Recent transactions table
 
-Dashboards read directly from `finance.db` via the SQLite datasource mounted at `/var/finance/finance.db` in the Grafana container.
+Reads directly from `finance.db` via the Finance SQLite datasource mounted at `/var/finance/finance.db` in the Grafana container.
 
 ---
 
 ## Volumes
 
-| Path (host) | Path (container) | Description |
+| Path (host) | Path (container) | Service |
 |---|---|---|
-| `./data` | `/app/data` | DB, log, config, tokens, paused file |
-| `./tracker/fetch.py` | `/app/fetch.py` | Mounted into UI container for Run now |
-| `./grafana/dashboards` | `/var/lib/grafana/dashboards/finance` | Dashboard JSON |
-| `./grafana/provisioning/dashboards` | `/etc/grafana/provisioning/dashboards/finance` | Dashboard provisioning |
-| `./grafana/provisioning/datasources` | `/etc/grafana/provisioning/datasources/finance` | Datasource provisioning |
+| `./data` | `/app/data` | tracker + ui |
+| `./tracker/fetch.py` | `/app/fetch.py` | ui (for Run now) |
+| `finance/itau-tracker/data` | `/var/finance` | grafana (read-only) |
+| `monitoring/grafana/dashboards/finance` | `/var/lib/grafana/dashboards/finance` | grafana |
 
 ---
 
@@ -273,11 +289,12 @@ Dashboards read directly from `finance.db` via the SQLite datasource mounted at 
 
 | Issue | Solution |
 |---|---|
-| `LOGIN failed` on IMAP | Microsoft disabled Basic Auth for personal accounts — use Graph API (this setup) |
+| `LOGIN failed` on IMAP | Microsoft disabled Basic Auth — this service uses Graph API instead |
 | `400 Bad Request` on device code | Enable **Allow public client flows** in Azure → Authentication → Settings |
-| `Token refresh failed: 400` | Use `tenant_id: "consumers"` in `config.json`, not the directory tenant ID |
+| `Token refresh failed: 400` | Use `"tenant_id": "consumers"` in `config.json`, not the directory tenant ID |
 | `No module named 'bs4'` | Rebuild with `docker compose build --no-cache itau-tracker` |
+| `card:None` in logs | Rebuild after regex fix — the `\s*` between `***` and digits must be present |
 | Token expired after 90 days | Re-run `docker exec -it itau-tracker python /app/auth.py` |
-| Dashboard shows no data | Verify datasource UID matches `finance_dashboard.json` — update with `sed` command |
-| Dashboard in wrong Grafana folder | Check `grafana/provisioning/dashboards/finance.yaml` has correct `folder: Finance` |
-| `card:None` in logs | Rebuild after regex fix — `docker compose build --no-cache itau-tracker` |
+| Dashboard shows no data | Verify datasource UID in dashboard JSON matches the one in Grafana — update with `sed` |
+| Dashboard appears in wrong Grafana folder | Ensure dashboard JSON is in `monitoring/grafana/dashboards/finance/` and provider path matches |
+| `None/None/None` warnings in log | Normal — other Itaú email types (not purchases) that don't match the parser |
