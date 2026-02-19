@@ -1,15 +1,15 @@
-# Fitbit Pi Exporter
+# Fitbit Exporter
 
-Exportación automática mensual de datos de Fitbit a un Excel acumulativo y visualización en Grafana, corriendo en Raspberry Pi.
+Exportación automática mensual de datos de Fitbit a un Excel acumulativo y base de datos SQLite, con visualización en Grafana. Corre como contenedor Docker en Raspberry Pi.
 
 ---
 
-## Arquitectura general
+## Arquitectura
 
 ```
 Fitbit API
     ↓
-export.py (cron mensual)
+export.py (cron dentro del contenedor — 1ro de cada mes, 6am)
     ↓              ↓
 fitbit_data.xlsx   fitbit.db (SQLite)
                        ↓
@@ -24,20 +24,19 @@ fitbit_data.xlsx   fitbit.db (SQLite)
 
 | Componente | Descripción | Ubicación |
 |---|---|---|
-| `export.py` | Script principal de exportación | `~/fitbit-exporter/export.py` |
-| `tokens.json` | Credenciales OAuth2 de Fitbit | `~/fitbit-exporter/tokens.json` |
-| `fitbit_data.xlsx` | Excel acumulativo con toda la data | `~/fitbit-exporter/exports/` |
-| `fitbit.db` | Base de datos SQLite para Grafana | `~/fitbit-exporter/exports/` |
-| `fitbit_dashboard.json` | Dashboard de Grafana | `~/monitoring/grafana/dashboards/` |
-| Cron job | Dispara la exportación el 1ro de cada mes | `crontab -l` |
+| `export.py` | Script principal de exportación | `fitbit-exporter/export.py` |
+| `Dockerfile` | Imagen Docker con Python + cron | `fitbit-exporter/Dockerfile` |
+| `requirements.txt` | Dependencias Python | `fitbit-exporter/requirements.txt` |
+| `tokens.json` | Credenciales OAuth2 de Fitbit | `fitbit-exporter/tokens.json` (gitignored) |
+| `fitbit_data.xlsx` | Excel acumulativo con toda la data | `fitbit-exporter/exports/` (gitignored) |
+| `fitbit.db` | Base de datos SQLite para Grafana | `fitbit-exporter/exports/` (gitignored) |
+| `fitbit_dashboard.json` | Dashboard de Grafana | `monitoring/grafana/dashboards/` |
 
 ---
 
 ## Prerrequisitos
 
-- Raspberry Pi con Docker y Docker Compose
-- Grafana corriendo en Docker (puerto 3000)
-- Python 3 con virtualenv
+- Raspberry Pi con Docker y Docker Compose instalados
 - Cuenta de Fitbit
 - App registrada en [dev.fitbit.com](https://dev.fitbit.com)
 
@@ -45,22 +44,7 @@ fitbit_data.xlsx   fitbit.db (SQLite)
 
 ## Instalación
 
-### 1. Crear estructura de directorios
-
-```bash
-mkdir -p ~/fitbit-exporter/exports
-cd ~/fitbit-exporter
-```
-
-### 2. Crear entorno virtual e instalar dependencias
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install requests openpyxl
-```
-
-### 3. Registrar app en Fitbit
+### 1. Registrar app en Fitbit
 
 1. Ir a [dev.fitbit.com](https://dev.fitbit.com) → Register an App
 2. Configurar:
@@ -69,7 +53,7 @@ pip install requests openpyxl
    - **Default Access Type**: Read Only
 3. Guardar el **Client ID** y **Client Secret**
 
-### 4. Obtener tokens OAuth2 (se hace UNA sola vez desde Windows)
+### 2. Obtener tokens OAuth2 (se hace UNA sola vez desde Windows)
 
 En PowerShell en tu PC:
 
@@ -81,11 +65,13 @@ python gather_keys_oauth2.py TU_CLIENT_ID TU_CLIENT_SECRET
 
 Se abre el browser, autorizás, y la consola imprime el `access_token` y `refresh_token`.
 
-### 5. Crear tokens.json en el Pi
+### 3. Crear tokens.json
 
 ```bash
-nano ~/fitbit-exporter/tokens.json
+cp fitbit-exporter/tokens.json.example fitbit-exporter/tokens.json
 ```
+
+Editar `tokens.json` con tus credenciales:
 
 ```json
 {
@@ -96,20 +82,37 @@ nano ~/fitbit-exporter/tokens.json
 }
 ```
 
-### 6. Copiar el script export.py
+### 4. Crear carpeta de exports
 
 ```bash
-nano ~/fitbit-exporter/export.py
+mkdir -p fitbit-exporter/exports
 ```
 
-Ver contenido completo del script en la sección [Script de exportación](#script-de-exportación).
+### 5. Levantar el contenedor
 
-### 7. Probar manualmente
+Desde la raíz del repo:
 
 ```bash
-cd ~/fitbit-exporter
-source venv/bin/activate
-python export.py
+docker compose up -d fitbit-exporter
+```
+
+O solo este servicio desde su carpeta:
+
+```bash
+cd fitbit-exporter
+docker compose up -d
+```
+
+### 6. Verificar que está corriendo
+
+```bash
+docker logs fitbit-exporter
+```
+
+### 7. Probar la exportación manualmente
+
+```bash
+docker exec fitbit-exporter python /app/export.py
 ```
 
 Output esperado:
@@ -122,21 +125,36 @@ Obteniendo frecuencia cardíaca...
 Obteniendo SpO2...
 Obteniendo logs de actividades...
 ✓ Datos guardados en SQLite.
-✓ Exportado: /home/jlussich/fitbit-exporter/exports/fitbit_data.xlsx
+✓ Exportado: /app/exports/fitbit_data.xlsx
 ```
 
-### 8. Configurar cron mensual
+---
+
+## Cómo funciona el contenedor
+
+El `Dockerfile` instala Python, las dependencias de `requirements.txt`, copia `export.py`, e instala un cron job que corre el 1ro de cada mes a las 6am. El contenedor corre `cron -f` como proceso principal.
+
+`tokens.json` y `exports/` son bind mounts — viven en el host y son accesibles tanto desde el contenedor como desde Grafana.
+
+```
+Host (tu Pi)                  Contenedor
+────────────────              ──────────────────
+tokens.json      bind mount → /app/tokens.json
+exports/         bind mount → /app/exports/
+                                   ↑
+                               Grafana también lee exports/
+                               via ${FITBIT_EXPORTS_PATH}
+```
+
+---
+
+## Reconstruir la imagen
+
+Si modificás `export.py` o `requirements.txt`:
 
 ```bash
-crontab -e
+docker compose up -d --build fitbit-exporter
 ```
-
-Agregar al final:
-```
-0 6 1 * * /home/jlussich/fitbit-exporter/venv/bin/python /home/jlussich/fitbit-exporter/export.py >> /home/jlussich/fitbit-exporter/export.log 2>&1
-```
-
-Esto corre el 1ro de cada mes a las 6am y exporta el mes anterior.
 
 ---
 
@@ -149,31 +167,6 @@ docker exec -it grafana grafana-cli plugins install frser-sqlite-datasource
 docker restart grafana
 ```
 
-### Montar carpeta de exports en el contenedor
-
-En `~/monitoring/docker-compose.yml`, agregar bajo `grafana > volumes`:
-
-```yaml
-grafana:
-  image: grafana/grafana-oss
-  container_name: grafana
-  ports:
-    - 3000:3000
-  volumes:
-    - grafana-data:/var/lib/grafana
-    - /home/jlussich/fitbit-exporter/exports:/var/fitbit:ro
-    - /home/jlussich/monitoring/grafana/provisioning:/etc/grafana/provisioning
-    - /home/jlussich/monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-  restart: unless-stopped
-```
-
-Reiniciar:
-
-```bash
-cd ~/monitoring
-docker compose down grafana && docker compose up -d grafana
-```
-
 ### Configurar datasource
 
 1. Ir a **Connections → Data sources → Add data source**
@@ -183,34 +176,21 @@ docker compose down grafana && docker compose up -d grafana
 
 ### Configurar provisioning del dashboard
 
-```bash
-mkdir -p ~/monitoring/grafana/provisioning/dashboards
-mkdir -p ~/monitoring/grafana/dashboards
-```
-
-Crear `~/monitoring/grafana/provisioning/dashboards/fitbit.yaml`:
-
-```yaml
-apiVersion: 1
-providers:
-  - name: fitbit
-    folder: Fitbit
-    type: file
-    options:
-      path: /var/lib/grafana/dashboards
-```
-
-Copiar el `fitbit_dashboard.json` a `~/monitoring/grafana/dashboards/` y reemplazar el UID del datasource:
+El dashboard se provisiona automáticamente desde `monitoring/grafana/dashboards/`. Si necesitás reemplazar el UID del datasource:
 
 ```bash
 # Obtener el UID real del datasource
 curl -s http://admin:TU_PASSWORD@localhost:3000/api/datasources | python3 -m json.tool | grep -E '"uid"|"name"'
 
 # Reemplazar en el JSON
-sed -i 's/\${DS_FITBIT}/EL_UID_REAL/g' ~/monitoring/grafana/dashboards/fitbit_dashboard.json
+sed -i 's/\${DS_FITBIT}/EL_UID_REAL/g' monitoring/grafana/dashboards/fitbit_dashboard.json
 ```
 
-Reiniciar Grafana y el dashboard aparece automáticamente en la carpeta **Fitbit**.
+Reiniciar Grafana para que tome los cambios:
+
+```bash
+docker compose up -d --force-recreate grafana
+```
 
 ---
 
@@ -230,7 +210,7 @@ Reiniciar Grafana y el dashboard aparece automáticamente en la carpeta **Fitbit
 - Resting HR promedio y mínimo
 - Total de minutos en zona Cardio
 - Resting HR por día
-- Minutos por zona cardíaca apilados (Out of Range, Fat Burn, Cardio, Peak)
+- Minutos por zona cardíaca apilados
 
 ### 🏋️ Ejercicios
 - Total de entrenamientos, duración promedio, calorías totales, HR promedio
@@ -241,8 +221,6 @@ Reiniciar Grafana y el dashboard aparece automáticamente en la carpeta **Fitbit
 ---
 
 ## Datos exportados
-
-El script exporta los siguientes datos por mes:
 
 | Sheet / Tabla | Campos |
 |---|---|
@@ -266,16 +244,12 @@ El script exporta los siguientes datos por mes:
 
 ## Importar data histórica desde Excel al SQLite
 
-Si tenés data en `fitbit_data.xlsx` y querés sincronizarla a la base de datos SQLite:
-
 ```bash
 # Subir el xlsx al Pi (desde Windows)
-scp C:\Users\jerol\Desktop\fitbit_data.xlsx jlussich@192.168.68.66:/home/jlussich/fitbit-exporter/exports/fitbit_data.xlsx
+scp C:\Users\jerol\Desktop\fitbit_data.xlsx PI_USER@PI_IP:~/Pi-Services/fitbit-exporter/exports/fitbit_data.xlsx
 
-# Importar al SQLite
-cd ~/fitbit-exporter
-source venv/bin/activate
-python3 << 'EOF'
+# Importar al SQLite desde el contenedor
+docker exec fitbit-exporter python3 << 'EOF'
 import openpyxl, sqlite3
 
 conn = sqlite3.connect("exports/fitbit.db")
@@ -310,30 +284,19 @@ EOF
 
 **Bajar xlsx a Windows:**
 ```powershell
-scp jlussich@192.168.68.66:~/fitbit-exporter/exports/fitbit_data.xlsx C:\Users\jerol\Desktop\fitbit_data.xlsx
+scp PI_USER@PI_IP:~/Pi-Services/fitbit-exporter/exports/fitbit_data.xlsx C:\Users\jerol\Desktop\fitbit_data.xlsx
 ```
 
 **Ver logs del cron:**
 ```bash
-cat ~/fitbit-exporter/export.log
+docker logs fitbit-exporter
+# o
+cat fitbit-exporter/exports/export.log
 ```
 
 **Ver datos en SQLite:**
 ```bash
-sqlite3 ~/fitbit-exporter/exports/fitbit.db "SELECT * FROM actividad ORDER BY fecha DESC LIMIT 10;"
-```
-
----
-
-## Homepage
-
-El dashboard está linkado en Homepage con:
-
-```yaml
-- Fitbit Dashboard:
-    icon: mdi-heart-pulse
-    href: http://192.168.68.66:3000/d/fitbit-main-dashboard
-    description: Actividad, sueño y ejercicios
+sqlite3 fitbit-exporter/exports/fitbit.db "SELECT * FROM actividad ORDER BY fecha DESC LIMIT 10;"
 ```
 
 ---
@@ -342,8 +305,9 @@ El dashboard está linkado en Homepage con:
 
 | Problema | Causa | Solución |
 |---|---|---|
-| `401 Unauthorized` | Token expirado | Correr `export.py` manualmente, renueva automáticamente |
+| `401 Unauthorized` | Token expirado | Correr `docker exec fitbit-exporter python /app/export.py` manualmente |
 | `403` en SpO2 | Falta scope `oxygen_saturation` | Reautorizar con ese scope habilitado en dev.fitbit.com |
 | `429 Rate limit` | Demasiadas llamadas a la API | Esperar 1 hora y volver a correr |
 | Dashboard sin datos | UID del datasource incorrecto | Ver sección Grafana → reemplazar UID |
 | `no file exists at the file path` | Permisos o path incorrecto | `chmod 644 exports/fitbit.db` y verificar path con `///var/fitbit/fitbit.db` |
+| Contenedor no arranca | `tokens.json` no existe | `cp tokens.json.example tokens.json` y completar credenciales |

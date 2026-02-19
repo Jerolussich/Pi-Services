@@ -12,11 +12,11 @@ Raspberry Pi 5
 ├── homepage        → Unified dashboard (port 3001)
 ├── monitoring      → Prometheus + Grafana + exporters (port 3000)
 ├── wallabag        → Article reader (port 8082)
-├── fitbit-exporter → Monthly cron script (no port, writes to SQLite)
+├── fitbit-exporter → Monthly export container (no port, writes to SQLite)
 └── news            → Reserved for future use
 ```
 
-All services (except fitbit-exporter) run as Docker containers and are managed from a single root `docker-compose.yml`.
+All services run as Docker containers and are managed from a single root `docker-compose.yml`.
 
 ---
 
@@ -38,8 +38,8 @@ Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also 
 Clean article reading without ads or account barriers. Data persists in a named Docker volume.
 
 ### Fitbit Exporter
-**No container** — runs as a Python cron job.  
-Every 1st of the month at 6am, it fetches the previous month's data from the Fitbit API and exports it to both `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). Grafana reads from the SQLite file for health dashboards.
+**Image:** built from `fitbit-exporter/Dockerfile`  
+Runs a cron job inside a container that triggers on the 1st of every month at 6am. Fetches the previous month's data from the Fitbit API and exports it to both `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `tokens.json` and `exports/` are bind-mounted from the host so credentials and data persist across container rebuilds. Grafana reads from the SQLite file for health dashboards.
 
 ---
 
@@ -54,7 +54,7 @@ Every 1st of the month at 6am, it fetches the previous month's data from the Fit
 | Pi-hole Exporter | Pi-hole metrics for Grafana |
 | Homepage | Service dashboard |
 | Wallabag | Article reader |
-| Python 3 + virtualenv | Fitbit export script |
+| Python 3 + Docker | Fitbit export script (containerized) |
 | SQLite | Fitbit data storage for Grafana |
 | Cron | Monthly Fitbit export trigger |
 
@@ -66,7 +66,6 @@ Every 1st of the month at 6am, it fetches the previous month's data from the Fit
 pi-services/
 ├── docker-compose.yml              ← Root: lifts all services
 ├── .gitignore
-├── install-wallabag.sh             ← Legacy install script (replaced by compose)
 │
 ├── homepage/
 │   ├── docker-compose.yml
@@ -98,13 +97,15 @@ pi-services/
 │   └── .env.example
 │
 └── fitbit-exporter/
+    ├── Dockerfile
+    ├── docker-compose.yml
     ├── export.py
+    ├── requirements.txt
     ├── gather_keys_oauth2.py
-    ├── tokens.json                 ← gitignored (credentials)
+    ├── tokens.json                 ← gitignored (credentials), bind-mounted
     ├── tokens.json.example
     ├── readme.md
-    ├── exports/                    ← gitignored (personal health data)
-    └── venv/                       ← gitignored
+    └── exports/                    ← gitignored (personal health data), bind-mounted
 ```
 
 ---
@@ -115,7 +116,6 @@ pi-services/
 
 - Raspberry Pi with Docker and Docker Compose installed
 - Git
-- Python 3 with virtualenv (for fitbit-exporter)
 - A Fitbit developer account (for fitbit-exporter)
 
 ### 1. Clone the repo
@@ -156,32 +156,18 @@ PI_IP=your_pi_ip
 ```bash
 cd fitbit-exporter
 cp tokens.json.example tokens.json
-python3 -m venv venv
-source venv/bin/activate
-pip install requests openpyxl
 mkdir -p exports
 ```
 
-Follow `fitbit-exporter/readme.md` for the full OAuth2 token setup.
+Fill in your Fitbit credentials in `tokens.json`. Follow `fitbit-exporter/readme.md` for the full OAuth2 token setup.
 
-### 4. Set up the cron job
-
-```bash
-crontab -e
-```
-
-Add:
-```
-0 6 1 * * /home/youruser/Pi-Services/fitbit-exporter/venv/bin/python /home/youruser/Pi-Services/fitbit-exporter/export.py >> /home/youruser/Pi-Services/fitbit-exporter/export.log 2>&1
-```
-
-### 5. Start all services
+### 4. Start all services
 
 ```bash
 docker compose up -d
 ```
 
-### 6. Verify
+### 5. Verify
 
 ```bash
 docker compose ps
@@ -198,6 +184,7 @@ All containers should show `Up`.
 | Start everything | `docker compose up -d` |
 | Stop everything | `docker compose down` |
 | Restart one service | `docker compose up -d --force-recreate <service>` |
+| Rebuild after code change | `docker compose up -d --build <service>` |
 | View logs | `docker logs <container_name>` |
 | View all status | `docker compose ps` |
 

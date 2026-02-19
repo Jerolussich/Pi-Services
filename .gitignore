@@ -10,6 +10,9 @@ fitbit-exporter/venv/
 # Logs
 homepage/config/logs/
 
+# News filter data
+news/news-filter/data/
+
 # Python
 **/__pycache__/
 **/*.pyc

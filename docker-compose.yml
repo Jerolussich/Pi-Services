@@ -1,4 +1,8 @@
 include:
   - monitoring/docker-compose.yml
   - homepage/docker-compose.yml
-  - wallabag/docker-compose.yml
+  - fitbit-exporter/docker-compose.yml
+  - news/freshrss/docker-compose.yml
+  - news/wallabag/docker-compose.yml
+  - news/news-filter/docker-compose.yml
+  - news/news-filter-ui/docker-compose.yml

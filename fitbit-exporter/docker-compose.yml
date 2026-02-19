@@ -1,0 +1,8 @@
+services:
+  fitbit-exporter:
+    build: .
+    container_name: fitbit-exporter
+    volumes:
+      - ./tokens.json:/app/tokens.json
+      - ./exports:/app/exports
+    restart: unless-stopped

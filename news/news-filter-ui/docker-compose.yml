@@ -1,0 +1,13 @@
+services:
+  news-filter-ui:
+    build: .
+    container_name: news-filter-ui
+    ports:
+      - 8084:8084
+    volumes:
+      - ../news-filter/config:/app/config
+      - ../news-filter/data:/app/data
+      - ../news-filter/filter.py:/app/filter.py
+    env_file:
+      - ../news-filter/.env
+    restart: unless-stopped

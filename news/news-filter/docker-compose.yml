@@ -1,0 +1,10 @@
+services:
+  news-filter:
+    build: .
+    container_name: news-filter
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped

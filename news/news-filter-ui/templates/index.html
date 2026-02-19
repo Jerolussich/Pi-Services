@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>News Filter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; color: #fff; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #16213e; border-radius: 8px; padding: 1.5rem; }
+    .card h2 { font-size: 1rem; color: #a0aec0; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    textarea { width: 100%; background: #0f3460; color: #e0e0e0; border: 1px solid #2d3748; border-radius: 6px; padding: 0.75rem; font-size: 0.95rem; resize: vertical; min-height: 300px; outline: none; }
+    textarea:focus { border-color: #4a9eff; }
+    .actions { margin-top: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+    button { padding: 0.5rem 1.25rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+    .btn-save   { background: #4a9eff; color: #fff; }
+    .btn-save:hover { background: #3a8eef; }
+    .btn-run    { background: #48bb78; color: #fff; }
+    .btn-run:hover { background: #38a168; }
+    .btn-pause  { background: #ed8936; color: #fff; }
+    .btn-pause:hover { background: #dd7926; }
+    .btn-resume { background: #48bb78; color: #fff; }
+    .btn-resume:hover { background: #38a168; }
+    .btn-reset  { background: #e53e3e; color: #fff; }
+    .btn-reset:hover { background: #c53030; }
+    .log { background: #0f3460; border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.8rem; min-height: 300px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; color: #a0e0a0; border: 1px solid #2d3748; }
+    .paused-banner { background: #744210; color: #fbd38d; padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .danger-zone { margin-top: 2rem; border-top: 1px solid #2d3748; padding-top: 1.5rem; }
+    .danger-zone h2 { color: #fc8181; margin-bottom: 1rem; }
+    .danger-desc { color: #888; font-size: 0.85rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>📰 News Filter</h1>
+  <p class="subtitle">Keywords are checked against article title + full content. One per line.</p>
+
+  {% if paused %}
+  <div class="paused-banner">⏸ Filter is paused — the daily cron will not run until resumed.</div>
+  {% endif %}
+
+  <div class="grid">
+    <div class="card">
+      <h2>Keywords</h2>
+      <form action="/save" method="post">
+        <textarea name="keywords">{{ keywords | join('\n') }}</textarea>
+        <div class="actions">
+          <button type="submit" class="btn-save">Save keywords</button>
+        </div>
+      </form>
+      <div class="actions" style="margin-top: 0.75rem;">
+        {% if not paused %}
+        <form action="/run" method="post">
+          <button type="submit" class="btn-run">▶ Run filter now</button>
+        </form>
+        {% endif %}
+        <form action="/toggle-pause" method="post">
+          {% if paused %}
+          <button type="submit" class="btn-resume">▶ Resume cron</button>
+          {% else %}
+          <button type="submit" class="btn-pause">⏸ Pause cron</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Last run log</h2>
+      <div class="log">{{ log }}</div>
+    </div>
+  </div>
+
+  <div class="danger-zone">
+    <h2>⚠ Danger Zone</h2>
+    <p class="danger-desc">This will delete all news articles from Wallabag that were saved by the filter, clear the deduplication database, and erase all logs. This cannot be undone.</p>
+    <form action="/reset" method="post" onsubmit="return confirm('Delete all filter data and Wallabag articles? This cannot be undone.')">
+      <button type="submit" class="btn-reset">🗑 Reset everything</button>
+    </form>
+  </div>
+</body>
+</html>
