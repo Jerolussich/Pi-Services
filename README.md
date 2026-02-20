@@ -365,20 +365,36 @@ All containers should show `Up`.
 
 ---
 
-## Security Notes
+## Security
 
-- `tokens.json` contains live Fitbit OAuth2 credentials — never commit it
-- `data/token.json` contains live Microsoft OAuth2 tokens — never commit it
-- `.env` files contain passwords — never commit them
-- `data/config.json` in itau-tracker contains the Azure client secret — never commit it
-- `caddy/password.hash` if used — never commit it
-- All sensitive files are covered by `.gitignore`
-- Use `.env.example` files as templates when setting up on a new machine
-- Wallabag default credentials are `wallabag / wallabag` — change them after first login
-- FreshRSS API password is separate from the login password — set it in **Settings → Profile**
-- The bcrypt hash in `caddy/.env` cannot be reversed, but keeping it private prevents offline brute force attacks
-- All services are only reachable through Caddy — no container exposes host ports directly except Caddy on port 80
-- Pi-hole web interface runs on port 8181 (not 80) to free port 80 for Caddy
+This setup follows a defense-in-depth approach for a local network deployment:
+
+- **Reverse proxy** — Caddy is the single entry point on port 80. No service container exposes host ports directly
+- **Authentication** — services without built-in auth are protected at the proxy level. Services with their own auth (Grafana, Wallabag, FreshRSS, Pi-hole) use their native login screens
+- **Firewall** — UFW restricts inbound traffic to only the ports required for operation
+- **Intrusion prevention** — fail2ban monitors logs and automatically blocks IPs with repeated failed authentication attempts
+- **Reduced attack surface** — unused system services are disabled
+
+### Security Setup Script
+
+A setup script automates the full security configuration. It auto-detects running services and configures UFW and fail2ban without any manual port entry:
+
+```bash
+chmod +x setup-security.sh
+./setup-security.sh
+```
+
+The script detects all relevant ports from running services, offers to disable unused services (VNC, rpcbind), configures UFW allow/deny rules, installs and configures fail2ban with SSH and Caddy jails, and creates a stable symlink for the Caddy log so fail2ban survives container recreation. Re-run it any time you recreate the Caddy container.
+
+### Sensitive Files
+
+Sensitive files are covered by `.gitignore` and never committed. Use `.env.example` files as templates when setting up on a new machine.
+
+- `tokens.json` — Fitbit OAuth2 credentials
+- `finance/itau-tracker/data/token.json` — Microsoft OAuth2 tokens
+- `finance/itau-tracker/data/config.json` — Azure client secret
+- `caddy/.env` — Caddy Basic Auth credentials (bcrypt hash)
+- All `**/.env` files — service passwords
 
 ---
 

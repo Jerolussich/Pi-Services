@@ -38,7 +38,7 @@ http://prometheus.pi {
 }
 
 http://pihole.pi {
-    reverse_proxy 192.168.68.66:8181
+    reverse_proxy host.docker.internal:8181
 }
 
 http:// {
