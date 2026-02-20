@@ -381,10 +381,15 @@ A setup script automates the full security configuration. It auto-detects runnin
 
 ```bash
 chmod +x setup-security.sh
+
+# Preview what the script will do — no changes made
+./setup-security.sh --dry-run
+
+# Apply for real
 ./setup-security.sh
 ```
 
-The script detects all relevant ports from running services, offers to disable unused services (VNC, rpcbind), configures UFW allow/deny rules, installs and configures fail2ban with SSH and Caddy jails, and creates a stable symlink for the Caddy log so fail2ban survives container recreation. Re-run it any time you recreate the Caddy container.
+The `--dry-run` flag prints every command the script would execute without running any of them — use it to verify detected ports and planned changes before applying. The script detects all relevant ports from running services, offers to disable unused services (VNC, rpcbind), configures UFW allow/deny rules, installs and configures fail2ban with SSH and Caddy jails, and creates a stable symlink for the Caddy log so fail2ban survives container recreation. Re-run it any time you recreate the Caddy container.
 
 ### Sensitive Files
 
