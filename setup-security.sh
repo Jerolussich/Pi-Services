@@ -1,8 +1,15 @@
 #!/bin/bash
 # setup-security.sh — Pi Services security setup
 # Automatically detects running services and configures UFW + fail2ban
+#
+# Usage:
+#   ./setup-security.sh            — full setup
+#   ./setup-security.sh --dry-run  — preview only, no changes made
 
 set -e
+
+DRY_RUN=false
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,7 +21,20 @@ info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[OK]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error()   { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
+
+run() {
+    if $DRY_RUN; then
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} $*"
+    else
+        "$@"
+    fi
+}
+
 confirm() {
+    if $DRY_RUN; then
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would ask: $1 → assuming yes"
+        return 0
+    fi
     read -r -p "$1 [y/N] " response
     [[ "$response" =~ ^[Yy]$ ]]
 }
@@ -22,6 +42,7 @@ confirm() {
 echo ""
 echo "================================================"
 echo "  Pi Services — Security Setup"
+$DRY_RUN && echo -e "  ${YELLOW}DRY-RUN MODE — no changes will be made${NC}"
 echo "================================================"
 echo ""
 
@@ -60,10 +81,10 @@ RPC_RUNNING=$(sudo ss -tlnp | grep -c "111" || true)
 if [ "$VNC_RUNNING" -gt 0 ]; then
     warn "VNC is running on port 5900 (unencrypted remote desktop)"
     if confirm "  Disable VNC?"; then
-        sudo systemctl stop vncserver-x11-serviced 2>/dev/null || true
-        sudo systemctl disable vncserver-x11-serviced 2>/dev/null || true
-        sudo systemctl stop wayvnc 2>/dev/null || true
-        sudo systemctl disable wayvnc 2>/dev/null || true
+        run sudo systemctl stop vncserver-x11-serviced
+        run sudo systemctl disable vncserver-x11-serviced
+        run sudo systemctl stop wayvnc
+        run sudo systemctl disable wayvnc
         success "VNC disabled"
     fi
 else
@@ -73,8 +94,8 @@ fi
 if [ "$RPC_RUNNING" -gt 0 ]; then
     warn "rpcbind is running on port 111 (not needed)"
     if confirm "  Disable rpcbind?"; then
-        sudo systemctl stop rpcbind rpcbind.socket 2>/dev/null || true
-        sudo systemctl disable rpcbind rpcbind.socket 2>/dev/null || true
+        run sudo systemctl stop rpcbind rpcbind.socket
+        run sudo systemctl disable rpcbind rpcbind.socket
         success "rpcbind disabled"
     fi
 else
@@ -84,11 +105,6 @@ fi
 # ── UFW ───────────────────────────────────────────────────────────────────────
 echo ""
 info "Setting up UFW firewall..."
-
-if ! command -v ufw &>/dev/null; then
-    info "Installing UFW..."
-    sudo apt install -y ufw
-fi
 
 echo ""
 echo "  UFW will be configured to:"
@@ -101,13 +117,17 @@ echo "  └───────────────────────
 echo ""
 
 if confirm "Apply UFW rules?"; then
-    sudo ufw allow "$SSH_PORT"
-    sudo ufw allow "$CADDY_PORT"
-    sudo ufw allow 53
-    sudo ufw deny "$PIHOLE_PORT"
-    sudo ufw --force enable
+    if ! command -v ufw &>/dev/null; then
+        info "Installing UFW..."
+        run sudo apt install -y ufw
+    fi
+    run sudo ufw allow "$SSH_PORT"
+    run sudo ufw allow "$CADDY_PORT"
+    run sudo ufw allow 53
+    run sudo ufw deny "$PIHOLE_PORT"
+    run sudo ufw --force enable
     success "UFW configured and enabled"
-    sudo ufw status
+    $DRY_RUN || sudo ufw status
 else
     warn "UFW setup skipped"
 fi
@@ -116,34 +136,38 @@ fi
 echo ""
 info "Setting up fail2ban..."
 
-if ! command -v fail2ban-client &>/dev/null; then
-    info "Installing fail2ban..."
-    sudo apt install -y fail2ban
-fi
-
 echo ""
 echo "  fail2ban will be configured with:"
 echo "  ┌─────────────────────────────────────────┐"
 echo "  │ SSH jail     : 5 failures → 1h ban"
 echo "  │ Caddy jail   : 5 failures → 1h ban"
 echo "  │ Window       : 10 minutes"
+echo "  │ Log symlink  : /var/log/caddy-access.log"
 echo "  └─────────────────────────────────────────┘"
 echo ""
 
 if confirm "Apply fail2ban configuration?"; then
-    # Write filter for Caddy
-    sudo tee /etc/fail2ban/filter.d/caddy-auth.conf > /dev/null << 'EOF'
+    if ! command -v fail2ban-client &>/dev/null; then
+        info "Installing fail2ban..."
+        run sudo apt install -y fail2ban
+    fi
+
+    if $DRY_RUN; then
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would write /etc/fail2ban/filter.d/caddy-auth.conf"
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would create symlink /var/log/caddy-access.log → $CADDY_LOG"
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would write /etc/fail2ban/jail.local with SSH + Caddy jails"
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would restart fail2ban"
+    else
+        sudo tee /etc/fail2ban/filter.d/caddy-auth.conf > /dev/null << 'EOF'
 [Definition]
 failregex = .*"remote_ip":"<HOST>".*"status":401.*
 ignoreregex =
 EOF
 
-    # Create stable symlink to Caddy log — survives container recreation
-    sudo ln -sf "$CADDY_LOG" /var/log/caddy-access.log
-    success "Symlink created: /var/log/caddy-access.log → $CADDY_LOG"
+        sudo ln -sf "$CADDY_LOG" /var/log/caddy-access.log
+        success "Symlink created: /var/log/caddy-access.log → $CADDY_LOG"
 
-    # Write jail config using stable symlink
-    sudo tee /etc/fail2ban/jail.local > /dev/null << EOF
+        sudo tee /etc/fail2ban/jail.local > /dev/null << EOF
 [DEFAULT]
 bantime  = 1h
 findtime = 10m
@@ -165,10 +189,11 @@ bantime  = 1h
 findtime = 10m
 EOF
 
-    sudo systemctl enable fail2ban
-    sudo systemctl restart fail2ban
-    sleep 2
-    sudo fail2ban-client status
+        sudo systemctl enable fail2ban
+        sudo systemctl restart fail2ban
+        sleep 2
+        sudo fail2ban-client status
+    fi
     success "fail2ban configured"
 else
     warn "fail2ban setup skipped"
@@ -181,7 +206,12 @@ echo "  Setup complete. Current port exposure:"
 echo "================================================"
 sudo ss -tlnp | grep -v '127.0.0.1' | grep -v '\[::1\]' | grep LISTEN
 echo ""
-echo -e "${YELLOW}Note:${NC} If you recreate the Caddy container, update the symlink:"
-echo "  sudo ln -sf \$(docker inspect caddy | grep LogPath | awk -F'\"' '{print \$4}') /var/log/caddy-access.log"
-echo "  sudo systemctl restart fail2ban"
+if $DRY_RUN; then
+    echo -e "${YELLOW}DRY-RUN complete — no changes were made.${NC}"
+    echo "Run without --dry-run to apply."
+else
+    echo -e "${YELLOW}Note:${NC} If you recreate the Caddy container, update the log symlink:"
+    echo "  sudo ln -sf \$(docker inspect caddy | grep LogPath | awk -F'\"' '{print \$4}') /var/log/caddy-access.log"
+    echo "  sudo systemctl restart fail2ban"
+fi
 echo ""
