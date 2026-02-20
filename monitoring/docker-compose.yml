@@ -2,20 +2,15 @@ services:
   prometheus:
     image: prom/prometheus
     container_name: prometheus
-    ports:
-      - 9090:9090
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
     restart: unless-stopped
-
   node-exporter:
     image: prom/node-exporter
     container_name: node-exporter
-    ports:
-      - 9100:9100
     restart: unless-stopped
     command:
       - '--path.procfs=/host/proc'
@@ -25,22 +20,16 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-
   pihole-exporter:
     image: ekofr/pihole-exporter
     container_name: pihole-exporter
-    ports:
-      - 9617:9617
     environment:
       - PIHOLE_HOSTNAME=192.168.68.66
       - PIHOLE_PASSWORD=${PIHOLE_PASSWORD}
     restart: unless-stopped
-
   grafana:
     image: grafana/grafana-oss
     container_name: grafana
-    ports:
-      - 3000:3000
     volumes:
       - grafana-data:/var/lib/grafana
       - ${FITBIT_EXPORTS_PATH}:/var/fitbit:ro
@@ -48,8 +37,12 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
-
 volumes:
   prometheus-data:
   grafana-data:
     name: monitoring_grafana-data
+
+networks:
+  default:
+    name: pi-services
+    external: true

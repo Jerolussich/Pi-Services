@@ -1,0 +1,17 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    ports:
+      - 80:80
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    env_file:
+      - .env
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

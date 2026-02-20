@@ -2,6 +2,9 @@
 **/.env
 **/tokens.json
 
+# Caddy
+caddy/password.hash
+
 # Data & exports
 fitbit-exporter/exports/
 fitbit-exporter/export.log
@@ -16,4 +19,6 @@ news/news-filter/data/
 # Python
 **/__pycache__/
 **/*.pyc
+
+# Finance data
 finance/itau-tracker/data/

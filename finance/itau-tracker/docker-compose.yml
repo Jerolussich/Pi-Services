@@ -7,17 +7,19 @@ services:
     volumes:
       - ./data:/app/data
     restart: unless-stopped
-
   itau-tracker-ui:
     build:
       context: ./ui
       dockerfile: Dockerfile
     container_name: itau-tracker-ui
-    ports:
-      - 8085:8085
     volumes:
       - ./data:/app/data
       - ./tracker/fetch.py:/app/fetch.py
     env_file:
       - .env
     restart: unless-stopped
+
+networks:
+  default:
+    name: pi-services
+    external: true

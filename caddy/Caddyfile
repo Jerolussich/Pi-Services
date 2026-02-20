@@ -1,0 +1,46 @@
+{
+    admin off
+    auto_https off
+}
+
+http://homepage.pi {
+    basic_auth {
+        {$CADDY_USER} {$CADDY_PASSWORD_HASH}
+    }
+    reverse_proxy homepage:3000
+}
+
+http://grafana.pi {
+    reverse_proxy grafana:3000
+}
+
+http://wallabag.pi {
+    reverse_proxy wallabag:80
+}
+
+http://freshrss.pi {
+    reverse_proxy freshrss:80
+}
+
+http://news.pi {
+    reverse_proxy news-filter-ui:8084
+}
+
+http://finance.pi {
+    reverse_proxy itau-tracker-ui:8085
+}
+
+http://prometheus.pi {
+    basic_auth {
+        {$CADDY_USER} {$CADDY_PASSWORD_HASH}
+    }
+    reverse_proxy prometheus:9090
+}
+
+http://pihole.pi {
+    reverse_proxy 192.168.68.66:8181
+}
+
+http:// {
+    respond "Access denied" 403
+}

@@ -10,14 +10,11 @@ services:
     env_file:
       - .env
     restart: unless-stopped
-
   news-filter-ui:
     build:
       context: ./ui
       dockerfile: Dockerfile
     container_name: news-filter-ui
-    ports:
-      - 8084:8084
     volumes:
       - ./config:/app/config
       - ./data:/app/data
@@ -26,3 +23,8 @@ services:
       - .env
       - ./ui/.env
     restart: unless-stopped
+
+networks:
+  default:
+    name: pi-services
+    external: true

@@ -9,34 +9,38 @@ A collection of self-hosted services running on a Raspberry Pi 5, managed with D
 ```
 Raspberry Pi 5
 │
-├── homepage        → Unified dashboard (port 3001)
-├── monitoring      → Prometheus + Grafana + exporters (port 3000)
+├── caddy           → Reverse proxy, single entry point (port 80)
+├── homepage        → Unified dashboard (homepage.pi)
+├── monitoring      → Prometheus + Grafana + exporters (grafana.pi, prometheus.pi)
 ├── fitbit-exporter → Monthly export container (no port, writes to SQLite)
 ├── news/
-│   ├── freshrss        → RSS feed aggregator (port 8083)
-│   ├── wallabag        → Article reader (port 8082)
+│   ├── freshrss        → RSS feed aggregator (freshrss.pi)
+│   ├── wallabag        → Article reader (wallabag.pi)
 │   ├── news-filter     → Daily keyword filter (no port, cron)
-│   └── news-filter-ui  → Keywords UI + run logs (port 8084)
+│   └── news-filter-ui  → Keywords UI + run logs (news.pi)
 └── finance/
     ├── itau-tracker    → Hourly email fetch + parse (no port, cron)
-    └── itau-tracker-ui → Expense dashboard + config UI (port 8085)
+    └── itau-tracker-ui → Expense dashboard + config UI (finance.pi)
 ```
 
-All services run as Docker containers and are managed from a single root `docker-compose.yml`.
+All services run as Docker containers on a shared `pi-services` network. None expose host ports directly — all traffic goes through Caddy on port 80. Pi-hole provides local DNS resolution for `*.pi` hostnames.
 
 ---
 
 ## Services
 
+### Caddy
+**Image:** `caddy:2-alpine`  
+**Port:** `80`  
+Reverse proxy that routes all incoming traffic to the correct container based on the hostname. Provides HTTP Basic Auth for services without their own authentication (Homepage, Prometheus). All other containers have no exposed host ports — Caddy is the only entry point.
+
 ### Homepage
 **Image:** `ghcr.io/gethomepage/homepage:latest`  
-**Port:** `3001`  
-A dashboard that links to all services. Config lives in `homepage/config/` and is bind-mounted into the container.
+A dashboard that links to all services. Config lives in `homepage/config/` and is bind-mounted into the container. Accessible via `http://homepage.pi` — protected by Caddy Basic Auth.
 
 ### Monitoring
 **Images:** `prom/prometheus`, `prom/node-exporter`, `ekofr/pihole-exporter`, `grafana/grafana-oss`  
-**Ports:** `9090` (Prometheus), `9100` (Node Exporter), `9617` (Pi-hole Exporter), `3000` (Grafana)  
-Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also connects to the Fitbit SQLite database for health dashboards.
+Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also connects to the Fitbit and Finance SQLite databases. Accessible via `http://grafana.pi` and `http://prometheus.pi` — Prometheus is protected by Caddy Basic Auth.
 
 ### Fitbit Exporter
 **Image:** built from `fitbit-exporter/Dockerfile`  
@@ -44,13 +48,11 @@ Runs a cron job inside a container on the 1st of every month at 6am. Fetches the
 
 ### FreshRSS
 **Image:** `freshrss/freshrss:latest`  
-**Port:** `8083`  
-RSS feed aggregator. Fetches full article content via CSS scraping and exposes articles via the Google Reader API for `news-filter` to consume.
+RSS feed aggregator. Fetches full article content via CSS scraping and exposes articles via the Google Reader API for `news-filter` to consume. Accessible via `http://freshrss.pi`.
 
 ### Wallabag
 **Image:** `wallabag/wallabag`  
-**Port:** `8082`  
-Clean article reading without ads or account barriers. Used by `news-filter` as both a scraper fallback and final article storage. Data persists in a named Docker volume.
+Clean article reading without ads or account barriers. Used by `news-filter` as both a scraper fallback and final article storage. Data persists in a named Docker volume. Accessible via `http://wallabag.pi`.
 
 ### News Filter
 **Image:** built from `news/news-filter/Dockerfile`  
@@ -58,8 +60,7 @@ Daily cron at 8am. Reads articles from FreshRSS, checks them against a keyword l
 
 ### News Filter UI
 **Image:** built from `news/news-filter/ui/Dockerfile`  
-**Port:** `8084`  
-Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data. Protected with HTTP Basic Auth.
+Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data. Protected with HTTP Basic Auth. Accessible via `http://news.pi`.
 
 ### Itaú Tracker
 **Image:** built from `finance/itau-tracker/tracker/Dockerfile`  
@@ -67,8 +68,7 @@ Hourly cron. Reads Itaú purchase notification emails from a Hotmail account via
 
 ### Itaú Tracker UI
 **Image:** built from `finance/itau-tracker/ui/Dockerfile`  
-**Port:** `8085`  
-Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth.
+Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth. Accessible via `http://finance.pi`.
 
 ---
 
@@ -77,6 +77,8 @@ Flask web UI for viewing recent transactions, monthly spending charts, category 
 | Tool | Purpose |
 |---|---|
 | Docker + Docker Compose | Container orchestration |
+| Caddy | Reverse proxy + Basic Auth |
+| Pi-hole | Network-wide ad blocking + local DNS |
 | Prometheus | Metrics collection |
 | Grafana | Visualization |
 | Node Exporter | System metrics (CPU, RAM, disk) |
@@ -96,8 +98,14 @@ Flask web UI for viewing recent transactions, monthly spending charts, category 
 
 ```
 pi-services/
-├── docker-compose.yml              ← Root: lifts all services
+├── docker-compose.yml              ← Root: includes all services
 ├── .gitignore
+│
+├── caddy/
+│   ├── docker-compose.yml
+│   ├── Caddyfile                   ← Route rules for all services
+│   ├── .env                        ← gitignored (CADDY_USER, CADDY_PASSWORD_HASH)
+│   └── .env.example
 │
 ├── homepage/
 │   ├── docker-compose.yml
@@ -117,11 +125,16 @@ pi-services/
 │   ├── prometheus.yml
 │   └── grafana/
 │       ├── dashboards/
-│       │   ├── fitbit_dashboard.json
-│       │   └── fitbit_insights_dashboard.json
+│       │   ├── fitbit/             ← Fitbit dashboards
+│       │   │   ├── fitbit_dashboard.json
+│       │   │   └── fitbit_insights_dashboard.json
+│       │   └── finance/            ← Finance dashboards
+│       │       └── finance_dashboard.json
 │       └── provisioning/
-│           └── dashboards/
-│               └── fitbit.yaml
+│           ├── dashboards/
+│           │   └── fitbit.yaml     ← Providers for both Fitbit and Finance folders
+│           └── datasources/
+│               └── finance.yaml
 │
 ├── fitbit-exporter/
 │   ├── Dockerfile
@@ -134,69 +147,61 @@ pi-services/
 │   ├── README.md
 │   └── exports/                    ← gitignored (personal health data), bind-mounted
 │
-└── news/
-    ├── README.md
-    ├── freshrss/
-    │   ├── docker-compose.yml
-    │   └── .env.example
-    │
-    ├── wallabag/
-    │   ├── docker-compose.yml
-    │   ├── .env                    ← gitignored
-    │   └── .env.example
-    │
-    └── news-filter/
-        ├── docker-compose.yml      ← defines both news-filter AND news-filter-ui
-        ├── Dockerfile              ← cron container
-        ├── filter.py
-        ├── requirements.txt
-        ├── .env                    ← gitignored
+├── news/
+│   ├── README.md
+│   ├── freshrss/
+│   │   ├── docker-compose.yml
+│   │   └── .env.example
+│   │
+│   ├── wallabag/
+│   │   ├── docker-compose.yml
+│   │   ├── .env                    ← gitignored
+│   │   └── .env.example
+│   │
+│   └── news-filter/
+│       ├── docker-compose.yml      ← defines both news-filter AND news-filter-ui
+│       ├── Dockerfile              ← cron container
+│       ├── filter.py
+│       ├── requirements.txt
+│       ├── .env                    ← gitignored
+│       ├── .env.example
+│       ├── config/
+│       │   └── keywords.txt
+│       ├── data/                   ← gitignored
+│       │   ├── seen.db
+│       │   ├── filter.log
+│       │   └── paused
+│       └── ui/
+│           ├── Dockerfile          ← Flask UI container
+│           ├── app.py
+│           ├── requirements.txt
+│           ├── .env                ← gitignored (UI_USERNAME, UI_PASSWORD)
+│           ├── .env.example
+│           └── templates/
+│               └── index.html
+│
+└── finance/
+    └── itau-tracker/
+        ├── docker-compose.yml      ← defines both itau-tracker AND itau-tracker-ui
+        ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD)
         ├── .env.example
-        ├── config/
-        │   └── keywords.txt
-        ├── data/                   ← gitignored
-        │   ├── seen.db
-        │   ├── filter.log
-        │   └── paused
-        └── ui/
-            ├── Dockerfile          ← Flask UI container
-            ├── app.py
-            ├── requirements.txt
-            ├── .env                ← gitignored (UI_USERNAME, UI_PASSWORD)
-            ├── .env.example
-            └── templates/
-                └── index.html
-
-finance/
-└── itau-tracker/
-    ├── docker-compose.yml          ← defines both itau-tracker AND itau-tracker-ui
-    ├── .env                        ← gitignored (UI_USERNAME, UI_PASSWORD)
-    ├── .env.example
-    ├── tracker/
-    │   ├── Dockerfile              ← cron container
-    │   ├── fetch.py
-    │   ├── auth.py                 ← one-time OAuth2 setup
-    │   └── requirements.txt
-    ├── ui/
-    │   ├── Dockerfile              ← Flask UI container
-    │   ├── app.py
-    │   ├── requirements.txt
-    │   └── templates/
-    │       └── index.html
-    ├── grafana/
-    │   ├── dashboards/
-    │   │   └── finance_dashboard.json
-    │   └── provisioning/
-    │       ├── dashboards/
-    │       │   └── finance.yaml
-    │       └── datasources/
-    │           └── finance.yaml
-    └── data/                       ← gitignored
-        ├── finance.db
-        ├── config.json             ← editable from UI
-        ├── token.json              ← gitignored (OAuth2 tokens)
-        ├── tracker.log
-        └── paused
+        ├── tracker/
+        │   ├── Dockerfile          ← cron container
+        │   ├── fetch.py
+        │   ├── auth.py             ← one-time OAuth2 setup
+        │   └── requirements.txt
+        ├── ui/
+        │   ├── Dockerfile          ← Flask UI container
+        │   ├── app.py
+        │   ├── requirements.txt
+        │   └── templates/
+        │       └── index.html
+        └── data/                   ← gitignored
+            ├── finance.db
+            ├── config.json         ← editable from UI
+            ├── token.json          ← gitignored (OAuth2 tokens)
+            ├── tracker.log
+            └── paused
 ```
 
 ---
@@ -207,7 +212,12 @@ finance/
 
 - Raspberry Pi with Docker and Docker Compose installed
 - Git
-- A Fitbit developer account (for fitbit-exporter)
+- Pi-hole running on the network for local DNS resolution
+
+> Before starting, read the `README.md` for each service you plan to use. Some require external account setup or one-time authorization steps that must be completed before or after the containers start. In particular:
+> - `caddy/README.md` — Pi-hole DNS records and port 80 setup must be done before Caddy starts
+> - `fitbit-exporter/README.md` — requires a Fitbit developer account and OAuth2 token setup
+> - `finance/itau-tracker/README.md` — requires a Microsoft Azure app registration and one-time device code authorization
 
 ### 1. Clone the repo
 
@@ -227,6 +237,7 @@ cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
 cp news/news-filter/ui/.env.example news/news-filter/ui/.env
 cp finance/itau-tracker/.env.example finance/itau-tracker/.env
+cp caddy/.env.example caddy/.env
 ```
 
 **`homepage/.env`**
@@ -248,10 +259,10 @@ PI_IP=your_pi_ip
 
 **`news/news-filter/.env`**
 ```
-FRESHRSS_URL=http://your_pi_ip:8083
+FRESHRSS_URL=http://freshrss:80
 FRESHRSS_USERNAME=admin
 FRESHRSS_API_PASSWORD=your_freshrss_api_password
-WALLABAG_URL=http://your_pi_ip:8082
+WALLABAG_URL=http://wallabag:80
 WALLABAG_CLIENT_ID=your_client_id
 WALLABAG_CLIENT_SECRET=your_client_secret
 WALLABAG_USERNAME=wallabag
@@ -266,6 +277,16 @@ LOG_RETENTION_DAYS=90
 ```
 UI_USERNAME=admin
 UI_PASSWORD=your_ui_password
+```
+
+**`caddy/.env`** — generate the password hash first:
+```bash
+docker run --rm caddy:2-alpine caddy hash-password --plaintext 'yourpassword'
+```
+Then escape every `$` as `$$` when putting it in the `.env` file:
+```
+CADDY_USER=admin
+CADDY_PASSWORD_HASH=$$2a$$14$$your_bcrypt_hash_here
 ```
 
 ### 3. Set up Fitbit exporter
@@ -298,9 +319,10 @@ docker compose up -d
 
 ### 6. First-time service configuration
 
-- **FreshRSS** (`http://<pi_ip>:8083`) — complete the install wizard, enable API access in **Settings → Authentication**, set API password in **Settings → Profile**, set archiving to 30 days in **Settings → Archiving**
-- **Wallabag** (`http://<pi_ip>:8082`) — login with `wallabag / wallabag`, change password, create API client in **API clients management**, add credentials to `news/news-filter/.env`
-- **Grafana** (`http://<pi_ip>:3000`) — login with `admin / admin`, change password, install SQLite plugin, configure Fitbit and Finance datasources
+- **Pi-hole DNS** — add local DNS records for all `*.pi` hostnames pointing to your Pi's IP in Pi-hole admin → **Local DNS → DNS Records**
+- **FreshRSS** (`http://freshrss.pi`) — complete the install wizard, enable API access in **Settings → Authentication**, set API password in **Settings → Profile**, set archiving to 30 days in **Settings → Archiving**
+- **Wallabag** (`http://wallabag.pi`) — login with `wallabag / wallabag`, change password, create API client in **API clients management**, add credentials to `news/news-filter/.env`
+- **Grafana** (`http://grafana.pi`) — login with `admin / admin`, change password, install SQLite plugin, configure Fitbit and Finance datasources
 - **Itaú Tracker** — run one-time authorization: `docker exec -it itau-tracker python /app/auth.py`, follow the device code flow in your browser, then run the first fetch: `docker exec itau-tracker python /app/fetch.py`
 
 See each service's `README.md` for detailed setup instructions.
@@ -330,15 +352,16 @@ All containers should show `Up`.
 
 ## Access
 
-| Service | URL | Description |
+| Service | URL | Auth |
 |---|---|---|
-| Homepage | `http://<pi_ip>:3001` | Unified dashboard |
-| Grafana | `http://<pi_ip>:3000` | Metrics + Fitbit + Finance dashboards |
-| FreshRSS | `http://<pi_ip>:8083` | RSS feed reader |
-| Wallabag | `http://<pi_ip>:8082` | Saved articles |
-| News Filter UI | `http://<pi_ip>:8084` | Manage keywords + logs |
-| Itaú Tracker UI | `http://<pi_ip>:8085` | Expense tracking + config |
-| Prometheus | `http://<pi_ip>:9090` | Raw metrics |
+| Homepage | `http://homepage.pi` | Caddy Basic Auth |
+| Grafana | `http://grafana.pi` | Grafana login |
+| FreshRSS | `http://freshrss.pi` | FreshRSS login |
+| Wallabag | `http://wallabag.pi` | Wallabag login |
+| News Filter UI | `http://news.pi` | Flask Basic Auth |
+| Itaú Tracker UI | `http://finance.pi` | Flask Basic Auth |
+| Prometheus | `http://prometheus.pi` | Caddy Basic Auth |
+| Pi-hole | `http://pihole.pi/admin` | Pi-hole login |
 
 ---
 
@@ -348,11 +371,14 @@ All containers should show `Up`.
 - `data/token.json` contains live Microsoft OAuth2 tokens — never commit it
 - `.env` files contain passwords — never commit them
 - `data/config.json` in itau-tracker contains the Azure client secret — never commit it
+- `caddy/password.hash` if used — never commit it
 - All sensitive files are covered by `.gitignore`
 - Use `.env.example` files as templates when setting up on a new machine
 - Wallabag default credentials are `wallabag / wallabag` — change them after first login
 - FreshRSS API password is separate from the login password — set it in **Settings → Profile**
-- Both Flask UIs (news-filter-ui, itau-tracker-ui) are protected with HTTP Basic Auth
+- The bcrypt hash in `caddy/.env` cannot be reversed, but keeping it private prevents offline brute force attacks
+- All services are only reachable through Caddy — no container exposes host ports directly except Caddy on port 80
+- Pi-hole web interface runs on port 8181 (not 80) to free port 80 for Caddy
 
 ---
 
@@ -360,6 +386,7 @@ All containers should show `Up`.
 
 Each service has its own `README.md` with detailed setup, technical details, and troubleshooting:
 
+- `caddy/README.md`
 - `homepage/README.md`
 - `monitoring/README.md`
 - `fitbit-exporter/README.md`
