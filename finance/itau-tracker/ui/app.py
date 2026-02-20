@@ -1,10 +1,16 @@
 from flask import Flask, render_template, request, redirect, url_for, Response, jsonify
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import subprocess
 import sqlite3
 import json
 import os
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
+csrf = CSRFProtect(app)
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["60 per minute"], storage_uri="memory://")
 
 DB_PATH     = "/app/data/finance.db"
 LOG_FILE    = "/app/data/tracker.log"
@@ -14,7 +20,6 @@ PAUSE_FILE  = "/app/data/paused"
 UI_USERNAME = os.environ.get("UI_USERNAME", "admin")
 UI_PASSWORD = os.environ.get("UI_PASSWORD", "admin")
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
 @app.before_request
 def require_auth():
     auth = request.authorization
@@ -22,7 +27,6 @@ def require_auth():
         return Response("Authentication required.", 401,
                         {"WWW-Authenticate": 'Basic realm="Finance Tracker"'})
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 def get_db():
     if not os.path.exists(DB_PATH):
         return None
@@ -47,40 +51,32 @@ def save_config(data):
     with open(CONFIG_PATH, "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-# ── Dashboard data ────────────────────────────────────────────────────────────
 def get_stats():
     conn = get_db()
     if not conn:
         return {}
-
     from datetime import datetime
     now        = datetime.now()
     this_month = now.strftime("%Y-%m")
-
     monthly_total = conn.execute("""
         SELECT COALESCE(SUM(amount), 0), currency FROM transactions
         WHERE strftime('%Y-%m', date) = ? AND currency = 'UYU'
     """, (this_month,)).fetchone()
-
     total_count = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
-
     by_category = conn.execute("""
         SELECT category, ROUND(SUM(amount), 2) as total FROM transactions
         WHERE currency = 'UYU'
         GROUP BY category ORDER BY total DESC
     """).fetchall()
-
     recent = conn.execute("""
         SELECT date, card_type, card_last4, merchant, amount, currency, category
         FROM transactions ORDER BY date DESC LIMIT 20
     """).fetchall()
-
     monthly = conn.execute("""
         SELECT strftime('%Y-%m', date) as month, ROUND(SUM(amount), 2) as total, currency
         FROM transactions WHERE currency = 'UYU'
         GROUP BY month ORDER BY month DESC LIMIT 12
     """).fetchall()
-
     conn.close()
     return {
         "monthly_total": round(monthly_total[0], 2) if monthly_total else 0,
@@ -92,11 +88,10 @@ def get_stats():
         "this_month":    this_month,
     }
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
-    stats  = get_stats()
-    paused = is_paused()
+    stats   = get_stats()
+    paused  = is_paused()
     running = request.args.get("running", "0") == "1"
     return render_template("index.html", stats=stats, paused=paused, running=running, active="dashboard")
 
@@ -107,6 +102,7 @@ def config_page():
     return render_template("index.html", cfg=cfg, paused=paused, running=False, active="config")
 
 @app.route("/config", methods=["POST"])
+@limiter.limit("10 per minute")
 def save_config_route():
     cfg = load_config()
     cfg["imap_host"]      = request.form.get("imap_host", cfg.get("imap_host", ""))
@@ -114,8 +110,6 @@ def save_config_route():
     cfg["email_user"]     = request.form.get("email_user", cfg.get("email_user", ""))
     cfg["email_password"] = request.form.get("email_password", cfg.get("email_password", ""))
     cfg["sender_filter"]  = request.form.get("sender_filter", cfg.get("sender_filter", ""))
-
-    # Parse categories from textarea (format: "category: kw1, kw2")
     raw_categories = request.form.get("categories_raw", "")
     categories = {}
     for line in raw_categories.splitlines():
@@ -127,10 +121,13 @@ def save_config_route():
     return redirect(url_for("config_page"))
 
 @app.route("/log")
+@csrf.exempt
+@limiter.exempt
 def log_json():
     return jsonify({"log": read_log()})
 
 @app.route("/run", methods=["POST"])
+@limiter.limit("5 per minute")
 def run():
     if is_paused():
         return redirect(url_for("index"))
@@ -140,6 +137,7 @@ def run():
     return redirect(url_for("index", running=1))
 
 @app.route("/toggle-pause", methods=["POST"])
+@limiter.limit("10 per minute")
 def toggle_pause():
     if is_paused():
         os.remove(PAUSE_FILE)
@@ -148,6 +146,7 @@ def toggle_pause():
     return redirect(url_for("index"))
 
 @app.route("/reset", methods=["POST"])
+@limiter.limit("3 per minute")
 def reset():
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)

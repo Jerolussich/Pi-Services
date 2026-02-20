@@ -50,6 +50,7 @@
     <div class="card">
       <h2>Keywords</h2>
       <form action="/save" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <textarea name="keywords">{{ keywords | join('\n') }}</textarea>
         <div class="actions">
           <button type="submit" class="btn-save">Save keywords</button>
@@ -58,10 +59,12 @@
       <div class="actions" style="margin-top: 0.75rem;">
         {% if not paused %}
         <form action="/run" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-run">▶ Run filter now</button>
         </form>
         {% endif %}
         <form action="/toggle-pause" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if paused %}
           <button type="submit" class="btn-resume">▶ Resume cron</button>
           {% else %}
@@ -84,6 +87,7 @@
     <h2>⚠ Danger Zone</h2>
     <p class="danger-desc">This will delete all news articles from Wallabag that were saved by the filter, clear the deduplication database, and erase all logs. This cannot be undone.</p>
     <form action="/reset" method="post" onsubmit="return confirm('Delete all filter data and Wallabag articles? This cannot be undone.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-reset">🗑 Reset everything</button>
     </form>
   </div>

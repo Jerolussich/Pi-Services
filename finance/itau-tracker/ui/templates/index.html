@@ -71,10 +71,12 @@
     <div class="actions">
       {% if not paused %}
       <form action="/run" method="post" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-run">▶ Run now</button>
       </form>
       {% endif %}
       <form action="/toggle-pause" method="post" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% if paused %}
         <button type="submit" class="btn-resume">▶ Resume</button>
         {% else %}
@@ -183,6 +185,7 @@
       <h2>⚠ Danger Zone</h2>
       <p class="danger-desc">Deletes all transactions from the database and clears the log. Cannot be undone.</p>
       <form action="/reset" method="post" onsubmit="return confirm('Delete all transaction data? This cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-reset">🗑 Delete all data</button>
       </form>
     </div>
@@ -199,6 +202,7 @@
     <div class="card">
       <h2>Email settings</h2>
       <form action="/config" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-group">
           <label>IMAP Host</label>
           <input name="imap_host" value="{{ cfg.imap_host if cfg else 'outlook.office365.com' }}">

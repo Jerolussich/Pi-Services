@@ -1,2 +1,5 @@
 flask
 requests
+flask-wtf
+flask-wtf
+flask-limiter

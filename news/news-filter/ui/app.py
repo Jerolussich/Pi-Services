@@ -1,9 +1,15 @@
 from flask import Flask, render_template, request, redirect, url_for, Response, jsonify
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import subprocess
 import sqlite3
 import os
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
+csrf = CSRFProtect(app)
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["60 per minute"], storage_uri="memory://")
 
 KEYWORDS_FILE = "/app/config/keywords.txt"
 LOG_FILE      = "/app/data/filter.log"
@@ -13,7 +19,6 @@ PAUSE_FILE    = "/app/data/paused"
 UI_USERNAME   = os.environ.get("UI_USERNAME", "admin")
 UI_PASSWORD   = os.environ.get("UI_PASSWORD", "admin")
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
 def check_auth(username, password):
     return username == UI_USERNAME and password == UI_PASSWORD
 
@@ -21,13 +26,9 @@ def check_auth(username, password):
 def require_auth():
     auth = request.authorization
     if not auth or not check_auth(auth.username, auth.password):
-        return Response(
-            "Authentication required.",
-            401,
-            {"WWW-Authenticate": 'Basic realm="News Filter"'},
-        )
+        return Response("Authentication required.", 401,
+                        {"WWW-Authenticate": 'Basic realm="News Filter"'})
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 def read_keywords():
     if not os.path.exists(KEYWORDS_FILE):
         return []
@@ -48,7 +49,6 @@ def read_log():
 def is_paused():
     return os.path.exists(PAUSE_FILE)
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def index():
     keywords = read_keywords()
@@ -58,10 +58,13 @@ def index():
     return render_template("index.html", keywords=keywords, log=log, paused=paused, running=running)
 
 @app.route("/log", methods=["GET"])
+@csrf.exempt
+@limiter.exempt
 def log_content():
     return jsonify({"log": read_log()})
 
 @app.route("/save", methods=["POST"])
+@limiter.limit("10 per minute")
 def save():
     raw      = request.form.get("keywords", "")
     keywords = [l.strip() for l in raw.splitlines() if l.strip()]
@@ -69,19 +72,17 @@ def save():
     return redirect(url_for("index"))
 
 @app.route("/run", methods=["POST"])
+@limiter.limit("5 per minute")
 def run():
     if is_paused():
         return redirect(url_for("index"))
     os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
     with open(LOG_FILE, "a") as log:
-        subprocess.Popen(
-            ["python", "/app/filter.py"],
-            stdout=log,
-            stderr=log,
-        )
+        subprocess.Popen(["python", "/app/filter.py"], stdout=log, stderr=log)
     return redirect(url_for("index", running=1))
 
 @app.route("/toggle-pause", methods=["POST"])
+@limiter.limit("10 per minute")
 def toggle_pause():
     if is_paused():
         os.remove(PAUSE_FILE)
@@ -90,9 +91,9 @@ def toggle_pause():
     return redirect(url_for("index"))
 
 @app.route("/reset", methods=["POST"])
+@limiter.limit("3 per minute")
 def reset():
     import requests as req
-
     wallabag_url  = os.environ["WALLABAG_URL"].rstrip("/")
     client_id     = os.environ["WALLABAG_CLIENT_ID"]
     client_secret = os.environ["WALLABAG_CLIENT_SECRET"]
@@ -101,14 +102,10 @@ def reset():
     freshrss_url  = os.environ["FRESHRSS_URL"].rstrip("/")
     freshrss_user = os.environ["FRESHRSS_USERNAME"]
     freshrss_pass = os.environ["FRESHRSS_API_PASSWORD"]
-
     try:
-        resp  = req.post(f"{wallabag_url}/oauth/v2/token", data={
-            "grant_type":    "password",
-            "client_id":     client_id,
-            "client_secret": client_secret,
-            "username":      username,
-            "password":      password,
+        resp = req.post(f"{wallabag_url}/oauth/v2/token", data={
+            "grant_type": "password", "client_id": client_id,
+            "client_secret": client_secret, "username": username, "password": password,
         })
         token = resp.json()["access_token"]
         if os.path.exists(DB_PATH):
@@ -123,35 +120,27 @@ def reset():
                     pass
     except Exception:
         pass
-
     try:
-        auth_resp = req.post(
-            f"{freshrss_url}/api/greader.php/accounts/ClientLogin",
-            data={"Email": freshrss_user, "Passwd": freshrss_pass},
-        )
+        auth_resp = req.post(f"{freshrss_url}/api/greader.php/accounts/ClientLogin",
+                             data={"Email": freshrss_user, "Passwd": freshrss_pass})
         fr_token = None
         for line in auth_resp.text.splitlines():
             if line.startswith("Auth="):
                 fr_token = line[5:]
                 break
         if fr_token:
-            req.post(
-                f"{freshrss_url}/api/greader.php/reader/api/0/mark-all-as-read",
-                headers={"Authorization": f"GoogleLogin auth={fr_token}"},
-                data={"s": "user/-/state/com.google/reading-list", "ts": "0"},
-            )
+            req.post(f"{freshrss_url}/api/greader.php/reader/api/0/mark-all-as-read",
+                     headers={"Authorization": f"GoogleLogin auth={fr_token}"},
+                     data={"s": "user/-/state/com.google/reading-list", "ts": "0"})
     except Exception:
         pass
-
     if os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         conn.execute("DELETE FROM seen")
         conn.commit()
         conn.close()
-
     if os.path.exists(LOG_FILE):
         open(LOG_FILE, "w").close()
-
     return redirect(url_for("index"))
 
 if __name__ == "__main__":

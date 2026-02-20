@@ -31,12 +31,12 @@ news-filter-ui
 
 ## Servicios
 
-| Contenedor | Imagen | Puerto | Descripción |
+| Contenedor | Imagen | URL | Descripción |
 |---|---|---|---|
-| `freshrss` | `freshrss/freshrss:latest` | `8083` | Agregador de feeds RSS |
-| `wallabag` | `wallabag/wallabag` | `8082` | Lector de artículos |
+| `freshrss` | `freshrss/freshrss:latest` | `http://freshrss.pi` | Agregador de feeds RSS |
+| `wallabag` | `wallabag/wallabag` | `http://wallabag.pi` | Lector de artículos |
 | `news-filter` | build local | — | Filtro automático (cron) |
-| `news-filter-ui` | build local | `8084` | UI para keywords y logs |
+| `news-filter-ui` | build local | `http://news.pi` | UI para keywords y logs |
 
 ---
 
@@ -70,7 +70,7 @@ news/
         ├── Dockerfile        ← Flask UI container
         ├── app.py
         ├── requirements.txt
-        ├── .env              ← gitignored (UI_USERNAME, UI_PASSWORD)
+        ├── .env              ← gitignored (UI_USERNAME, UI_PASSWORD, SECRET_KEY)
         ├── .env.example
         └── templates/
             └── index.html
@@ -95,10 +95,10 @@ PI_IP=your_pi_ip
 
 **`news/news-filter/.env`**
 ```
-FRESHRSS_URL=http://your_pi_ip:8083
+FRESHRSS_URL=http://freshrss
 FRESHRSS_USERNAME=admin
 FRESHRSS_API_PASSWORD=your_freshrss_api_password
-WALLABAG_URL=http://your_pi_ip:8082
+WALLABAG_URL=http://wallabag
 WALLABAG_CLIENT_ID=your_client_id
 WALLABAG_CLIENT_SECRET=your_client_secret
 WALLABAG_USERNAME=wallabag
@@ -113,6 +113,12 @@ LOG_RETENTION_DAYS=90
 ```
 UI_USERNAME=admin
 UI_PASSWORD=your_ui_password
+SECRET_KEY=your_secret_key
+```
+
+Generar `SECRET_KEY` con:
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 ### 2. Crear carpetas necesarias
@@ -141,7 +147,7 @@ docker compose up -d freshrss wallabag news-filter news-filter-ui
 
 ### 5. Configurar FreshRSS (primera vez)
 
-1. Abrir `http://<pi_ip>:8083`
+1. Abrir `http://freshrss.pi`
 2. Completar el wizard de instalación con usuario y password admin
 3. Ir a **Settings → Authentication** → habilitar **Allow API access**
 4. Ir a **Settings → Profile** → setear **API password**
@@ -163,7 +169,7 @@ https://techcrunch.com/feed/
 
 ### 7. Configurar Wallabag (primera vez)
 
-1. Abrir `http://<pi_ip>:8082`
+1. Abrir `http://wallabag.pi`
 2. Login con `wallabag / wallabag`
 3. Cambiar el password en **Settings → Change password**
 4. Crear API client en **API clients management → Create a client**
@@ -175,7 +181,7 @@ https://techcrunch.com/feed/
 docker exec news-filter python /app/filter.py
 ```
 
-O desde la UI en `http://<pi_ip>:8084` → **Run filter now**.
+O desde la UI en `http://news.pi` → **Run filter now**.
 
 ---
 
@@ -208,11 +214,7 @@ CREATE TABLE seen (
 
 - Cada URL procesada se registra independientemente del resultado
 - `wallabag_id` se guarda para poder borrar el artículo de Wallabag al limpiar
-- Registros de más de `SEEN_RETENTION_DAYS` días se limpian automáticamente en cada run, incluyendo el borrado del artículo correspondiente en Wallabag
-
-### Fallback via Wallabag
-
-Cuando el contenido del feed es muy corto (paywall, teaser, o feed truncado), el script guarda el artículo en Wallabag temporalmente. Wallabag tiene su propio scraper que puede obtener el contenido completo. Si el artículo no matchea keywords, se borra de Wallabag automáticamente.
+- Registros de más de `SEEN_RETENTION_DAYS` días se limpian automáticamente en cada run
 
 ### Variables de entorno
 
@@ -228,7 +230,7 @@ Cuando el contenido del feed es muy corto (paywall, teaser, o feed truncado), el
 | `WALLABAG_PASSWORD` | Password de Wallabag | — |
 | `EXTRA_KEYWORDS` | Keywords adicionales separados por coma | `` |
 | `MIN_CONTENT_LENGTH` | Mínimo de chars para no usar fallback | `500` |
-| `SEEN_RETENTION_DAYS` | Días antes de limpiar entradas viejas de seen.db y Wallabag | `30` |
+| `SEEN_RETENTION_DAYS` | Días antes de limpiar entradas viejas de seen.db | `30` |
 | `LOG_RETENTION_DAYS` | Días antes de rotar líneas viejas del log | `90` |
 
 ### Cron
@@ -247,7 +249,7 @@ docker exec news-filter python /app/filter.py
 
 ## news-filter-ui — Detalles técnicos
 
-Aplicación Flask liviana ubicada en `ui/` dentro de `news-filter/`. Comparte los mismos bind-mounts que el contenedor del cron y se define en el mismo `docker-compose.yml`.
+Aplicación Flask ubicada en `ui/`. Comparte los mismos bind-mounts que el contenedor del cron.
 
 | Volumen | Descripción |
 |---|---|
@@ -255,38 +257,41 @@ Aplicación Flask liviana ubicada en `ui/` dentro de `news-filter/`. Comparte lo
 | `./data` | Lee `filter.log`, lee/escribe `seen.db`, crea/borra `paused` |
 | `./filter.py` | Ejecuta el script vía **Run filter now** |
 | `.env` (news-filter) | Env vars para ejecutar `filter.py` y reset |
-| `ui/.env` | `UI_USERNAME` y `UI_PASSWORD` para autenticación |
+| `ui/.env` | `UI_USERNAME`, `UI_PASSWORD`, `SECRET_KEY` |
 
-### Autenticación
+### Autenticación y seguridad
 
-La UI está protegida con HTTP Basic Auth. Las credenciales se configuran en `ui/.env`:
+La UI está protegida con HTTP Basic Auth. Las credenciales se configuran en `ui/.env`.
 
-```
-UI_USERNAME=admin
-UI_PASSWORD=your_password
-```
+Todos los endpoints POST tienen protección CSRF (`flask-wtf`) y rate limiting (`flask-limiter`). Requests sin token CSRF válido devuelven `400`. IPs que superen el límite reciben `429`.
 
-El browser muestra un popup de login al acceder a `http://<pi_ip>:8084`.
+| Endpoint | Límite |
+|---|---|
+| `/save` | 10/min |
+| `/run` | 5/min |
+| `/toggle-pause` | 10/min |
+| `/reset` | 3/min |
+| `/log` | exempt (GET, usado por el poller) |
 
 ### Auto-refresh del log
 
-Al hacer click en **Run filter now**, la página redirige con `?running=1`. JavaScript hace polling al endpoint `/log` cada 2 segundos durante 30 segundos, actualizando el panel del log en tiempo real. Un indicador **● live** aparece en la esquina del panel mientras está activo.
+Al hacer click en **Run filter now**, la página redirige con `?running=1`. JavaScript hace polling al endpoint `/log` cada 2 segundos durante 30 segundos. Un indicador **● live** aparece mientras está activo.
 
 Endpoints:
 - `GET /` — muestra keywords actuales, últimas 100 líneas del log, y estado de pausa
 - `GET /log` — devuelve JSON con el contenido actual del log (usado por el poller)
 - `POST /save` — guarda keywords editadas
 - `POST /run` — ejecuta `filter.py` en background, redirige con `?running=1`
-- `POST /toggle-pause` — crea o borra `/app/data/paused` para pausar/resumir el cron
-- `POST /reset` — borra artículos de Wallabag trackeados, limpia seen.db, borra log, y marca todos los artículos de FreshRSS como leídos
+- `POST /toggle-pause` — crea o borra `/app/data/paused`
+- `POST /reset` — borra artículos de Wallabag trackeados, limpia seen.db, borra log, marca todos los artículos de FreshRSS como leídos
 
 ### Pause/Resume
 
-La pausa funciona mediante un archivo centinela `/app/data/paused`. Cuando existe, `filter.py` detecta al inicio que está pausado y sale sin procesar nada. El cron sigue disparándose pero no hace nada. Borrar el archivo (o usar el botón **Resume**) reanuda el comportamiento normal.
+Funciona mediante un archivo centinela `/app/data/paused`. Cuando existe, `filter.py` sale sin procesar nada. El cron sigue disparándose pero no hace nada.
 
 ### Reset everything
 
-El botón de reset en la UI hace en orden:
+El botón de reset hace en orden:
 1. Obtiene token OAuth2 de Wallabag
 2. Borra todos los artículos con `wallabag_id` registrado en `seen.db`
 3. Marca todos los artículos de FreshRSS como leídos via API
@@ -326,8 +331,10 @@ El botón de reset en la UI hace en orden:
 | `0 articles fetched` | No hay artículos en las últimas 24hs | Hacer **Refresh all feeds** en FreshRSS manualmente |
 | Artículos guardados sin contenido | Feed truncado y Wallabag no pudo scrapear | Habilitar **fetch full content** con selector `article` en el feed |
 | `Last run log` vacío en UI | filter.py no está escribiendo al log file | Verificar que `./data` está bind-mounted correctamente |
-| Wallabag lleno de artículos viejos | `SEEN_RETENTION_DAYS` muy alto o limpieza no corrió | Correr filter manualmente para disparar `cleanup_old()` |
-| `KeyError: FRESHRSS_URL` | `.env` no montado en news-filter-ui | Verificar `env_file` en `news-filter-ui/docker-compose.yml` |
+| Wallabag lleno de artículos viejos | `SEEN_RETENTION_DAYS` muy alto | Correr filter manualmente para disparar `cleanup_old()` |
+| `KeyError: FRESHRSS_URL` | `.env` no montado en news-filter-ui | Verificar `env_file` en `docker-compose.yml` |
 | `400 Bad Request` en Wallabag token | Client ID/secret o password incorrecto | Recrear el API client en Wallabag y actualizar `.env` |
-| Filter corre pero no hace nada | Está pausado | Verificar si existe `/app/data/paused`, usar botón **Resume** en la UI |
-| Wallabag recreado desde cero | Volumen borrado o recreado | Recrear API client y actualizar `WALLABAG_CLIENT_ID`, `WALLABAG_CLIENT_SECRET` en `.env` |
+| Filter corre pero no hace nada | Está pausado | Verificar si existe `/app/data/paused`, usar botón **Resume** |
+| Wallabag recreado desde cero | Volumen borrado o recreado | Recrear API client y actualizar `WALLABAG_CLIENT_ID`, `WALLABAG_CLIENT_SECRET` |
+| UI devuelve 400 al enviar formulario | Token CSRF faltante | No enviar formularios via curl sin cookie de sesión válida |
+| UI devuelve 429 | Rate limit alcanzado | Esperar 1 minuto y reintentar |
