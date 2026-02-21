@@ -55,7 +55,7 @@ news/
 │
 └── news-filter/
     ├── docker-compose.yml    ← define both news-filter AND news-filter-ui
-    ├── Dockerfile            ← cron container
+    ├── Dockerfile            ← sleep infinity (schedulado por Ofelia)
     ├── filter.py
     ├── requirements.txt
     ├── .env                  ← gitignored
@@ -233,12 +233,9 @@ CREATE TABLE seen (
 | `SEEN_RETENTION_DAYS` | Días antes de limpiar entradas viejas de seen.db | `30` |
 | `LOG_RETENTION_DAYS` | Días antes de rotar líneas viejas del log | `90` |
 
-### Cron
+### Schedule
 
-Corre automáticamente todos los días a las 8am:
-```
-0 8 * * * python /app/filter.py >> /app/data/filter.log 2>&1
-```
+Ofelia dispara el job automáticamente todos los días a las 8am vía `docker exec`. El schedule está definido como label en `news-filter/docker-compose.yml`.
 
 Para correr manualmente:
 ```bash
@@ -249,7 +246,7 @@ docker exec news-filter python /app/filter.py
 
 ## news-filter-ui — Detalles técnicos
 
-Aplicación Flask ubicada en `ui/`. Comparte los mismos bind-mounts que el contenedor del cron.
+Aplicación Flask ubicada en `ui/`. Comparte los mismos bind-mounts que el contenedor `news-filter`.
 
 | Volumen | Descripción |
 |---|---|
@@ -287,7 +284,7 @@ Endpoints:
 
 ### Pause/Resume
 
-Funciona mediante un archivo centinela `/app/data/paused`. Cuando existe, `filter.py` sale sin procesar nada. El cron sigue disparándose pero no hace nada.
+Funciona mediante un archivo centinela `/app/data/paused`. Cuando existe, `filter.py` sale sin procesar nada. Ofelia sigue disparando el job pero el script sale inmediatamente sin procesar nada.
 
 ### Reset everything
 
