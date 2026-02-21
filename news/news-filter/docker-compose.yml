@@ -10,6 +10,10 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.news-filter.schedule: "0 8 * * *"
+      ofelia.job-exec.news-filter.command: "python /app/filter.py"
   news-filter-ui:
     build:
       context: ./ui
@@ -23,7 +27,6 @@ services:
       - .env
       - ./ui/.env
     restart: unless-stopped
-
 networks:
   default:
     name: pi-services

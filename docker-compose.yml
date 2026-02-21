@@ -7,7 +7,7 @@ include:
   - news/news-filter/docker-compose.yml
   - finance/itau-tracker/docker-compose.yml
   - caddy/docker-compose.yml
-
+  - ofelia/docker-compose.yml
 networks:
   default:
     name: pi-services

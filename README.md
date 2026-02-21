@@ -16,10 +16,15 @@ Raspberry Pi 5
 ├── news/
 │   ├── freshrss        → RSS feed aggregator (freshrss.pi)
 │   ├── wallabag        → Article reader (wallabag.pi)
-│   ├── news-filter     → Daily keyword filter (no port, cron)
+│   ├── news-filter     → Daily keyword filter (no port, scheduled by Ofelia)
 │   └── news-filter-ui  → Keywords UI + run logs (news.pi)
+├── ofelia          → Centralized cron scheduler
+├── ofelia/
+│   ├── docker-compose.yml
+│   └── README.md
+│
 └── finance/
-    ├── itau-tracker    → Hourly email fetch + parse (no port, cron)
+    ├── itau-tracker    → Hourly email fetch + parse (no port, scheduled by Ofelia)
     └── itau-tracker-ui → Expense dashboard + config UI (finance.pi)
 ```
 
@@ -44,7 +49,7 @@ Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also 
 
 ### Fitbit Exporter
 **Image:** built from `fitbit-exporter/Dockerfile`  
-Runs a cron job inside a container on the 1st of every month at 6am. Fetches the previous month's data from the Fitbit API and exports it to `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `tokens.json` and `exports/` are bind-mounted from the host. Grafana reads from the SQLite file for health dashboards.
+Runs on the 1st of every month at 6am, scheduled by Ofelia. Fetches the previous month's data from the Fitbit API and exports it to `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `tokens.json` and `exports/` are bind-mounted from the host. Grafana reads from the SQLite file for health dashboards.
 
 ### FreshRSS
 **Image:** `freshrss/freshrss:latest`  
@@ -56,7 +61,7 @@ Clean article reading without ads or account barriers. Used by `news-filter` as 
 
 ### News Filter
 **Image:** built from `news/news-filter/Dockerfile`  
-Daily cron at 8am. Reads articles from FreshRSS, checks them against a keyword list, and saves matches to Wallabag. Uses SQLite (`seen.db`) for deduplication. Falls back to Wallabag's scraper for short/truncated content. Automatically cleans up old entries from both `seen.db` and Wallabag based on retention settings.
+Runs daily at 8am, scheduled by Ofelia. Reads articles from FreshRSS, checks them against a keyword list, and saves matches to Wallabag. Uses SQLite (`seen.db`) for deduplication. Falls back to Wallabag's scraper for short/truncated content. Automatically cleans up old entries from both `seen.db` and Wallabag based on retention settings.
 
 ### News Filter UI
 **Image:** built from `news/news-filter/ui/Dockerfile`  
@@ -64,11 +69,15 @@ Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resumi
 
 ### Itaú Tracker
 **Image:** built from `finance/itau-tracker/tracker/Dockerfile`  
-Hourly cron. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`).
+Runs hourly, scheduled by Ofelia. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`).
 
 ### Itaú Tracker UI
 **Image:** built from `finance/itau-tracker/ui/Dockerfile`  
 Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth. Accessible via `http://finance.pi`.
+
+### Ofelia
+**Image:** `mcuadros/ofelia:latest`  
+Centralized cron scheduler for Docker containers. Replaces individual cron daemons inside containers. Schedules are defined as labels in each service's `docker-compose.yml`. Ofelia uses `docker exec` to run jobs, so environment variables are always available to the script. If a target container is stopped, Ofelia logs the failure and retries on the next schedule without affecting other jobs.
 
 ---
 
@@ -89,7 +98,8 @@ Flask web UI for viewing recent transactions, monthly spending charts, category 
 | Flask | News filter UI + Finance tracker UI |
 | Python 3 + Docker | Fitbit export + news filter + finance tracker (containerized) |
 | SQLite | Fitbit data + news deduplication + finance transactions |
-| Cron | Monthly Fitbit export + daily news filter + hourly finance fetch |
+| Ofelia | Centralized cron scheduler for Docker containers |
+| Ofelia | Centralized cron scheduler — manages fitbit-exporter, news-filter, itau-tracker |
 | Microsoft Graph API | Email reading for finance tracker |
 
 ---
@@ -128,7 +138,11 @@ pi-services/
 │       │   ├── fitbit/             ← Fitbit dashboards
 │       │   │   ├── fitbit_dashboard.json
 │       │   │   └── fitbit_insights_dashboard.json
-│       │   └── finance/            ← Finance dashboards
+│       │   ├── ofelia/
+│   ├── docker-compose.yml
+│   └── README.md
+│
+└── finance/            ← Finance dashboards
 │       │       └── finance_dashboard.json
 │       └── provisioning/
 │           ├── dashboards/
@@ -160,7 +174,7 @@ pi-services/
 │   │
 │   └── news-filter/
 │       ├── docker-compose.yml      ← defines both news-filter AND news-filter-ui
-│       ├── Dockerfile              ← cron container
+│       ├── Dockerfile              ← sleep infinity (scheduled by Ofelia)
 │       ├── filter.py
 │       ├── requirements.txt
 │       ├── .env                    ← gitignored
@@ -180,13 +194,17 @@ pi-services/
 │           └── templates/
 │               └── index.html
 │
+├── ofelia/
+│   ├── docker-compose.yml
+│   └── README.md
+│
 └── finance/
     └── itau-tracker/
         ├── docker-compose.yml      ← defines both itau-tracker AND itau-tracker-ui
         ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD)
         ├── .env.example
         ├── tracker/
-        │   ├── Dockerfile          ← cron container
+        │   ├── Dockerfile          ← sleep infinity (scheduled by Ofelia)
         │   ├── fetch.py
         │   ├── auth.py             ← one-time OAuth2 setup
         │   └── requirements.txt
@@ -216,8 +234,9 @@ pi-services/
 
 > Before starting, read the `README.md` for each service you plan to use. Some require external account setup or one-time authorization steps that must be completed before or after the containers start. In particular:
 > - `caddy/README.md` — Pi-hole DNS records and port 80 setup must be done before Caddy starts
-> - `fitbit-exporter/README.md` — requires a Fitbit developer account and OAuth2 token setup
-> - `finance/itau-tracker/README.md` — requires a Microsoft Azure app registration and one-time device code authorization
+- `ofelia/README.md` — explains the centralized scheduler and how schedules are defined
+- `fitbit-exporter/README.md` — requires a Fitbit developer account and OAuth2 token setup
+- `finance/itau-tracker/README.md` — requires a Microsoft Azure app registration and one-time device code authorization
 
 ### 1. Clone the repo
 
@@ -408,6 +427,7 @@ Sensitive files are covered by `.gitignore` and never committed. Use `.env.examp
 Each service has its own `README.md` with detailed setup, technical details, and troubleshooting:
 
 - `caddy/README.md`
+- `ofelia/README.md`
 - `homepage/README.md`
 - `monitoring/README.md`
 - `fitbit-exporter/README.md`

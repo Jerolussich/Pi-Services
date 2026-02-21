@@ -12,7 +12,7 @@ FreshRSS
 ├── hace fetch full content de cada artículo
 └── expone artículos via API (Google Reader API)
          ↓
-news-filter (cron diario — 8am)
+news-filter (schedulado por Ofelia — 8am)
 ├── lee artículos de las últimas 24hs
 ├── busca keywords en título + contenido completo
 ├── si contenido es corto (<500 chars) → fallback a Wallabag scraper
@@ -35,7 +35,7 @@ news-filter-ui
 |---|---|---|---|
 | `freshrss` | `freshrss/freshrss:latest` | `http://freshrss.pi` | Agregador de feeds RSS |
 | `wallabag` | `wallabag/wallabag` | `http://wallabag.pi` | Lector de artículos |
-| `news-filter` | build local | — | Filtro automático (cron) |
+| `news-filter` | build local | — | Filtro automático (schedulado por Ofelia) |
 | `news-filter-ui` | build local | `http://news.pi` | UI para keywords y logs |
 
 ---

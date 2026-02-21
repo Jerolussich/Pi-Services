@@ -6,3 +6,12 @@ services:
       - ./tokens.json:/app/tokens.json
       - ./exports:/app/exports
     restart: unless-stopped
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.fitbit-exporter.schedule: "0 6 1 * *"
+      ofelia.job-exec.fitbit-exporter.command: "python /app/export.py"
+
+networks:
+  default:
+    name: pi-services
+    external: true

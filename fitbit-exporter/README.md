@@ -9,7 +9,7 @@ Exportación automática mensual de datos de Fitbit a un Excel acumulativo y bas
 ```
 Fitbit API
     ↓
-export.py (cron dentro del contenedor — 1ro de cada mes, 6am)
+export.py (schedulado por Ofelia — 1ro de cada mes, 6am)
     ↓              ↓
 fitbit_data.xlsx   fitbit.db (SQLite)
                        ↓
@@ -25,7 +25,7 @@ fitbit_data.xlsx   fitbit.db (SQLite)
 | Componente | Descripción | Ubicación |
 |---|---|---|
 | `export.py` | Script principal de exportación | `fitbit-exporter/export.py` |
-| `Dockerfile` | Imagen Docker con Python + cron | `fitbit-exporter/Dockerfile` |
+| `Dockerfile` | Imagen Docker con Python (sleep infinity) | `fitbit-exporter/Dockerfile` |
 | `requirements.txt` | Dependencias Python | `fitbit-exporter/requirements.txt` |
 | `tokens.json` | Credenciales OAuth2 de Fitbit | `fitbit-exporter/tokens.json` (gitignored) |
 | `fitbit_data.xlsx` | Excel acumulativo con toda la data | `fitbit-exporter/exports/` (gitignored) |
@@ -132,7 +132,7 @@ Obteniendo logs de actividades...
 
 ## Cómo funciona el contenedor
 
-El `Dockerfile` instala Python, las dependencias de `requirements.txt`, copia `export.py`, e instala un cron job que corre el 1ro de cada mes a las 6am. El contenedor corre `cron -f` como proceso principal.
+El `Dockerfile` instala Python, las dependencias de `requirements.txt` y copia `export.py`. El contenedor corre `sleep infinity` como proceso principal — no tiene cron interno. El schedule lo maneja Ofelia vía `docker exec`, disparando `export.py` el 1ro de cada mes a las 6am.
 
 `tokens.json` y `exports/` son bind mounts — viven en el host y son accesibles tanto desde el contenedor como desde Grafana.
 
@@ -287,7 +287,7 @@ EOF
 scp PI_USER@PI_IP:~/Pi-Services/fitbit-exporter/exports/fitbit_data.xlsx C:\Users\jerol\Desktop\fitbit_data.xlsx
 ```
 
-**Ver logs del cron:**
+**Ver logs de ejecución:**
 ```bash
 docker logs fitbit-exporter
 # o
