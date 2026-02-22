@@ -18,7 +18,7 @@ services:
     container_name: itau-tracker-ui
     volumes:
       - ./data:/app/data
-      - ./tracker/fetch.py:/app/fetch.py
+      - ./tracker/fetch.py:/app/fetch.py:ro
     env_file:
       - .env
     restart: unless-stopped

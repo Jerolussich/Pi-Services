@@ -22,7 +22,7 @@ services:
     volumes:
       - ./config:/app/config
       - ./data:/app/data
-      - ./filter.py:/app/filter.py
+      - ./filter.py:/app/filter.py:ro
     env_file:
       - .env
       - ./ui/.env
