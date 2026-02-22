@@ -3,10 +3,13 @@
         icon: pi-hole.png
         href: http://pihole.pi/admin
         description: Network-wide ad blocking
+        siteMonitor: http://172.17.0.1:8181/admin
     - Grafana:
         icon: grafana.png
         href: http://grafana.pi
         description: Monitoring dashboards
+        siteMonitor: http://grafana:3000
+
 - FitbitDashboard:
     - Fitbit:
         icon: mdi-heart-pulse
@@ -16,6 +19,7 @@
         icon: mdi-chart-line
         href: http://grafana.pi/d/fitbit-insights-dashboard
         description: Correlaciones y tendencias
+
 - Tools:
     - System Stats:
         icon: raspberry-pi.png
@@ -25,24 +29,31 @@
         icon: prometheus.png
         href: http://prometheus.pi
         description: Raw metrics
+        siteMonitor: http://prometheus:9090
+
 - News:
     - FreshRSS:
         icon: freshrss.png
         href: http://freshrss.pi
         description: RSS feeds
+        siteMonitor: http://freshrss:80
     - Wallabag:
         icon: wallabag.png
         href: http://wallabag.pi
         description: Saved articles
+        siteMonitor: http://wallabag:80
     - News Filter:
         icon: mdi-filter
         href: http://news.pi
         description: Manage keywords & view runs
+        siteMonitor: http://news-filter-ui:8084
+
 - Finance:
     - Itaú Tracker:
         icon: mdi-credit-card
         href: http://finance.pi
         description: Gastos con tarjeta de crédito
+        siteMonitor: http://itau-tracker-ui:8085
     - Finance Dashboard:
         icon: mdi-chart-bar
         href: http://grafana.pi/d/finance-main
