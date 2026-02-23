@@ -1,295 +1,167 @@
 {
-  "title": "Finance \u2014 Ita\u00fa Tracker",
+  "title": "Finance \u2014 Itaú Tracker",
   "uid": "finance-main",
   "timezone": "America/Montevideo",
   "schemaVersion": 38,
   "refresh": "1h",
   "panels": [
     {
+      "id": 20,
+      "type": "row",
+      "title": "📅 This Month",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
       "id": 1,
       "type": "stat",
-      "gridPos": {
-        "x": 0,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
       "title": "Total this month (UYU)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "textMode": "value"
-      },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "value" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
+          "color": { "mode": "thresholds" },
           "thresholds": {
             "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 10000
-              },
-              {
-                "color": "red",
-                "value": 30000
-              }
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10000 },
+              { "color": "red", "value": 30000 }
             ]
           }
         }
       },
-      "targets": [
-        {
-          "rawQueryText": "SELECT COALESCE(SUM(amount),0) as value FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m','now') AND currency = 'UYU'",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "rawQueryText": "SELECT COALESCE(SUM(amount),0) as value FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m','now') AND currency = 'UYU'", "queryType": "table", "refId": "A" }]
     },
     {
       "id": 2,
       "type": "stat",
-      "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
       "title": "Transactions this month",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          }
-        }
-      },
-      "targets": [
-        {
-          "rawQueryText": "SELECT COUNT(*) as value FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m','now')",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "options": { "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "targets": [{ "rawQueryText": "SELECT COUNT(*) as value FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m','now')", "queryType": "table", "refId": "A" }]
     },
     {
       "id": 3,
       "type": "stat",
-      "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
       "title": "Avg transaction (UYU)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "purple"
-          },
-          "decimals": 0
-        }
-      },
-      "targets": [
-        {
-          "rawQueryText": "SELECT ROUND(AVG(amount),0) as value FROM transactions WHERE currency='UYU'",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "options": { "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "decimals": 0 } },
+      "targets": [{ "rawQueryText": "SELECT ROUND(AVG(amount),0) as value FROM transactions WHERE currency='UYU'", "queryType": "table", "refId": "A" }]
     },
     {
       "id": 4,
       "type": "stat",
-      "gridPos": {
-        "x": 18,
-        "y": 0,
-        "w": 6,
-        "h": 4
-      },
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
       "title": "Total transactions (all time)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "orange"
-          }
-        }
-      },
-      "targets": [
-        {
-          "rawQueryText": "SELECT COUNT(*) as value FROM transactions",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "options": { "colorMode": "value", "graphMode": "none" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } },
+      "targets": [{ "rawQueryText": "SELECT COUNT(*) as value FROM transactions", "queryType": "table", "refId": "A" }]
     },
     {
       "id": 5,
       "type": "barchart",
-      "gridPos": {
-        "x": 0,
-        "y": 4,
-        "w": 14,
-        "h": 9
-      },
+      "gridPos": { "x": 0, "y": 5, "w": 14, "h": 9 },
       "title": "Monthly spending (UYU)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "blue"
-          }
-        }
-      },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "xTickLabelRotation": -45 },
+      "targets": [{ "rawQueryText": "SELECT strftime('%Y-%m', date) as month, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY month ORDER BY month", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "type": "piechart",
+      "gridPos": { "x": 14, "y": 5, "w": 10, "h": 9 },
+      "title": "Spending by category — this month (UYU)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
       "options": {
-        "xTickLabelRotation": -45
+        "pieType": "donut",
+        "displayLabels": ["name", "percent"],
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true }
       },
-      "targets": [
-        {
-          "rawQueryText": "SELECT strftime('%Y-%m', date) as month, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY month ORDER BY month",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "rawQueryText": "SELECT category, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' AND strftime('%Y-%m', date) = strftime('%Y-%m','now') GROUP BY category ORDER BY total DESC", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 10,
+      "type": "barchart",
+      "gridPos": { "x": 0, "y": 14, "w": 12, "h": 9 },
+      "title": "Top merchants — this month (UYU)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "xTickLabelRotation": -45 },
+      "targets": [{ "rawQueryText": "SELECT merchant, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' AND strftime('%Y-%m', date) = strftime('%Y-%m','now') GROUP BY merchant ORDER BY total DESC LIMIT 10", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 11,
+      "type": "barchart",
+      "gridPos": { "x": 12, "y": 14, "w": 12, "h": 9 },
+      "title": "Most visited places — this month (by count)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "teal" } } },
+      "options": { "xTickLabelRotation": -45 },
+      "targets": [{ "rawQueryText": "SELECT merchant, COUNT(*) as visits FROM transactions WHERE strftime('%Y-%m', date) = strftime('%Y-%m','now') GROUP BY merchant ORDER BY visits DESC LIMIT 15", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 21,
+      "type": "row",
+      "title": "📊 All Time",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 }
     },
     {
       "id": 6,
       "type": "piechart",
-      "gridPos": {
-        "x": 14,
-        "y": 4,
-        "w": 10,
-        "h": 9
-      },
-      "title": "Spending by category (UYU)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 9 },
+      "title": "Spending by category — all time (UYU)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
       "options": {
         "pieType": "donut",
-        "displayLabels": [
-          "name",
-          "percent"
-        ],
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": true
-        }
+        "displayLabels": ["name", "percent"],
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true }
       },
-      "targets": [
-        {
-          "rawQueryText": "SELECT category, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY category ORDER BY total DESC",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "rawQueryText": "SELECT category, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY category ORDER BY total DESC", "queryType": "table", "refId": "A" }]
     },
     {
       "id": 7,
       "type": "barchart",
-      "gridPos": {
-        "x": 0,
-        "y": 13,
-        "w": 12,
-        "h": 8
-      },
-      "title": "Top merchants (UYU, all time)",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "orange"
-          }
-        }
-      },
-      "options": {
-        "xTickLabelRotation": -45
-      },
-      "targets": [
-        {
-          "rawQueryText": "SELECT merchant, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY merchant ORDER BY total DESC LIMIT 10",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 9 },
+      "title": "Top merchants — all time (UYU)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" } } },
+      "options": { "xTickLabelRotation": -45 },
+      "targets": [{ "rawQueryText": "SELECT merchant, ROUND(SUM(amount),2) as total FROM transactions WHERE currency='UYU' GROUP BY merchant ORDER BY total DESC LIMIT 10", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 13,
+      "type": "barchart",
+      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 9 },
+      "title": "Most visited places — all time (by count)",
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "xTickLabelRotation": -45 },
+      "targets": [{ "rawQueryText": "SELECT merchant, COUNT(*) as visits FROM transactions GROUP BY merchant ORDER BY visits DESC LIMIT 15", "queryType": "table", "refId": "A" }]
+    },
+    {
+      "id": 22,
+      "type": "row",
+      "title": "🧾 Recent Transactions",
+      "collapsed": false,
+      "gridPos": { "x": 0, "y": 42, "w": 24, "h": 1 }
     },
     {
       "id": 8,
       "type": "table",
-      "gridPos": {
-        "x": 12,
-        "y": 13,
-        "w": 12,
-        "h": 8
-      },
+      "gridPos": { "x": 0, "y": 43, "w": 24, "h": 12 },
       "title": "Recent transactions",
-      "datasource": {
-        "type": "frser-sqlite-datasource",
-        "uid": "cfdqep2yn124gf"
-      },
-      "options": {
-        "sortBy": [
-          {
-            "displayName": "date",
-            "desc": true
-          }
-        ]
-      },
-      "targets": [
-        {
-          "rawQueryText": "SELECT date, merchant, card_type || ' ***' || card_last4 as card, amount, currency, category FROM transactions ORDER BY date DESC LIMIT 25",
-          "queryType": "table",
-          "refId": "A"
-        }
-      ]
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "cfdqep2yn124gf" },
+      "options": { "sortBy": [{ "displayName": "date", "desc": true }] },
+      "targets": [{ "rawQueryText": "SELECT date, merchant, card_type || ' ***' || card_last4 as card, amount, currency, category FROM transactions ORDER BY date DESC LIMIT 25", "queryType": "table", "refId": "A" }]
     }
   ],
-  "version": 3
+  "version": 11
 }
