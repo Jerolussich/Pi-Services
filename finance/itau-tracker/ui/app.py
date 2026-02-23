@@ -106,7 +106,7 @@ def config_page():
 def save_config_route():
     cfg = load_config()
     cfg["imap_host"]      = request.form.get("imap_host", cfg.get("imap_host", ""))
-    cfg["imap_port"]      = int(request.form.get("imap_port", cfg.get("imap_port", 993)))
+    cfg["imap_port"]      = int(request.form.get("imap_port") or cfg.get("imap_port") or 993)
     cfg["email_user"]     = request.form.get("email_user", cfg.get("email_user", ""))
     cfg["email_password"] = request.form.get("email_password", cfg.get("email_password", ""))
     cfg["sender_filter"]  = request.form.get("sender_filter", cfg.get("sender_filter", ""))
