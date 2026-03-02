@@ -35,48 +35,48 @@ All services run as Docker containers on a shared `pi-services` network. None ex
 ## Services
 
 ### Caddy
-**Image:** `caddy:2-alpine`  
-**Port:** `80`  
+**Image:** `caddy:2-alpine`
+**Port:** `80`
 Reverse proxy that routes all incoming traffic to the correct container based on the hostname. Provides HTTP Basic Auth for services without their own authentication (Homepage, Prometheus). All other containers have no exposed host ports — Caddy is the only entry point.
 
 ### Homepage
-**Image:** `ghcr.io/gethomepage/homepage:latest`  
+**Image:** `ghcr.io/gethomepage/homepage:latest`
 A dashboard that links to all services. Config lives in `homepage/config/` and is bind-mounted into the container. Accessible via `http://homepage.pi` — protected by Caddy Basic Auth.
 
 ### Monitoring
-**Images:** `prom/prometheus`, `prom/node-exporter`, `ekofr/pihole-exporter`, `grafana/grafana-oss`  
+**Images:** `prom/prometheus`, `prom/node-exporter`, `amonacoos/pihole6_exporter`, `grafana/grafana-oss`
 Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also connects to the Fitbit and Finance SQLite databases. Accessible via `http://grafana.pi` and `http://prometheus.pi` — Prometheus is protected by Caddy Basic Auth.
 
 ### Fitbit Exporter
-**Image:** built from `fitbit-exporter/Dockerfile`  
+**Image:** built from `fitbit-exporter/Dockerfile`
 Runs on the 1st of every month at 6am, scheduled by Ofelia. Fetches the previous month's data from the Fitbit API and exports it to `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `tokens.json` and `exports/` are bind-mounted from the host. Grafana reads from the SQLite file for health dashboards.
 
 ### FreshRSS
-**Image:** `freshrss/freshrss:latest`  
+**Image:** `freshrss/freshrss:latest`
 RSS feed aggregator. Fetches full article content via CSS scraping and exposes articles via the Google Reader API for `news-filter` to consume. Accessible via `http://freshrss.pi`.
 
 ### Wallabag
-**Image:** `wallabag/wallabag`  
+**Image:** `wallabag/wallabag`
 Clean article reading without ads or account barriers. Used by `news-filter` as both a scraper fallback and final article storage. Data persists in a named Docker volume. Accessible via `http://wallabag.pi`.
 
 ### News Filter
-**Image:** built from `news/news-filter/Dockerfile`  
+**Image:** built from `news/news-filter/Dockerfile`
 Runs daily at 8am, scheduled by Ofelia. Reads articles from FreshRSS, checks them against a keyword list, and saves matches to Wallabag. Uses SQLite (`seen.db`) for deduplication. Falls back to Wallabag's scraper for short/truncated content. Automatically cleans up old entries from both `seen.db` and Wallabag based on retention settings.
 
 ### News Filter UI
-**Image:** built from `news/news-filter/ui/Dockerfile`  
+**Image:** built from `news/news-filter/ui/Dockerfile`
 Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data. Protected with HTTP Basic Auth. Accessible via `http://news.pi`.
 
 ### Itaú Tracker
-**Image:** built from `finance/itau-tracker/tracker/Dockerfile`  
+**Image:** built from `finance/itau-tracker/tracker/Dockerfile`
 Runs hourly, scheduled by Ofelia. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`).
 
 ### Itaú Tracker UI
-**Image:** built from `finance/itau-tracker/ui/Dockerfile`  
+**Image:** built from `finance/itau-tracker/ui/Dockerfile`
 Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth. Accessible via `http://finance.pi`.
 
 ### Ofelia
-**Image:** `mcuadros/ofelia:latest`  
+**Image:** `mcuadros/ofelia:latest`
 Centralized cron scheduler for Docker containers. Replaces individual cron daemons inside containers. Schedules are defined as labels in each service's `docker-compose.yml`. Ofelia uses `docker exec` to run jobs, so environment variables are always available to the script. If a target container is stopped, Ofelia logs the failure and retries on the next schedule without affecting other jobs.
 
 ---
@@ -91,14 +91,13 @@ Centralized cron scheduler for Docker containers. Replaces individual cron daemo
 | Prometheus | Metrics collection |
 | Grafana | Visualization |
 | Node Exporter | System metrics (CPU, RAM, disk) |
-| Pi-hole Exporter | Pi-hole metrics for Grafana |
+| Pi-hole Exporter | Pi-hole metrics for Grafana (amonacoos/pihole6_exporter) |
 | Homepage | Service dashboard |
 | FreshRSS | RSS feed aggregator |
 | Wallabag | Article reader and scraper |
 | Flask | News filter UI + Finance tracker UI |
 | Python 3 + Docker | Fitbit export + news filter + finance tracker (containerized) |
 | SQLite | Fitbit data + news deduplication + finance transactions |
-| Ofelia | Centralized cron scheduler for Docker containers |
 | Ofelia | Centralized cron scheduler — manages fitbit-exporter, news-filter, itau-tracker |
 | Microsoft Graph API | Email reading for finance tracker |
 
@@ -135,20 +134,16 @@ pi-services/
 │   ├── prometheus.yml
 │   └── grafana/
 │       ├── dashboards/
-│       │   ├── fitbit/             ← Fitbit dashboards
+│       │   ├── fitbit/
 │       │   │   ├── fitbit_dashboard.json
 │       │   │   └── fitbit_insights_dashboard.json
-│       │   ├── ofelia/
-│   ├── docker-compose.yml
-│   └── README.md
-│
-└── finance/            ← Finance dashboards
-│       │       └── finance_dashboard.json
+│       │   ├── finance/
+│       │   │   └── finance_dashboard.json
+│       │   └── pihole/
+│       │       └── pihole_dashboard.json
 │       └── provisioning/
-│           ├── dashboards/
-│           │   └── fitbit.yaml     ← Providers for both Fitbit and Finance folders
-│           └── datasources/
-│               └── finance.yaml
+│           └── dashboards/
+│               └── dashboards.yaml ← Providers for Fitbit, Finance and Pihole folders
 │
 ├── fitbit-exporter/
 │   ├── Dockerfile
@@ -266,9 +261,9 @@ PI_IP=your_pi_ip
 
 **`monitoring/.env`**
 ```
-PIHOLE_PASSWORD=your_pihole_password
-FITBIT_EXPORTS_PATH=/home/youruser/Pi-Services/fitbit-exporter/exports
-FINANCE_DATA_PATH=/home/youruser/Pi-Services/finance/itau-tracker/data
+PIHOLE_API_KEY=your_pihole_app_password
+FITBIT_EXPORTS_PATH=/home/youruser/pi-services/fitbit-exporter/exports
+FINANCE_DATA_PATH=/home/youruser/pi-services/finance/itau-tracker/data
 ```
 
 **`news/wallabag/.env`**
