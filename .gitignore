@@ -22,3 +22,4 @@ news/news-filter/data/
 
 # Finance data
 finance/itau-tracker/data/
+news/news-filter/config/keywords.txt

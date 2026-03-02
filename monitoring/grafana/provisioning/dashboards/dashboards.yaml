@@ -13,3 +13,9 @@ providers:
     updateIntervalSeconds: 10
     options:
       path: /var/lib/grafana/dashboards/finance
+  - name: Pihole
+    folder: Pihole
+    type: file
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards/pihole

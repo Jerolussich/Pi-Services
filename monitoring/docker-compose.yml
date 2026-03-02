@@ -1,48 +1,49 @@
-services:
-  prometheus:
-    image: prom/prometheus
-    container_name: prometheus
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-    restart: unless-stopped
-  node-exporter:
-    image: prom/node-exporter
-    container_name: node-exporter
-    restart: unless-stopped
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-  pihole-exporter:
-    image: ekofr/pihole-exporter
-    container_name: pihole-exporter
-    environment:
-      - PIHOLE_HOSTNAME=192.168.68.66
-      - PIHOLE_PASSWORD=${PIHOLE_PASSWORD}
-    restart: unless-stopped
-  grafana:
-    image: grafana/grafana-oss
-    container_name: grafana
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ${FITBIT_EXPORTS_PATH}:/var/fitbit:ro
-      - ${FINANCE_DATA_PATH}:/var/finance:ro
-      - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-    restart: unless-stopped
-volumes:
-  prometheus-data:
-  grafana-data:
-    name: monitoring_grafana-data
-
 networks:
   default:
-    name: pi-services
     external: true
+    name: pi-services
+services:
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss
+    restart: unless-stopped
+    volumes:
+    - grafana-data:/var/lib/grafana
+    - ${FITBIT_EXPORTS_PATH}:/var/fitbit:ro
+    - ${FINANCE_DATA_PATH}:/var/finance:ro
+    - ./grafana/provisioning:/etc/grafana/provisioning
+    - ./grafana/dashboards:/var/lib/grafana/dashboards
+  node-exporter:
+    command:
+    - --path.procfs=/host/proc
+    - --path.sysfs=/host/sys
+    - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    container_name: node-exporter
+    image: prom/node-exporter
+    restart: unless-stopped
+    volumes:
+    - /proc:/host/proc:ro
+    - /sys:/host/sys:ro
+    - /:/rootfs:ro
+  pihole-exporter:
+    container_name: pihole-exporter
+    environment:
+    - PIHOLE_HOST=192.168.68.66
+    - PIHOLE_API_KEY=${PIHOLE_API_KEY}
+    - PIHOLE_SCHEME=http
+    - PIHOLE_PORT=8181
+    image: amonacoos/pihole6_exporter:latest
+    restart: unless-stopped
+  prometheus:
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    container_name: prometheus
+    image: prom/prometheus
+    restart: unless-stopped
+    volumes:
+    - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    - prometheus-data:/prometheus
+volumes:
+  grafana-data:
+    name: monitoring_grafana-data
+  prometheus-data: null
