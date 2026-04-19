@@ -18,7 +18,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -72,7 +72,7 @@
       "type": "table",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT s.fecha as fecha_sueno, ROUND(s.total_min / 60.0, 1) as horas_dormidas, s.eficiencia_pct as calidad_sueno, a.pasos as pasos_siguiente_dia FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.total_min > 0 ORDER BY s.fecha DESC",
           "refId": "A",
           "queryType": "table"
@@ -80,7 +80,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -106,19 +106,19 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_mal_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct < 75 AND a.pasos IS NOT NULL",
           "refId": "A",
           "queryType": "table"
         },
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_regular_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct >= 75 AND s.eficiencia_pct < 85 AND a.pasos IS NOT NULL",
           "refId": "B",
           "queryType": "table"
         },
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(a.pasos)) as pasos_promedio_buen_sueno FROM sueno s LEFT JOIN actividad a ON a.fecha = date(s.fecha, '+1 day') WHERE s.eficiencia_pct >= 85 AND a.pasos IS NOT NULL",
           "refId": "C",
           "queryType": "table"
@@ -134,7 +134,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -164,7 +164,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT h.fecha, h.resting_hr, a.minutos_activos FROM heart_rate h LEFT JOIN actividad a ON a.fecha = h.fecha WHERE h.resting_hr > 0 ORDER BY h.fecha",
           "refId": "A",
           "queryType": "table"
@@ -172,7 +172,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -202,7 +202,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(resting_hr), 1) as bpm FROM heart_rate WHERE resting_hr > 0",
           "refId": "A",
           "queryType": "table"
@@ -210,7 +210,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -240,7 +240,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT MIN(resting_hr) as bpm FROM heart_rate WHERE resting_hr > 0",
           "refId": "A",
           "queryType": "table"
@@ -256,7 +256,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#F2495C", "mode": "fixed" },
@@ -287,7 +287,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT strftime('%Y-%m', fecha) as mes, ROUND(AVG(resting_hr), 1) as hr_avg, MIN(resting_hr) as hr_min, MAX(resting_hr) as hr_max FROM heart_rate WHERE resting_hr > 0 GROUP BY strftime('%Y-%m', fecha) ORDER BY mes",
           "refId": "A",
           "queryType": "table"
@@ -303,7 +303,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#B877D9", "mode": "fixed" },
@@ -338,7 +338,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT strftime('%Y-W%W', fecha) as semana, ROUND(AVG(total_min) / 60.0, 1) as horas_promedio FROM sueno WHERE total_min > 0 GROUP BY strftime('%Y-W%W', fecha) ORDER BY semana",
           "refId": "A",
           "queryType": "table"
@@ -346,7 +346,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -371,13 +371,13 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT COUNT(*) as noches_buenas FROM sueno WHERE total_min >= 450",
           "refId": "A",
           "queryType": "table"
         },
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT COUNT(*) as noches_malas FROM sueno WHERE total_min < 360 AND total_min > 0",
           "refId": "B",
           "queryType": "table"
@@ -385,7 +385,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -407,7 +407,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(total_min) / 60.0, 1) as horas FROM sueno WHERE total_min > 0",
           "refId": "A",
           "queryType": "table"
@@ -423,7 +423,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#5794F2", "mode": "fixed" },
@@ -450,7 +450,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT CASE CAST(strftime('%w', fecha) AS INTEGER) WHEN 0 THEN '7-Dom' WHEN 1 THEN '1-Lun' WHEN 2 THEN '2-Mar' WHEN 3 THEN '3-Mie' WHEN 4 THEN '4-Jue' WHEN 5 THEN '5-Vie' WHEN 6 THEN '6-Sab' END as dia, ROUND(AVG(pasos)) as pasos_promedio FROM actividad GROUP BY strftime('%w', fecha) ORDER BY strftime('%w', fecha)",
           "refId": "A",
           "queryType": "table"
@@ -458,7 +458,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#FF9830", "mode": "fixed" },
@@ -485,7 +485,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT CASE CAST(strftime('%w', fecha) AS INTEGER) WHEN 0 THEN '7-Dom' WHEN 1 THEN '1-Lun' WHEN 2 THEN '2-Mar' WHEN 3 THEN '3-Mie' WHEN 4 THEN '4-Jue' WHEN 5 THEN '5-Vie' WHEN 6 THEN '6-Sab' END as dia, ROUND(AVG(calorias)) as calorias_promedio FROM actividad GROUP BY strftime('%w', fecha) ORDER BY strftime('%w', fecha)",
           "refId": "A",
           "queryType": "table"
@@ -501,7 +501,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -528,7 +528,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT strftime('%Y-W%W', fecha) as semana, actividad, COUNT(*) as cantidad FROM ejercicios GROUP BY semana, actividad ORDER BY semana",
           "refId": "A",
           "queryType": "table"
@@ -536,7 +536,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -562,10 +562,69 @@
       "type": "piechart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT actividad as metric, COUNT(*) as value FROM ejercicios GROUP BY actividad ORDER BY value DESC",
           "refId": "A",
           "queryType": "table"
+        }
+      ]
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "id": 70,
+      "title": "🌙 Calidad del sueño — Tendencia a lo largo del tiempo",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "Eficiencia (%)"
+          },
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 55 },
+              { "color": "yellow", "value": 70 },
+              { "color": "green", "value": 82 }
+            ]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "calidad" }, "properties": [{ "id": "displayName", "value": "Calidad del sueño" }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 54 },
+      "id": 71,
+      "timeFrom": "1y",
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true, "calcs": ["mean", "min", "max"] },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "title": "Calidad del sueño a lo largo del tiempo (último año)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
+          "rawQueryText": "SELECT CAST(strftime('%s', fecha) AS INTEGER) * 1000 as time, eficiencia_pct as calidad FROM sueno WHERE total_min > 0 AND eficiencia_pct > 0 ORDER BY fecha",
+          "refId": "A",
+          "queryType": "time series",
+          "timeColumns": ["time"]
         }
       ]
     }
