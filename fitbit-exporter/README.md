@@ -1,6 +1,6 @@
 # Fitbit Exporter
 
-Exportación automática mensual de datos de Fitbit a un Excel acumulativo y base de datos SQLite, con visualización en Grafana. Corre como contenedor Docker en Raspberry Pi.
+Exportación mensual de datos de Fitbit a un Excel acumulativo y base de datos SQLite, con visualización en Grafana y una UI web (`fitbit.pi`) para disparar ingestas manuales por mes y ver qué meses ya están cargados.
 
 ---
 
@@ -9,14 +9,20 @@ Exportación automática mensual de datos de Fitbit a un Excel acumulativo y bas
 ```
 Fitbit API
     ↓
-export.py (schedulado por Ofelia — 1ro de cada mes, 6am)
-    ↓              ↓
-fitbit_data.xlsx   fitbit.db (SQLite)
-                       ↓
-                   Grafana Dashboard
-                       ↓
-                   Homepage (link)
+export.py
+ ├─ invocado por Ofelia el 1ro de cada mes 6am → --source scheduled
+ └─ invocado por la UI al clickear "Ingestar" → --source manual
+    ↓              ↓              ↓
+fitbit_data.xlsx   fitbit.db      ingest_runs (tabla de tracking)
+                       ↓              ↑
+                   Grafana        fitbit-exporter-ui (Flask en :8086)
+                                      ↓
+                                   fitbit.pi (via Caddy)
 ```
+
+Dos contenedores comparten el mismo volumen `exports/`:
+- `fitbit-exporter`: corre `sleep infinity`, ejecuta `export.py` cuando Ofelia dispara.
+- `fitbit-exporter-ui`: Flask + gunicorn en `:8086`. Lee `fitbit.db` para la grilla; spawnea `python /app/export.py --year Y --month M --source manual` vía `subprocess.Popen` al clickear "Ingestar".
 
 ---
 
@@ -24,12 +30,17 @@ fitbit_data.xlsx   fitbit.db (SQLite)
 
 | Componente | Descripción | Ubicación |
 |---|---|---|
-| `export.py` | Script principal de exportación | `fitbit-exporter/export.py` |
-| `Dockerfile` | Imagen Docker con Python (sleep infinity) | `fitbit-exporter/Dockerfile` |
-| `requirements.txt` | Dependencias Python | `fitbit-exporter/requirements.txt` |
+| `export.py` | Script principal — acepta `--year/--month/--source` | `fitbit-exporter/export.py` |
+| `Dockerfile` | Imagen del exporter (`sleep infinity`) | `fitbit-exporter/Dockerfile` |
+| `requirements.txt` | Dependencias Python del exporter | `fitbit-exporter/requirements.txt` |
+| `ui/app.py` | Flask UI — rutas `/`, `/months`, `/ingest`, `/log` | `fitbit-exporter/ui/app.py` |
+| `ui/Dockerfile` | Imagen de la UI (gunicorn en `:8086`) | `fitbit-exporter/ui/Dockerfile` |
+| `ui/templates/index.html` | Date picker + grilla 18 meses + log live | `fitbit-exporter/ui/templates/index.html` |
+| `ui/.env` | `UI_USERNAME`, `UI_PASSWORD`, `SECRET_KEY` | `fitbit-exporter/ui/.env` (gitignored) |
 | `tokens.json` | Credenciales OAuth2 de Fitbit | `fitbit-exporter/tokens.json` (gitignored) |
-| `fitbit_data.xlsx` | Excel acumulativo con toda la data | `fitbit-exporter/exports/` (gitignored) |
-| `fitbit.db` | Base de datos SQLite para Grafana | `fitbit-exporter/exports/` (gitignored) |
+| `fitbit_data.xlsx` | Excel acumulativo | `fitbit-exporter/exports/` (gitignored) |
+| `fitbit.db` | SQLite: `actividad`, `sueno`, `heart_rate`, `ejercicios`, `ingest_runs` | `fitbit-exporter/exports/` (gitignored) |
+| `data/fitbit-ui.log` | Log apendado por la UI al disparar ingestas | `fitbit-exporter/data/` (gitignored) |
 | `fitbit_dashboard.json` | Dashboard de Grafana | `monitoring/grafana/dashboards/` |
 
 ---
@@ -111,13 +122,21 @@ docker logs fitbit-exporter
 
 ### 7. Probar la exportación manualmente
 
+Sin args corre el mes anterior:
+
 ```bash
-docker exec fitbit-exporter python /app/export.py
+docker exec fitbit-exporter python /app/export.py --source manual
+```
+
+Con `--year/--month` corre un mes puntual:
+
+```bash
+docker exec fitbit-exporter python /app/export.py --year 2026 --month 3 --source manual
 ```
 
 Output esperado:
 ```
-Exportando datos de 2026-01-01 a 2026-01-31...
+Exportando datos de 2026-03-01 a 2026-03-31 (source=manual)...
 ✓ Token renovado automáticamente.
 Obteniendo steps y actividad...
 Obteniendo sueño...
@@ -128,13 +147,29 @@ Obteniendo logs de actividades...
 ✓ Exportado: /app/exports/fitbit_data.xlsx
 ```
 
+### 8. Configurar la UI
+
+```bash
+cp fitbit-exporter/ui/.env.example fitbit-exporter/ui/.env
+```
+
+Editá `UI_USERNAME`, `UI_PASSWORD` y generá un `SECRET_KEY` random:
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+```
+
+La UI queda expuesta en `http://fitbit.pi` (requiere entry DNS en Pi-hole → `fitbit.pi` → tu IP del Pi).
+
 ---
 
-## Cómo funciona el contenedor
+## Cómo funciona
 
-El `Dockerfile` instala Python, las dependencias de `requirements.txt` y copia `export.py`. El contenedor corre `sleep infinity` como proceso principal — no tiene cron interno. El schedule lo maneja Ofelia vía `docker exec`, disparando `export.py` el 1ro de cada mes a las 6am.
+El `fitbit-exporter/Dockerfile` instala Python y deps, y corre `sleep infinity` como proceso principal — no tiene cron. El schedule lo maneja **Ofelia** vía `docker exec`, disparando `python /app/export.py --source scheduled` el 1ro de cada mes a las 6am (label en `docker-compose.yml`).
 
-`tokens.json` y `exports/` son bind mounts — viven en el host y son accesibles tanto desde el contenedor como desde Grafana.
+El `fitbit-exporter-ui/Dockerfile` levanta gunicorn en `:8086`. La UI comparte los bind mounts con el exporter (`tokens.json`, `exports/`, `export.py` en readonly, `data/`) y dispara runs manuales vía `subprocess.Popen` sobre el mismo script. No hay IPC ni queue — la tabla `ingest_runs` es el único punto de coordinación.
+
+`tokens.json`, `exports/` y `data/` son bind mounts — viven en el host y se comparten entre contenedores.
 
 ```
 Host (tu Pi)                  Contenedor
@@ -234,11 +269,55 @@ docker compose up -d --force-recreate grafana
 
 ## Comportamiento del script
 
-- **Mes exportado**: siempre el mes anterior a la fecha de ejecución
-- **Token**: se renueva automáticamente en cada ejecución usando el refresh token
-- **Duplicados**: si el mes ya fue exportado en el xlsx y en el SQLite, lo omite sin sobreescribir
-- **Rate limit**: la API de Fitbit permite 150 llamadas/hora. Si se supera, volver a correr una hora después
-- **SpO2**: requiere el scope `oxygen_saturation` en el token. Si da 403, reautorizar con ese scope habilitado
+- **Mes por defecto**: mes anterior a la fecha de ejecución. Override con `--year YYYY --month MM` (ambos obligatorios juntos).
+- **`--source`**: `scheduled` (default, usado por Ofelia) o `manual` (usado por la UI). Se graba en la tabla `ingest_runs` para poder distinguir origen de runs.
+- **Token**: se renueva automáticamente en cada ejecución usando el refresh token.
+- **Duplicados**: el xlsx chequea `month_already_exported()` y saltea sheets ya cargadas; el SQLite usa `INSERT OR REPLACE`, así que correr el mismo mes dos veces sobreescribe sin duplicar filas.
+- **Rate limit**: la API de Fitbit permite 150 llamadas/hora. Si se supera, volver a correr una hora después.
+- **SpO2**: requiere el scope `oxygen_saturation` en el token. Si da 403, reautorizar con ese scope habilitado.
+- **Tracking**: al empezar se inserta una fila en `ingest_runs` con `status='running'`; al terminar se hace UPDATE a `success` o `error` (guardando el traceback). La UI consulta esta tabla para mostrar el último run por mes.
+
+### Tabla `ingest_runs`
+
+```sql
+CREATE TABLE ingest_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL,
+    started_at TEXT NOT NULL,    -- ISO UTC
+    finished_at TEXT,
+    status TEXT NOT NULL,         -- 'running' | 'success' | 'error'
+    error TEXT,                   -- traceback truncado (últimos 2000 chars) si status='error'
+    source TEXT NOT NULL          -- 'manual' | 'scheduled'
+);
+CREATE INDEX idx_ingest_runs_ym ON ingest_runs(year, month, started_at DESC);
+```
+
+---
+
+## UI — Ingesta manual (`fitbit.pi`)
+
+Flask app que expone 4 endpoints, todos detrás de HTTP Basic Auth (`UI_USERNAME`/`UI_PASSWORD`):
+
+| Ruta | Método | Descripción |
+|---|---|---|
+| `/` | GET | Render de `index.html` — date picker + grilla de 18 meses + log |
+| `/months` | GET | JSON: `{ months: [{year, month, state, counts, last_run}], running }` — usado por el polling client-side |
+| `/ingest` | POST | Valida `ym=YYYY-MM`, chequea que no haya otro run en curso para ese mes, y spawnea `python /app/export.py --year Y --month M --source manual`. Rate-limited a 5/min + CSRF. |
+| `/log` | GET | Tail de `/app/data/fitbit-ui.log` (últimas 200 líneas) como JSON — polleado cada 2.5s mientras hay un run en curso. |
+
+**Semáforo de la grilla** (lógica en `ui/app.py:collect_status`):
+- 🟢 `full`: las 4 tablas (`actividad`, `sueno`, `heart_rate`, `ejercicios`) tienen al menos una fila para ese mes.
+- 🟠 `partial`: algunas tablas tienen datos, otras no.
+- ⚪ `empty`: ninguna tabla tiene datos.
+
+La vista es **data-driven**: consulta `SELECT strftime('%Y-%m', fecha), COUNT(*) FROM <tabla> GROUP BY ...` en vivo. Esto hace que funcione retroactivamente: cualquier mes ya cargado (manual o scheduled, histórico o nuevo) se marca como completo sin depender del log de runs. El último run (timestamp + source + status) se lee de `ingest_runs` y se muestra como metadata debajo del label del mes.
+
+El polling client-side detecta cuando `/months` devuelve `running: false` y recarga la página (para refrescar el semáforo de la celda recién ingestada).
+
+### Coordinación entre scheduled y manual
+
+Ambas rutas (Ofelia y UI) escriben a la misma `fitbit.db` y a la misma `ingest_runs`. Si se dispara un run manual al mismo tiempo que Ofelia, SQLite serializa las escrituras — en la práctica la ventana es minúscula porque Ofelia corre a las 6am el 1ro y los runs manuales son esporádicos. La UI chequea `is_running_for(year, month)` antes de spawnear para evitar duplicar el mismo mes en paralelo.
 
 ---
 
@@ -311,3 +390,7 @@ sqlite3 fitbit-exporter/exports/fitbit.db "SELECT * FROM actividad ORDER BY fech
 | Dashboard sin datos | UID del datasource incorrecto | Ver sección Grafana → reemplazar UID |
 | `no file exists at the file path` | Permisos o path incorrecto | `chmod 644 exports/fitbit.db` y verificar path con `///var/fitbit/fitbit.db` |
 | Contenedor no arranca | `tokens.json` no existe | `cp tokens.json.example tokens.json` y completar credenciales |
+| UI pide auth con credenciales viejas | `env_file` solo se lee al crear el contenedor | Después de tocar `ui/.env`, hacer `docker compose up -d --force-recreate fitbit-exporter-ui` (un `restart` no alcanza) |
+| `fitbit.pi` no resuelve | Falta el DNS record en Pi-hole | Agregar `fitbit.pi` → IP del Pi en Pi-hole → Local DNS → DNS Records |
+| UI muestra celda gris aunque el mes tiene datos | Ofelia registró el job con el comando viejo (sin `--source`) | Recrear el exporter y reiniciar ofelia: `docker compose up -d --force-recreate fitbit-exporter && docker restart ofelia` |
+| Cambios a `export.py` no se aplican | Tanto el exporter como la UI montan `./export.py:/app/export.py:ro` | Un edit del archivo en el host se refleja instantáneamente en ambos — no hace falta rebuild a menos que toques `requirements.txt` |

@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
+import argparse
 import json
 import os
 import sqlite3
-import requests
-from datetime import date, timedelta
+import sys
+import traceback
+from datetime import date, datetime, timedelta
 from calendar import monthrange
+
 import openpyxl
+import requests
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils import get_column_letter
 
 TOKENS_FILE = os.path.join(os.path.dirname(__file__), "tokens.json")
 EXPORTS_DIR = os.path.join(os.path.dirname(__file__), "exports")
+DB_PATH     = os.path.join(EXPORTS_DIR, "fitbit.db")
 BASE_URL = "https://api.fitbit.com"
 
 def load_tokens():
@@ -287,17 +292,67 @@ def save_to_sqlite(data_dict, db_path):
     conn.close()
     print("✓ Datos guardados en SQLite.")
 
-def main():
+def previous_month():
     today = date.today()
     if today.month == 1:
-        year, month = today.year - 1, 12
-    else:
-        year, month = today.year, today.month - 1
+        return today.year - 1, 12
+    return today.year, today.month - 1
 
+
+def ensure_ingest_runs_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ingest_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            status TEXT NOT NULL,
+            error TEXT,
+            source TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ingest_runs_ym
+            ON ingest_runs(year, month, started_at DESC)
+    """)
+
+
+def start_ingest_run(year, month, source):
+    os.makedirs(EXPORTS_DIR, exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        ensure_ingest_runs_table(conn)
+        cur = conn.execute(
+            "INSERT INTO ingest_runs (year, month, started_at, status, source) "
+            "VALUES (?, ?, ?, 'running', ?)",
+            (year, month, datetime.utcnow().isoformat(timespec="seconds"), source),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def finish_ingest_run(run_id, status, error=None):
+    if run_id is None:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "UPDATE ingest_runs SET finished_at=?, status=?, error=? WHERE id=?",
+            (datetime.utcnow().isoformat(timespec="seconds"), status, error, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def run(year, month, source):
     start, end = get_month_range(year, month)
     filename = os.path.join(EXPORTS_DIR, "fitbit_data.xlsx")
 
-    print(f"Exportando datos de {start} a {end}...")
+    print(f"Exportando datos de {start} a {end} (source={source})...")
 
     if os.path.exists(filename):
         wb = openpyxl.load_workbook(filename)
@@ -332,15 +387,47 @@ def main():
 
     wb.save(filename)
 
-    db_path = os.path.join(EXPORTS_DIR, "fitbit.db")
     save_to_sqlite({
         "steps": steps,
         "sleep": sleep,
         "hr": hr,
         "act_logs": act_logs,
-    }, db_path)
+    }, DB_PATH)
 
     print(f"\n✓ Exportado: {filename}")
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Export Fitbit data for a given month.")
+    p.add_argument("--year", type=int, help="Year (YYYY). Defaults to previous month's year.")
+    p.add_argument("--month", type=int, choices=range(1, 13), metavar="MM",
+                   help="Month (1-12). Defaults to previous month.")
+    p.add_argument("--source", choices=("manual", "scheduled"), default="scheduled",
+                   help="Who triggered this run (recorded in ingest_runs).")
+    args = p.parse_args()
+    if (args.year is None) != (args.month is None):
+        p.error("--year and --month must be given together")
+    return args
+
+
+def main():
+    args = parse_args()
+    if args.year is None:
+        year, month = previous_month()
+    else:
+        year, month = args.year, args.month
+
+    run_id = start_ingest_run(year, month, args.source)
+    try:
+        run(year, month, args.source)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(tb, file=sys.stderr)
+        finish_ingest_run(run_id, "error", tb[-2000:])
+        sys.exit(1)
+    else:
+        finish_ingest_run(run_id, "success")
+
 
 if __name__ == "__main__":
     main()

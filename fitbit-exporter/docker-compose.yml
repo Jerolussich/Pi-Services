@@ -5,11 +5,25 @@ services:
     volumes:
       - ./tokens.json:/app/tokens.json
       - ./exports:/app/exports
+      - ./data:/app/data
+      - ./export.py:/app/export.py:ro
     restart: unless-stopped
     labels:
       ofelia.enabled: "true"
       ofelia.job-exec.fitbit-exporter.schedule: "0 6 1 * *"
-      ofelia.job-exec.fitbit-exporter.command: "python /app/export.py"
+      ofelia.job-exec.fitbit-exporter.command: "python /app/export.py --source scheduled"
+
+  fitbit-exporter-ui:
+    build: ./ui
+    container_name: fitbit-exporter-ui
+    volumes:
+      - ./tokens.json:/app/tokens.json
+      - ./exports:/app/exports
+      - ./data:/app/data
+      - ./export.py:/app/export.py:ro
+    env_file:
+      - ./ui/.env
+    restart: unless-stopped
 
 networks:
   default:

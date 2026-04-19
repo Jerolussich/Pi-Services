@@ -12,7 +12,8 @@ Raspberry Pi 5
 ├── caddy           → Reverse proxy, single entry point (port 80)
 ├── homepage        → Unified dashboard (homepage.pi)
 ├── monitoring      → Prometheus + Grafana + exporters (grafana.pi, prometheus.pi)
-├── fitbit-exporter → Monthly export container (no port, writes to SQLite)
+├── fitbit-exporter      → Monthly export container (no port, writes to SQLite)
+├── fitbit-exporter-ui   → Flask UI for manual per-month ingest (fitbit.pi)
 ├── news/
 │   ├── freshrss        → RSS feed aggregator (freshrss.pi)
 │   ├── wallabag        → Article reader (wallabag.pi)
@@ -49,7 +50,11 @@ Prometheus scrapes system and Pi-hole metrics. Grafana visualizes them and also 
 
 ### Fitbit Exporter
 **Image:** built from `fitbit-exporter/Dockerfile`
-Runs on the 1st of every month at 6am, scheduled by Ofelia. Fetches the previous month's data from the Fitbit API and exports it to `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `tokens.json` and `exports/` are bind-mounted from the host. Grafana reads from the SQLite file for health dashboards.
+Runs on the 1st of every month at 6am, scheduled by Ofelia (`python /app/export.py --source scheduled`). Fetches the previous month's data from the Fitbit API and exports it to `exports/fitbit_data.xlsx` and `exports/fitbit.db` (SQLite). `export.py` also accepts `--year/--month` so any month can be backfilled on demand. Every run writes a row to the `ingest_runs` table (status + source + timestamps). `tokens.json` and `exports/` are bind-mounted from the host; Grafana reads from the SQLite file for health dashboards.
+
+### Fitbit Exporter UI
+**Image:** built from `fitbit-exporter/ui/Dockerfile`
+Flask web UI for manual Fitbit ingest. Shows an 18-month grid with traffic-light status per month (green = all 4 data tables populated, orange = partial, gray = empty), overlaid with the last run's timestamp/source/status from `ingest_runs`. A date picker dispatches `python /app/export.py --year Y --month M --source manual` via `subprocess.Popen` — useful for backfilling months when the Pi was down on the 1st. Shares the `exports/` volume with the main exporter and mounts `export.py` read-only, so there is no code duplication. Protected with HTTP Basic Auth. Accessible via `http://fitbit.pi`.
 
 ### FreshRSS
 **Image:** `freshrss/freshrss:latest`
@@ -95,7 +100,7 @@ Centralized cron scheduler for Docker containers. Replaces individual cron daemo
 | Homepage | Service dashboard |
 | FreshRSS | RSS feed aggregator |
 | Wallabag | Article reader and scraper |
-| Flask | News filter UI + Finance tracker UI |
+| Flask | News filter UI + Finance tracker UI + Fitbit ingest UI |
 | Python 3 + Docker | Fitbit export + news filter + finance tracker (containerized) |
 | SQLite | Fitbit data + news deduplication + finance transactions |
 | Ofelia | Centralized cron scheduler — manages fitbit-exporter, news-filter, itau-tracker |
@@ -146,15 +151,24 @@ pi-services/
 │               └── dashboards.yaml ← Providers for Fitbit, Finance and Pihole folders
 │
 ├── fitbit-exporter/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── export.py
+│   ├── Dockerfile                  ← main exporter (sleep infinity, run by Ofelia)
+│   ├── docker-compose.yml          ← defines both fitbit-exporter AND fitbit-exporter-ui
+│   ├── export.py                   ← --year/--month/--source CLI; writes to ingest_runs
 │   ├── requirements.txt
 │   ├── gather_keys_oauth2.py
 │   ├── tokens.json                 ← gitignored (credentials), bind-mounted
 │   ├── tokens.json.example
 │   ├── README.md
-│   └── exports/                    ← gitignored (personal health data), bind-mounted
+│   ├── exports/                    ← gitignored (personal health data), bind-mounted
+│   ├── data/                       ← gitignored (UI log target)
+│   └── ui/
+│       ├── Dockerfile              ← Flask UI container (gunicorn :8086)
+│       ├── app.py                  ← /, /months, /ingest, /log
+│       ├── requirements.txt
+│       ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD, SECRET_KEY)
+│       ├── .env.example
+│       └── templates/
+│           └── index.html          ← month grid + picker + live log
 │
 ├── news/
 │   ├── README.md
@@ -251,6 +265,7 @@ cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
 cp news/news-filter/ui/.env.example news/news-filter/ui/.env
 cp finance/itau-tracker/.env.example finance/itau-tracker/.env
+cp fitbit-exporter/ui/.env.example fitbit-exporter/ui/.env
 cp caddy/.env.example caddy/.env
 ```
 
@@ -291,6 +306,13 @@ LOG_RETENTION_DAYS=90
 ```
 UI_USERNAME=admin
 UI_PASSWORD=your_ui_password
+```
+
+**`fitbit-exporter/ui/.env`**
+```
+UI_USERNAME=admin
+UI_PASSWORD=your_ui_password
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 ```
 
 **`caddy/.env`** — generate the password hash first:
@@ -374,6 +396,7 @@ All containers should show `Up`.
 | Wallabag | `http://wallabag.pi` | Wallabag login |
 | News Filter UI | `http://news.pi` | Flask Basic Auth |
 | Itaú Tracker UI | `http://finance.pi` | Flask Basic Auth |
+| Fitbit Ingest UI | `http://fitbit.pi` | Flask Basic Auth |
 | Prometheus | `http://prometheus.pi` | Caddy Basic Auth |
 | Pi-hole | `http://pihole.pi/admin` | Pi-hole login |
 

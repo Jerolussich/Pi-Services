@@ -19,6 +19,11 @@
         icon: mdi-chart-line
         href: http://grafana.pi/d/fitbit-insights-dashboard
         description: Correlaciones y tendencias
+    - Fitbit Ingest:
+        icon: mdi-database-sync
+        href: http://fitbit.pi
+        description: Ingesta manual por mes
+        siteMonitor: http://fitbit-exporter-ui:8086
 
 - Tools:
     - System Stats:

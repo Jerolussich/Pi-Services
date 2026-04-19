@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fitbit Ingest</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; color: #fff; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #16213e; border-radius: 8px; padding: 1.5rem; }
+    .card h2 { font-size: 1rem; color: #a0aec0; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    input[type="month"] { background: #0f3460; color: #e0e0e0; border: 1px solid #2d3748; border-radius: 6px; padding: 0.55rem 0.75rem; font-size: 0.95rem; outline: none; color-scheme: dark; }
+    input[type="month"]:focus { border-color: #4a9eff; }
+    .form-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    button { padding: 0.55rem 1.25rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+    .btn-run { background: #48bb78; color: #fff; }
+    .btn-run:hover { background: #38a168; }
+    .btn-run:disabled { background: #2d3748; cursor: not-allowed; }
+    .months { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.5rem; margin-top: 1rem; }
+    .month { background: #0f3460; border: 1px solid #2d3748; border-radius: 6px; padding: 0.6rem 0.75rem; cursor: pointer; transition: border-color 0.15s; }
+    .month:hover { border-color: #4a9eff; }
+    .month.full { border-left: 4px solid #48bb78; }
+    .month.partial { border-left: 4px solid #ed8936; }
+    .month.empty { border-left: 4px solid #4a5568; }
+    .month .lbl { font-size: 0.95rem; font-weight: 600; color: #fff; }
+    .month .meta { font-size: 0.72rem; color: #888; margin-top: 0.25rem; line-height: 1.35; }
+    .month .meta .ok { color: #68d391; }
+    .month .meta .err { color: #fc8181; }
+    .month .meta .run { color: #f6ad55; }
+    .legend { display: flex; gap: 1rem; font-size: 0.75rem; color: #888; margin-top: 0.75rem; flex-wrap: wrap; }
+    .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
+    .legend .lg-full::before { background: #48bb78; }
+    .legend .lg-partial::before { background: #ed8936; }
+    .legend .lg-empty::before { background: #4a5568; }
+    .log { background: #0f3460; border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.78rem; min-height: 300px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; color: #a0e0a0; border: 1px solid #2d3748; }
+    .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .log-header h2 { margin-bottom: 0; }
+    .refresh-badge { font-size: 0.75rem; color: #48bb78; display: none; }
+    .refresh-badge.active { display: inline; }
+    .running-banner { background: #2c5282; color: #bee3f8; padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.9rem; display: none; }
+    .running-banner.active { display: block; }
+  </style>
+</head>
+<body>
+  <h1>⌚ Fitbit Ingest</h1>
+  <p class="subtitle">Dispará una ingesta manual para un mes puntual o revisá qué meses ya están cargados.</p>
+
+  <div class="running-banner {% if running %}active{% endif %}" id="running-banner">▶ Ingest en curso — esperá a que termine antes de disparar otro.</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Ingestar un mes</h2>
+      <form action="/ingest" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-row">
+          <input type="month" name="ym" id="ym" value="{{ default_ym }}" required>
+          <button type="submit" class="btn-run" id="run-btn" {% if running %}disabled{% endif %}>▶ Ingestar</button>
+        </div>
+      </form>
+
+      <div class="legend">
+        <span class="lg-full">Completo (4/4 tablas)</span>
+        <span class="lg-partial">Parcial</span>
+        <span class="lg-empty">Sin datos</span>
+      </div>
+
+      <div class="months" id="months">
+        {% for m in grid %}
+        <div class="month {{ m.state }}" data-ym="{{ m.label }}">
+          <div class="lbl">{{ m.label }}</div>
+          <div class="meta">
+            {% if m.state == 'full' %}<span class="ok">✓ completo</span>
+            {% elif m.state == 'partial' %}<span class="run">◐ parcial</span>
+            {% else %}<span>— vacío</span>{% endif %}
+            {% if m.last_run %}<br>{{ m.last_run.started_at[:16] }} · {{ m.last_run.source }} · {% if m.last_run.status == 'success' %}<span class="ok">ok</span>{% elif m.last_run.status == 'error' %}<span class="err">error</span>{% else %}<span class="run">{{ m.last_run.status }}</span>{% endif %}{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="log-header">
+        <h2>Log</h2>
+        <span class="refresh-badge" id="refresh-badge">● live</span>
+      </div>
+      <div class="log" id="log-content">{{ log }}</div>
+    </div>
+  </div>
+
+  <script>
+    const initialRunning = {{ 'true' if running else 'false' }};
+
+    document.querySelectorAll('.month').forEach(el => {
+      el.addEventListener('click', () => {
+        document.getElementById('ym').value = el.dataset.ym;
+      });
+    });
+
+    function scrollLogToBottom() {
+      const log = document.getElementById('log-content');
+      log.scrollTop = log.scrollHeight;
+    }
+
+    let logInterval = null;
+    let statusInterval = null;
+
+    function startPolling() {
+      document.getElementById('refresh-badge').classList.add('active');
+      document.getElementById('running-banner').classList.add('active');
+      document.getElementById('run-btn').disabled = true;
+
+      if (!logInterval) {
+        logInterval = setInterval(() => {
+          fetch('/log').then(r => r.json()).then(d => {
+            document.getElementById('log-content').textContent = d.log;
+            scrollLogToBottom();
+          });
+        }, 2500);
+      }
+
+      if (!statusInterval) {
+        statusInterval = setInterval(() => {
+          fetch('/months').then(r => r.json()).then(d => {
+            if (!d.running) {
+              stopPolling();
+              location.reload();
+            }
+          });
+        }, 5000);
+      }
+    }
+
+    function stopPolling() {
+      if (logInterval) { clearInterval(logInterval); logInterval = null; }
+      if (statusInterval) { clearInterval(statusInterval); statusInterval = null; }
+      document.getElementById('refresh-badge').classList.remove('active');
+      document.getElementById('running-banner').classList.remove('active');
+      document.getElementById('run-btn').disabled = false;
+    }
+
+    scrollLogToBottom();
+    if (initialRunning) startPolling();
+  </script>
+</body>
+</html>
