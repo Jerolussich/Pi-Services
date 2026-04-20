@@ -1,0 +1,95 @@
+#!/bin/bash
+# calibre-wipe: borra TODOS los libros de la biblioteca de calibre. Irreversible.
+#
+# Diseñado para ser "difícil de correr sin querer":
+# - Solo accesible vía SSH al Pi (no expuesto por web)
+# - Requiere tipear literalmente "BORRAR TODO" como confirmación
+# - Muestra cantidad de libros antes y después
+# - Para el server durante la operación para evitar corrupción
+#
+# Uso:
+#   calibre-wipe
+
+set -euo pipefail
+
+LIBRARY="$HOME/calibre-library"
+CONFIRM_PHRASE="BORRAR TODO"
+
+if [ ! -f "$LIBRARY/metadata.db" ]; then
+    echo "ERROR: no hay biblioteca en $LIBRARY"
+    exit 1
+fi
+
+# Contar libros parando temporalmente el server
+WAS_RUNNING=0
+if systemctl --user is-active --quiet calibre-server; then
+    WAS_RUNNING=1
+fi
+
+restart_if_needed() {
+    if [ "$WAS_RUNNING" = "1" ]; then
+        echo ""
+        echo "→ Reiniciando calibre-server..."
+        systemctl --user start calibre-server
+    fi
+}
+trap restart_if_needed EXIT HUP INT TERM
+
+if [ "$WAS_RUNNING" = "1" ]; then
+    systemctl --user stop calibre-server
+fi
+
+BOOK_COUNT=$(calibredb list --with-library "$LIBRARY" --for-machine 2>/dev/null | grep -c '"id":' || echo 0)
+
+echo ""
+echo "╔═══════════════════════════════════════════════════════════════╗"
+echo "║                        ⚠️  WARNING ⚠️                          ║"
+echo "║                                                               ║"
+echo "║  Esto va a BORRAR todos los libros de tu biblioteca Calibre.  ║"
+echo "║  La acción es IRREVERSIBLE — los archivos EPUB también se     ║"
+echo "║  eliminan del disco.                                          ║"
+echo "╚═══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  Biblioteca: $LIBRARY"
+echo "  Libros actuales: $BOOK_COUNT"
+echo ""
+
+if [ "$BOOK_COUNT" = "0" ]; then
+    echo "La biblioteca ya está vacía. Nada que hacer."
+    exit 0
+fi
+
+echo "Para continuar, tipeá exactamente: $CONFIRM_PHRASE"
+echo -n "> "
+read -r INPUT
+
+if [ "$INPUT" != "$CONFIRM_PHRASE" ]; then
+    echo ""
+    echo "Confirmación no coincide. Abortando. No se borró nada."
+    exit 1
+fi
+
+echo ""
+echo "Última oportunidad. Esperando 5 segundos — Ctrl+C para cancelar..."
+for i in 5 4 3 2 1; do
+    echo -n "$i... "
+    sleep 1
+done
+echo ""
+echo ""
+
+echo "→ Obteniendo IDs de todos los libros..."
+IDS=$(calibredb list --with-library "$LIBRARY" --for-machine 2>/dev/null | grep -oE '"id": ?[0-9]+' | grep -oE '[0-9]+' | tr '\n' ',' | sed 's/,$//')
+
+if [ -z "$IDS" ]; then
+    echo "No se pudieron obtener los IDs. Abortando."
+    exit 1
+fi
+
+echo "→ Borrando $BOOK_COUNT libros..."
+calibredb remove "$IDS" --with-library "$LIBRARY" --permanent
+
+FINAL_COUNT=$(calibredb list --with-library "$LIBRARY" --for-machine 2>/dev/null | grep -c '"id":' || echo 0)
+
+echo ""
+echo "✓ Listo. Libros restantes en la biblioteca: $FINAL_COUNT"

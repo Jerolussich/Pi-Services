@@ -1,0 +1,9 @@
+[Unit]
+Description=Calibre inbox ingest — procesa ~/calibre-inbox/
+After=calibre-server.service
+# No Requires= a propósito: si el server está caído, calibre-ingest lo detecta
+# y hace un no-op en vez de fallar.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/calibre-ingest

@@ -1,6 +1,6 @@
 # Pi Services
 
-A collection of self-hosted services running on a Raspberry Pi 5, managed with Docker Compose. Covers network ad-blocking, system monitoring, Fitbit health data export, a full news reading pipeline, and automatic credit card expense tracking.
+A collection of self-hosted services running on a Raspberry Pi 5, mostly managed with Docker Compose. Covers network ad-blocking, system monitoring, Fitbit health data export, a full news reading pipeline, automatic credit card expense tracking, and a personal e-book library.
 
 ---
 
@@ -24,12 +24,14 @@ Raspberry Pi 5
 │   ├── docker-compose.yml
 │   └── README.md
 │
-└── finance/
-    ├── itau-tracker    → Hourly email fetch + parse (no port, scheduled by Ofelia)
-    └── itau-tracker-ui → Expense dashboard + config UI (finance.pi)
+├── finance/
+│   ├── itau-tracker    → Hourly email fetch + parse (no port, scheduled by Ofelia)
+│   └── itau-tracker-ui → Expense dashboard + config UI (finance.pi)
+│
+└── calibre         → E-book library server (native, NOT Docker — calibre.pi)
 ```
 
-All services run as Docker containers on a shared `pi-services` network. None expose host ports directly — all traffic goes through Caddy on port 80. Pi-hole provides local DNS resolution for `*.pi` hostnames.
+Almost all services run as Docker containers on a shared `pi-services` network and are reached through Caddy on port 80. The exception is **Calibre**, which runs natively on the host (systemd user-service) for faster recovery after power outages; Caddy still reverse-proxies it at `calibre.pi`. Pi-hole provides local DNS resolution for `*.pi` hostnames.
 
 ---
 
@@ -83,6 +85,10 @@ Flask web UI for viewing recent transactions, monthly spending charts, category 
 ### Ofelia
 **Image:** `mcuadros/ofelia:latest`
 Centralized cron scheduler for Docker containers. Replaces individual cron daemons inside containers. Schedules are defined as labels in each service's `docker-compose.yml`. Ofelia uses `docker exec` to run jobs, so environment variables are always available to the script. If a target container is stopped, Ofelia logs the failure and retries on the next schedule without affecting other jobs.
+
+### Calibre
+**Install:** native (apt) — NOT Docker
+Personal e-book library and distribution hub. `calibre-server` runs as a systemd user-service on port 8083 with `--enable-local-write`, serves the library via web UI and OPDS, and survives power outages via systemd linger (no Docker daemon in the startup chain). Book discovery and downloads happen in **Calibre Desktop on the laptop** (using the built-in "Get Books" feature with free sources: Project Gutenberg, Internet Archive, Feedbooks, etc.). Bulk book ingest is done via `~/calibre-inbox/`: a user systemd timer runs every minute, calls `calibre-ingest` which uses `calibredb add` against the running server to import books with automatic deduplication (matches by title+author), deletes successful files, and moves failed ones to `failed/`. Caddy reverse-proxies the host service at `calibre.pi` with Basic Auth. See `calibre/README.md` for install, OPDS feeds and plugins.
 
 ---
 
@@ -207,28 +213,39 @@ pi-services/
 │   ├── docker-compose.yml
 │   └── README.md
 │
-└── finance/
-    └── itau-tracker/
-        ├── docker-compose.yml      ← defines both itau-tracker AND itau-tracker-ui
-        ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD)
-        ├── .env.example
-        ├── tracker/
-        │   ├── Dockerfile          ← sleep infinity (scheduled by Ofelia)
-        │   ├── fetch.py
-        │   ├── auth.py             ← one-time OAuth2 setup
-        │   └── requirements.txt
-        ├── ui/
-        │   ├── Dockerfile          ← Flask UI container
-        │   ├── app.py
-        │   ├── requirements.txt
-        │   └── templates/
-        │       └── index.html
-        └── data/                   ← gitignored
-            ├── finance.db
-            ├── config.json         ← editable from UI
-            ├── token.json          ← gitignored (OAuth2 tokens)
-            ├── tracker.log
-            └── paused
+├── finance/
+│   └── itau-tracker/
+│       ├── docker-compose.yml      ← defines both itau-tracker AND itau-tracker-ui
+│       ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD)
+│       ├── .env.example
+│       ├── tracker/
+│       │   ├── Dockerfile          ← sleep infinity (scheduled by Ofelia)
+│       │   ├── fetch.py
+│       │   ├── auth.py             ← one-time OAuth2 setup
+│       │   └── requirements.txt
+│       ├── ui/
+│       │   ├── Dockerfile          ← Flask UI container
+│       │   ├── app.py
+│       │   ├── requirements.txt
+│       │   └── templates/
+│       │       └── index.html
+│       └── data/                   ← gitignored
+│           ├── finance.db
+│           ├── config.json         ← editable from UI
+│           ├── token.json          ← gitignored (OAuth2 tokens)
+│           ├── tracker.log
+│           └── paused
+│
+└── calibre/                        ← Native (apt install), NOT Docker
+    ├── README.md
+    ├── install.sh                  ← one-shot: apt + library + inbox + systemd + linger
+    ├── bin/
+    │   ├── calibre-ingest          ← processes ~/calibre-inbox with dedup (timer-driven)
+    │   └── calibre-wipe            ← CLI: wipe entire library (with warnings)
+    └── systemd/
+        ├── calibre-server.service  ← user-service (port 8083 --enable-local-write)
+        ├── calibre-ingest.service  ← oneshot triggered by the timer
+        └── calibre-ingest.timer    ← runs calibre-ingest every minute
 ```
 
 ---
@@ -397,6 +414,7 @@ All containers should show `Up`.
 | News Filter UI | `http://news.pi` | Flask Basic Auth |
 | Itaú Tracker UI | `http://finance.pi` | Flask Basic Auth |
 | Fitbit Ingest UI | `http://fitbit.pi` | Flask Basic Auth |
+| Calibre | `http://calibre.pi` | Caddy Basic Auth |
 | Prometheus | `http://prometheus.pi` | Caddy Basic Auth |
 | Pi-hole | `http://pihole.pi/admin` | Pi-hole login |
 
@@ -451,3 +469,4 @@ Each service has its own `README.md` with detailed setup, technical details, and
 - `fitbit-exporter/README.md`
 - `news/README.md`
 - `finance/itau-tracker/README.md`
+- `calibre/README.md`

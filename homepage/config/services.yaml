@@ -53,6 +53,13 @@
         description: Manage keywords & view runs
         siteMonitor: http://news-filter-ui:8084
 
+- Library:
+    - Calibre:
+        icon: calibre.png
+        href: http://calibre.pi
+        description: Biblioteca de libros (OPDS + web)
+        siteMonitor: http://172.17.0.1:8083
+
 - Finance:
     - Itaú Tracker:
         icon: mdi-credit-card

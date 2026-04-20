@@ -1,0 +1,11 @@
+[Unit]
+Description=Calibre inbox ingest timer — dispara calibre-ingest cada minuto
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+# Persistent=true no aplica para user timers sin linger; linger ya está habilitado
+# por install.sh via loginctl enable-linger.
+
+[Install]
+WantedBy=timers.target

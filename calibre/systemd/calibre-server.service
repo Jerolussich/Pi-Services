@@ -1,0 +1,17 @@
+[Unit]
+Description=Calibre Content Server
+Documentation=https://manual.calibre-ebook.com/server.html
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/calibre-server --port 8083 --enable-local-write --trusted-ips 172.17.0.0/16,172.18.0.0/16,172.19.0.0/16,172.20.0.0/16 --log %h/calibre-library/server.log %h/calibre-library
+Restart=always
+RestartSec=5
+# Avoid restart loops if the binary itself is broken
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=default.target

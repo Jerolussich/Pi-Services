@@ -1,0 +1,85 @@
+#!/bin/bash
+# calibre-ingest: procesa todos los libros en ~/calibre-inbox
+#
+# - Skipea duplicados automáticamente (calibredb add no los agrega 2 veces)
+# - Borra archivos ingresados exitosamente (incluyendo duplicados)
+# - Mueve archivos con error a ~/calibre-inbox/failed/
+# - Solo procesa archivos con mtime > 30s (evita parciales de scp/sftp)
+# - Usa HTTP contra calibre-server, no hace falta parar el server
+# - Flock para evitar corridas concurrentes
+#
+# Usado por calibre-ingest.timer (corre cada minuto), o invocable a mano.
+
+set -uo pipefail
+
+INBOX="$HOME/calibre-inbox"
+FAILED="$INBOX/failed"
+LOG="$INBOX/ingest.log"
+SERVER_URL="http://localhost:8083#calibre-library"
+MIN_AGE_SECONDS=30
+
+mkdir -p "$INBOX" "$FAILED"
+
+# Collect candidate files (epub/mobi/azw3/pdf/fb2/kfx) in inbox root.
+mapfile -d '' -t CANDIDATES < <(find "$INBOX" -maxdepth 1 -type f \
+    \( -iname "*.epub" -o -iname "*.mobi" -o -iname "*.azw3" \
+       -o -iname "*.pdf" -o -iname "*.fb2" -o -iname "*.kfx" \) \
+    -print0 2>/dev/null)
+
+if [ "${#CANDIDATES[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+# Filtrar archivos muy recientes (posibles parciales de scp/sftp en vuelo).
+NOW=$(date +%s)
+FILES=()
+for f in "${CANDIDATES[@]}"; do
+    mtime=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+    age=$(( NOW - mtime ))
+    if [ "$age" -ge "$MIN_AGE_SECONDS" ]; then
+        FILES+=("$f")
+    fi
+done
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+# Verificar que el server esté arriba — si no, no mover nada a failed/.
+if ! curl -sf --max-time 3 http://localhost:8083 >/dev/null 2>&1; then
+    echo "[$(date -Iseconds)] calibre-server no alcanzable, skip" >> "$LOG"
+    exit 0
+fi
+
+# Evitar solapamiento de corridas.
+exec 200>"$INBOX/.lock"
+flock -n 200 || exit 0
+
+echo "=== $(date -Iseconds) === ingest run (${#FILES[@]} candidate file(s)) ===" >> "$LOG"
+
+PROCESSED=0
+DUPES=0
+FAILED_COUNT=0
+
+for file in "${FILES[@]}"; do
+    name=$(basename "$file")
+    out=$(calibredb add "$file" --with-library "$SERVER_URL" 2>&1)
+    rc=$?
+
+    if [ $rc -eq 0 ]; then
+        if echo "$out" | grep -qiE "ya existen|already exist"; then
+            echo "[$(date -Iseconds)] DUPE: $name (skip)" >> "$LOG"
+            DUPES=$((DUPES + 1))
+        else
+            echo "[$(date -Iseconds)] OK:   $name" >> "$LOG"
+            PROCESSED=$((PROCESSED + 1))
+        fi
+        rm -f "$file"
+    else
+        echo "[$(date -Iseconds)] FAIL: $name — $out" >> "$LOG"
+        mv -f "$file" "$FAILED/"
+        FAILED_COUNT=$((FAILED_COUNT + 1))
+    fi
+done
+
+echo "[$(date -Iseconds)] summary: added=$PROCESSED dupes=$DUPES failed=$FAILED_COUNT" >> "$LOG"
