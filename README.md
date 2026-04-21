@@ -25,8 +25,9 @@ Raspberry Pi 5
 │   └── README.md
 │
 ├── finance/
-│   ├── itau-tracker    → Hourly email fetch + parse (no port, scheduled by Ofelia)
-│   └── itau-tracker-ui → Expense dashboard + config UI (finance.pi)
+│   └── finance-tracker
+│       ├── itau-email-tracker → Hourly Itaú email fetch + parse (no port, scheduled by Ofelia)
+│       └── finance-tracker-ui → Dashboard + PDF upload + config UI (finance.pi)
 │
 └── calibre         → E-book library server (native, NOT Docker — calibre.pi)
 ```
@@ -74,13 +75,13 @@ Runs daily at 8am, scheduled by Ofelia. Reads articles from FreshRSS, checks the
 **Image:** built from `news/news-filter/ui/Dockerfile`
 Lightweight Flask web UI for managing keywords, viewing run logs, pausing/resuming the cron, and resetting all news data. Protected with HTTP Basic Auth. Accessible via `http://news.pi`.
 
-### Itaú Tracker
-**Image:** built from `finance/itau-tracker/tracker/Dockerfile`
-Runs hourly, scheduled by Ofelia. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`).
+### Itaú Email Tracker
+**Image:** built from `finance/finance-tracker/tracker/Dockerfile`
+Runs hourly, scheduled by Ofelia. Reads Itaú purchase notification emails from a Hotmail account via the Microsoft Graph API, parses transaction details (card, amount, currency, merchant), auto-categorizes by keyword matching, and stores results in SQLite (`finance.db`). Itaú-specific by design — the email regex targets `comunicaciones@itau.com.uy`.
 
-### Itaú Tracker UI
-**Image:** built from `finance/itau-tracker/ui/Dockerfile`
-Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth. Accessible via `http://finance.pi`.
+### Finance Tracker UI
+**Image:** built from `finance/finance-tracker/ui/Dockerfile`
+Flask web UI for viewing recent transactions, monthly spending charts, category breakdowns, uploading account-statement PDFs (bank picker + per-bank parser registry under `ui/parsers/`, currently: Itaú), editing categories and credentials, triggering manual runs with live log, and pausing/resuming the cron. Protected with HTTP Basic Auth. Accessible via `http://finance.pi`.
 
 ### Ofelia
 **Image:** `mcuadros/ofelia:latest`
@@ -109,7 +110,7 @@ Personal e-book library and distribution hub. `calibre-server` runs as a systemd
 | Flask | News filter UI + Finance tracker UI + Fitbit ingest UI |
 | Python 3 + Docker | Fitbit export + news filter + finance tracker (containerized) |
 | SQLite | Fitbit data + news deduplication + finance transactions |
-| Ofelia | Centralized cron scheduler — manages fitbit-exporter, news-filter, itau-tracker |
+| Ofelia | Centralized cron scheduler — manages fitbit-exporter, news-filter, itau-email-tracker |
 | Microsoft Graph API | Email reading for finance tracker |
 
 ---
@@ -214,18 +215,19 @@ pi-services/
 │   └── README.md
 │
 ├── finance/
-│   └── itau-tracker/
-│       ├── docker-compose.yml      ← defines both itau-tracker AND itau-tracker-ui
+│   └── finance-tracker/
+│       ├── docker-compose.yml      ← defines itau-email-tracker AND finance-tracker-ui
 │       ├── .env                    ← gitignored (UI_USERNAME, UI_PASSWORD)
 │       ├── .env.example
 │       ├── tracker/
 │       │   ├── Dockerfile          ← sleep infinity (scheduled by Ofelia)
-│       │   ├── fetch.py
+│       │   ├── fetch.py            ← Itaú email fetcher (Graph API, Itaú-specific regex)
 │       │   ├── auth.py             ← one-time OAuth2 setup
 │       │   └── requirements.txt
 │       ├── ui/
 │       │   ├── Dockerfile          ← Flask UI container
 │       │   ├── app.py
+│       │   ├── parsers/            ← per-bank PDF parsers (itau.py today; registry in __init__.py)
 │       │   ├── requirements.txt
 │       │   └── templates/
 │       │       └── index.html
@@ -262,7 +264,7 @@ pi-services/
 > - `caddy/README.md` — Pi-hole DNS records and port 80 setup must be done before Caddy starts
 - `ofelia/README.md` — explains the centralized scheduler and how schedules are defined
 - `fitbit-exporter/README.md` — requires a Fitbit developer account and OAuth2 token setup
-- `finance/itau-tracker/README.md` — requires a Microsoft Azure app registration and one-time device code authorization
+- `finance/finance-tracker/README.md` — requires a Microsoft Azure app registration and one-time device code authorization
 
 ### 1. Clone the repo
 
@@ -281,7 +283,7 @@ cp monitoring/.env.example monitoring/.env
 cp news/wallabag/.env.example news/wallabag/.env
 cp news/news-filter/.env.example news/news-filter/.env
 cp news/news-filter/ui/.env.example news/news-filter/ui/.env
-cp finance/itau-tracker/.env.example finance/itau-tracker/.env
+cp finance/finance-tracker/.env.example finance/finance-tracker/.env
 cp fitbit-exporter/ui/.env.example fitbit-exporter/ui/.env
 cp caddy/.env.example caddy/.env
 ```
@@ -295,7 +297,7 @@ PI_IP=your_pi_ip
 ```
 PIHOLE_API_KEY=your_pihole_app_password
 FITBIT_EXPORTS_PATH=/home/youruser/pi-services/fitbit-exporter/exports
-FINANCE_DATA_PATH=/home/youruser/pi-services/finance/itau-tracker/data
+FINANCE_DATA_PATH=/home/youruser/pi-services/finance/finance-tracker/data
 ```
 
 **`news/wallabag/.env`**
@@ -319,7 +321,7 @@ SEEN_RETENTION_DAYS=30
 LOG_RETENTION_DAYS=90
 ```
 
-**`finance/itau-tracker/.env`**
+**`finance/finance-tracker/.env`**
 ```
 UI_USERNAME=admin
 UI_PASSWORD=your_ui_password
@@ -376,7 +378,7 @@ docker compose up -d
 - **FreshRSS** (`http://freshrss.pi`) — complete the install wizard, enable API access in **Settings → Authentication**, set API password in **Settings → Profile**, set archiving to 30 days in **Settings → Archiving**
 - **Wallabag** (`http://wallabag.pi`) — login with `wallabag / wallabag`, change password, create API client in **API clients management**, add credentials to `news/news-filter/.env`
 - **Grafana** (`http://grafana.pi`) — login with `admin / admin`, change password, install SQLite plugin, configure Fitbit and Finance datasources
-- **Itaú Tracker** — run one-time authorization: `docker exec -it itau-tracker python /app/auth.py`, follow the device code flow in your browser, then run the first fetch: `docker exec itau-tracker python /app/fetch.py`
+- **Itaú Email Tracker** — run one-time authorization: `docker exec -it itau-email-tracker python /app/auth.py`, follow the device code flow in your browser, then run the first fetch: `docker exec itau-email-tracker python /app/fetch.py`
 
 See each service's `README.md` for detailed setup instructions.
 
@@ -412,7 +414,7 @@ All containers should show `Up`.
 | FreshRSS | `http://freshrss.pi` | FreshRSS login |
 | Wallabag | `http://wallabag.pi` | Wallabag login |
 | News Filter UI | `http://news.pi` | Flask Basic Auth |
-| Itaú Tracker UI | `http://finance.pi` | Flask Basic Auth |
+| Finance Tracker UI | `http://finance.pi` | Flask Basic Auth |
 | Fitbit Ingest UI | `http://fitbit.pi` | Flask Basic Auth |
 | Calibre | `http://calibre.pi` | Caddy Basic Auth |
 | Prometheus | `http://prometheus.pi` | Caddy Basic Auth |
@@ -451,8 +453,8 @@ The `--dry-run` flag prints every command the script would execute without runni
 Sensitive files are covered by `.gitignore` and never committed. Use `.env.example` files as templates when setting up on a new machine.
 
 - `tokens.json` — Fitbit OAuth2 credentials
-- `finance/itau-tracker/data/token.json` — Microsoft OAuth2 tokens
-- `finance/itau-tracker/data/config.json` — Azure client secret
+- `finance/finance-tracker/data/token.json` — Microsoft OAuth2 tokens
+- `finance/finance-tracker/data/config.json` — Azure client secret
 - `caddy/.env` — Caddy Basic Auth credentials (bcrypt hash)
 - All `**/.env` files — service passwords
 
@@ -468,5 +470,5 @@ Each service has its own `README.md` with detailed setup, technical details, and
 - `monitoring/README.md`
 - `fitbit-exporter/README.md`
 - `news/README.md`
-- `finance/itau-tracker/README.md`
+- `finance/finance-tracker/README.md`
 - `calibre/README.md`

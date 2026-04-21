@@ -61,11 +61,11 @@
         siteMonitor: http://172.17.0.1:8083
 
 - Finance:
-    - Itaú Tracker:
+    - Finance Tracker:
         icon: mdi-credit-card
         href: http://finance.pi
-        description: Gastos con tarjeta de crédito
-        siteMonitor: http://itau-tracker-ui:8085
+        description: Movimientos bancarios (email + PDF uploads)
+        siteMonitor: http://finance-tracker-ui:8085
     - Finance Dashboard:
         icon: mdi-chart-bar
         href: http://grafana.pi/d/finance-main

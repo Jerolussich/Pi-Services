@@ -85,6 +85,15 @@ def init_db():
             category    TEXT
         )
     """)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+    if "source" not in existing_cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN source TEXT DEFAULT 'email'")
+    if "direction" not in existing_cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN direction TEXT DEFAULT 'debit'")
+    if "movement_type" not in existing_cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN movement_type TEXT")
+    if "account" not in existing_cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN account TEXT")
     conn.commit()
     return conn
 
@@ -145,7 +154,7 @@ def main():
         log.info("Tracker is paused — delete /app/data/paused to resume")
         return
 
-    log.info("Starting itau-tracker run")
+    log.info("Starting itau-email-tracker run")
     config = load_config()
     tokens = load_tokens()
     conn   = init_db()
@@ -177,8 +186,8 @@ def main():
             tx = parse_transaction(email_data, config.get("categories", {}))
             if tx:
                 conn.execute("""
-                    INSERT INTO transactions (email_id, date, card_type, card_last4, amount, currency, merchant, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO transactions (email_id, date, card_type, card_last4, amount, currency, merchant, category, source, direction, movement_type, account)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'email', 'debit', 'CONSUMO', 'Itaú tarjeta (email)')
                 """, (email_id, tx["date"], tx["card_type"], tx["card_last4"],
                       tx["amount"], tx["currency"], tx["merchant"], tx["category"]))
                 conn.commit()

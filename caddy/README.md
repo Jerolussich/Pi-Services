@@ -13,7 +13,7 @@ Browser → caddy:80
     wallabag.pi     → wallabag:80
     freshrss.pi     → freshrss:80
     news.pi         → news-filter-ui:8084
-    finance.pi      → itau-tracker-ui:8085
+    finance.pi      → finance-tracker-ui:8085
     prometheus.pi   → prometheus:9090   (+ Basic Auth)
     pihole.pi       → 192.168.68.66:8181
     <any IP access> → 403 Access denied
@@ -115,7 +115,7 @@ docker logs caddy
 
 **Direct IP access blocked** — the catch-all rule `http:// { respond "Access denied" 403 }` blocks any request that doesn't match a hostname, preventing direct IP access to services.
 
-**Basic Auth** — Homepage and Prometheus have no built-in auth so Caddy adds HTTP Basic Auth in front of them. Other services (Grafana, Wallabag, FreshRSS, Pi-hole, news-filter-ui, itau-tracker-ui) have their own login mechanisms — Caddy just proxies them.
+**Basic Auth** — Homepage and Prometheus have no built-in auth so Caddy adds HTTP Basic Auth in front of them. Other services (Grafana, Wallabag, FreshRSS, Pi-hole, news-filter-ui, finance-tracker-ui) have their own login mechanisms — Caddy just proxies them.
 
 **Shared Docker network** — all containers join the `pi-services` network. Caddy resolves service names (e.g. `grafana`, `freshrss`) as container hostnames — no IP addresses needed in the Caddyfile.
 

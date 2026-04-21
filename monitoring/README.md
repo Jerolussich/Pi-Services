@@ -64,7 +64,7 @@ Editar `.env`:
 ```
 PIHOLE_API_KEY=tu_app_password_de_pihole
 FITBIT_EXPORTS_PATH=/home/youruser/pi-services/fitbit-exporter/exports
-FINANCE_DATA_PATH=/home/youruser/pi-services/finance/itau-tracker/data
+FINANCE_DATA_PATH=/home/youruser/pi-services/finance/finance-tracker/data
 ```
 
 #### Cómo obtener la API Key de Pi-hole v6
@@ -104,7 +104,7 @@ Todos deben mostrar `Up`. Acceder a Grafana en `http://grafana.pi`.
 |---|---|---|
 | `PIHOLE_API_KEY` | App Password de Pi-hole v6 | `abc123...` |
 | `FITBIT_EXPORTS_PATH` | Ruta al host donde vive `fitbit.db` | `/home/user/pi-services/fitbit-exporter/exports` |
-| `FINANCE_DATA_PATH` | Ruta al host donde vive la DB de finanzas | `/home/user/pi-services/finance/itau-tracker/data` |
+| `FINANCE_DATA_PATH` | Ruta al host donde vive la DB de finanzas | `/home/user/pi-services/finance/finance-tracker/data` |
 
 ---
 

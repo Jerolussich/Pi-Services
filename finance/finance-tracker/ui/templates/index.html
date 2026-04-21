@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finance Tracker</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; }
+    .header { background: #16213e; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2d3748; }
+    .header h1 { font-size: 1.25rem; color: #fff; }
+    .header .actions { display: flex; gap: 0.5rem; }
+    nav { background: #0f3460; padding: 0 2rem; display: flex; gap: 0; border-bottom: 1px solid #2d3748; }
+    nav a { padding: 0.75rem 1.25rem; color: #a0aec0; text-decoration: none; font-size: 0.9rem; border-bottom: 2px solid transparent; }
+    nav a.active { color: #4a9eff; border-bottom-color: #4a9eff; }
+    nav a:hover { color: #fff; }
+    main { padding: 2rem; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: #16213e; border-radius: 8px; padding: 1.25rem; }
+    .stat-card .label { font-size: 0.75rem; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .stat-card .value { font-size: 1.75rem; font-weight: 700; color: #fff; }
+    .stat-card .sub { font-size: 0.8rem; color: #4a9eff; margin-top: 0.25rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+    .card { background: #16213e; border-radius: 8px; padding: 1.5rem; }
+    .card h2 { font-size: 0.85rem; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; color: #a0aec0; font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2d3748; }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #1a1a2e; }
+    tr:hover td { background: #0f3460; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+    .cat-supermercado { background: #2f855a; color: #c6f6d5; }
+    .cat-restaurant   { background: #c05621; color: #feebc8; }
+    .cat-transporte   { background: #2c5282; color: #bee3f8; }
+    .cat-farmacia     { background: #553c9a; color: #e9d8fd; }
+    .cat-combustible  { background: #744210; color: #fefcbf; }
+    .cat-tecnologia   { background: #285e61; color: #b2f5ea; }
+    .cat-ropa         { background: #97266d; color: #fed7e2; }
+    .cat-salud        { background: #276749; color: #c6f6d5; }
+    .cat-transferencia { background: #2b6cb0; color: #bee3f8; }
+    .cat-conversion    { background: #b83280; color: #fed7e2; }
+    .cat-facturas      { background: #6b46c1; color: #e9d8fd; }
+    .cat-entretenimiento { background: #975a16; color: #faf089; }
+    .cat-otros        { background: #4a5568; color: #e2e8f0; }
+    .amount { font-weight: 600; color: #fc8181; }
+    .amount.credit { color: #68d391; }
+    .dir-badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-right: 0.25rem; }
+    .dir-debit  { background: #742a2a; color: #feb2b2; }
+    .dir-credit { background: #22543d; color: #9ae6b4; }
+    .src-pdf   { color: #a0aec0; font-size: 0.72rem; }
+    .src-email { color: #a0aec0; font-size: 0.72rem; }
+    .drop-zone { border: 2px dashed #4a5568; border-radius: 8px; padding: 2.5rem 1.5rem; text-align: center; transition: all 0.15s; cursor: pointer; background: #0f3460; }
+    .drop-zone:hover, .drop-zone.dragover { border-color: #4a9eff; background: #16213e; }
+    .drop-zone p { color: #a0aec0; margin-bottom: 0.5rem; }
+    .drop-zone .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+    .drop-zone .filename { color: #4a9eff; font-weight: 600; margin-top: 0.5rem; }
+    .flash { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem; }
+    .flash-ok    { background: #22543d; color: #c6f6d5; }
+    .flash-error { background: #742a2a; color: #feb2b2; }
+    .cat-editor { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+    .cat-block { background: #0f3460; border: 1px solid #2d3748; border-radius: 8px; padding: 0.75rem 1rem; }
+    .cat-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; gap: 0.5rem; }
+    .cat-head .cat-title { font-weight: 700; font-size: 0.95rem; color: #fff; text-transform: capitalize; letter-spacing: 0.02em; }
+    .cat-head .cat-meta  { font-size: 0.72rem; color: #a0aec0; }
+    .cat-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+    .chip { display: inline-flex; align-items: center; gap: 0.35rem; background: #2d3748; color: #e2e8f0; padding: 0.25rem 0.2rem 0.25rem 0.65rem; border-radius: 999px; font-size: 0.78rem; line-height: 1; }
+    .chip .chip-x { background: transparent; color: #a0aec0; border: none; cursor: pointer; padding: 0 0.4rem; font-size: 1rem; line-height: 1; border-radius: 999px; }
+    .chip .chip-x:hover { background: #742a2a; color: #feb2b2; }
+    .chip-input { min-width: 140px; flex: 1; background: transparent; border: 1px dashed #4a5568; border-radius: 999px; padding: 0.25rem 0.75rem; color: #e0e0e0; font-size: 0.78rem; outline: none; }
+    .chip-input:focus { border-color: #4a9eff; border-style: solid; }
+    .btn-chip-del { background: transparent; color: #fc8181; border: 1px solid #742a2a; padding: 0.2rem 0.55rem; border-radius: 4px; font-size: 0.72rem; cursor: pointer; }
+    .btn-chip-del:hover { background: #742a2a; color: #feb2b2; }
+    .cat-new { display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #2d3748; }
+    .cat-new input { flex: 1; background: #0f3460; color: #e0e0e0; border: 1px solid #2d3748; border-radius: 6px; padding: 0.45rem 0.75rem; font-size: 0.85rem; }
+    .cat-new input:focus { border-color: #4a9eff; outline: none; }
+    .btn-add-cat { background: #2b6cb0; color: #fff; }
+    .cat-hint { font-size: 0.75rem; color: #a0aec0; margin-bottom: 0.75rem; }
+    .log-box { background: #0f3460; border-radius: 6px; padding: 0.75rem; font-family: monospace; font-size: 0.78rem; min-height: 200px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; color: #a0e0a0; border: 1px solid #2d3748; }
+    .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .live-badge { font-size: 0.75rem; color: #48bb78; display: none; }
+    .live-badge.active { display: inline; }
+    .paused-banner { background: #744210; color: #fbd38d; padding: 0.6rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    button { padding: 0.45rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    .btn-run    { background: #48bb78; color: #fff; }
+    .btn-pause  { background: #ed8936; color: #fff; }
+    .btn-resume { background: #48bb78; color: #fff; }
+    .btn-reset  { background: #e53e3e; color: #fff; }
+    .btn-save   { background: #4a9eff; color: #fff; }
+    .danger-zone { margin-top: 2rem; border-top: 1px solid #2d3748; padding-top: 1.5rem; }
+    .danger-zone h2 { color: #fc8181; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
+    .danger-desc { color: #888; font-size: 0.82rem; margin-bottom: 1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.82rem; color: #a0aec0; margin-bottom: 0.35rem; }
+    .form-group input, .form-group textarea, .form-group select { width: 100%; background: #0f3460; color: #e0e0e0; border: 1px solid #2d3748; border-radius: 6px; padding: 0.5rem 0.75rem; font-size: 0.9rem; outline: none; }
+    .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: #4a9eff; }
+    .form-group textarea { min-height: 200px; font-family: monospace; resize: vertical; }
+    .bar-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; font-size: 0.82rem; }
+    .bar-row .month { width: 60px; color: #a0aec0; }
+    .bar-row .bar { background: #4a9eff; height: 16px; border-radius: 3px; min-width: 2px; }
+    .bar-row .val { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>💳 Finance Tracker</h1>
+    <div class="actions">
+      {% if not paused %}
+      <form action="/run" method="post" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-run">▶ Run now</button>
+      </form>
+      {% endif %}
+      <form action="/toggle-pause" method="post" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if paused %}
+        <button type="submit" class="btn-resume">▶ Resume</button>
+        {% else %}
+        <button type="submit" class="btn-pause">⏸ Pause</button>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+
+  <nav>
+    <a href="/" class="{{ 'active' if active == 'dashboard' }}">Dashboard</a>
+    <a href="/upload" class="{{ 'active' if active == 'upload' }}">Upload PDF</a>
+    <a href="/config" class="{{ 'active' if active == 'config' }}">Config</a>
+  </nav>
+
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% for kind, msg in messages %}
+      <div class="flash flash-{{ kind }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if paused %}
+    <div class="paused-banner">⏸ Tracker is paused — cron will not run until resumed.</div>
+    {% endif %}
+
+    {% if active == 'dashboard' %}
+
+    {% if stats %}
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Gastos del mes</div>
+        <div class="value">{{ stats.monthly_total }}</div>
+        <div class="sub">{{ stats.currency }} — {{ stats.this_month }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Ingresos del mes</div>
+        <div class="value" style="color:#9ae6b4">{{ stats.monthly_income }}</div>
+        <div class="sub">{{ stats.currency }} — {{ stats.this_month }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total transactions</div>
+        <div class="value">{{ stats.total_count }}</div>
+        <div class="sub">all time</div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Monthly spending (UYU)</h2>
+        {% if stats.monthly %}
+          {% set max_val = stats.monthly | map(attribute=1) | max %}
+          {% for row in stats.monthly %}
+          <div class="bar-row">
+            <span class="month">{{ row[0] }}</span>
+            <div class="bar" style="width: {{ [(row[1] / max_val * 200) | int, 2] | max }}px"></div>
+            <span class="val">{{ row[1] }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="color:#888;font-size:0.85rem">No data yet</p>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h2>By category (UYU)</h2>
+        {% if stats.by_category %}
+          {% set max_cat = stats.by_category | map(attribute=1) | max %}
+          {% for row in stats.by_category %}
+          <div class="bar-row">
+            <span class="month" style="width:90px">{{ row[0] }}</span>
+            <div class="bar" style="width: {{ [(row[1] / max_cat * 180) | int, 2] | max }}px"></div>
+            <span class="val">{{ row[1] }}</span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="color:#888;font-size:0.85rem">No data yet</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if stats.by_account and stats.by_account|length > 0 %}
+    <div class="card" style="margin-bottom:2rem">
+      <h2>By account</h2>
+      <table>
+        <thead>
+          <tr><th>Account</th><th>Currency</th><th style="text-align:right">In</th><th style="text-align:right">Out</th><th style="text-align:right">Net</th><th style="text-align:right"># movs</th></tr>
+        </thead>
+        <tbody>
+          {% for row in stats.by_account %}
+          <tr>
+            <td>{{ row[0] }}</td>
+            <td>{{ row[3] or '—' }}</td>
+            <td class="amount credit" style="text-align:right">{{ '%.2f'|format(row[2] or 0) }}</td>
+            <td class="amount" style="text-align:right">{{ '%.2f'|format(row[1] or 0) }}</td>
+            <td style="text-align:right;font-weight:600;color:{{ '#9ae6b4' if (row[2] or 0) - (row[1] or 0) >= 0 else '#fc8181' }}">
+              {{ '%.2f'|format((row[2] or 0) - (row[1] or 0)) }}
+            </td>
+            <td style="text-align:right;color:#a0aec0">{{ row[4] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    <div class="card" style="margin-bottom:2rem">
+      <div class="log-header">
+        <h2>Recent transactions</h2>
+      </div>
+      {% if stats.recent %}
+      <table>
+        <thead>
+          <tr><th>Date</th><th></th><th>Merchant</th><th>Account</th><th>Type</th><th>Category</th><th style="text-align:right">Amount</th></tr>
+        </thead>
+        <tbody>
+          {% for row in stats.recent %}
+          {% set direction = row[7] or 'debit' %}
+          {% set source = row[8] or 'email' %}
+          {% set mov_type = row[9] or row[1] %}
+          {% set account = row[10] or '—' %}
+          <tr>
+            <td>{{ row[0][:10] }}</td>
+            <td><span class="dir-badge dir-{{ direction }}">{{ '↓' if direction == 'credit' else '↑' }}</span></td>
+            <td>{{ row[3] }}</td>
+            <td><span class="src-{{ source }}">{{ account }}</span></td>
+            <td>{{ mov_type }}{% if row[2] %} ***{{ row[2] }}{% endif %}</td>
+            <td><span class="badge cat-{{ row[6] }}">{{ row[6] }}</span></td>
+            <td class="amount {{ 'credit' if direction == 'credit' }}" style="text-align:right">{{ row[4] }} {{ row[5] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p style="color:#888;font-size:0.85rem">No transactions yet — run the tracker or upload a PDF.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="log-header">
+        <h2>Last run log</h2>
+        <span class="live-badge" id="live-badge">● live</span>
+      </div>
+      <div class="log-box" id="log-box">{{ log if log is defined else '' }}</div>
+    </div>
+
+    <div class="danger-zone">
+      <h2>⚠ Danger Zone</h2>
+      <p class="danger-desc">Deletes all transactions from the database and clears the log. Cannot be undone.</p>
+      <form action="/reset" method="post" onsubmit="return confirm('Delete all transaction data? This cannot be undone.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-reset">🗑 Delete all data</button>
+      </form>
+    </div>
+
+    {% elif active == 'upload' %}
+
+    <div class="card">
+      <h2>Upload account statement (PDF)</h2>
+      <p style="color:#a0aec0;font-size:0.85rem;margin-bottom:1rem">
+        Drag & drop a monthly statement PDF here, or click to browse. Pick the bank so the right parser is used. Duplicates are detected automatically.
+      </p>
+      <form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label>Bank <span style="color:#fc8181">*</span></label>
+          <select name="bank" required>
+            {% for bid, blabel in banks %}<option value="{{ bid }}">{{ blabel }}</option>{% endfor %}
+          </select>
+          <p style="font-size:0.72rem;color:#718096;margin-top:0.25rem">
+            Only listed banks have a parser. Uploading a PDF from another bank will return an error.
+          </p>
+        </div>
+        <div class="form-group">
+          <label>Account / source <span style="color:#fc8181">*</span></label>
+          <input name="account" id="account-input" list="known-accounts" required
+                 placeholder="e.g. Itaú UYU, Itaú USD">
+          <datalist id="known-accounts">
+            {% for a in accounts %}<option value="{{ a }}">{% endfor %}
+          </datalist>
+          <p style="font-size:0.72rem;color:#718096;margin-top:0.25rem">
+            Identifies where the PDF comes from. Reuse the same name to keep all statements of the same account together; pick a new name for a different account.
+          </p>
+        </div>
+        <div class="drop-zone" id="drop-zone">
+          <div class="icon">📄</div>
+          <p><strong>Drag & drop</strong> a PDF here, or <strong>click to browse</strong></p>
+          <p style="font-size:0.75rem;color:#718096">Max 10 MB · .pdf only</p>
+          <div class="filename" id="filename"></div>
+          <input type="file" name="pdf" id="pdf-input" accept="application/pdf" style="display:none">
+        </div>
+        <div style="margin-top:1rem;text-align:right">
+          <button type="submit" class="btn-save" id="upload-btn" disabled>Upload & parse</button>
+        </div>
+      </form>
+
+      {% if accounts %}
+      <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #2d3748">
+        <h2 style="font-size:0.8rem;color:#a0aec0;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.5rem">Known accounts</h2>
+        <div style="display:flex;flex-wrap:wrap;gap:0.4rem">
+          {% for a in accounts %}
+          <span class="badge cat-otros">{{ a }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% elif active == 'config' %}
+
+    <div class="card">
+      <h2>Email settings</h2>
+      <form id="config-form" action="/config" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-group">
+          <label>IMAP Host</label>
+          <input name="imap_host" value="{{ cfg.imap_host if cfg else 'outlook.office365.com' }}">
+        </div>
+        <div class="form-group">
+          <label>IMAP Port</label>
+          <input name="imap_port" value="{{ cfg.imap_port if cfg else '993' }}">
+        </div>
+        <div class="form-group">
+          <label>Email address</label>
+          <input name="email_user" value="{{ cfg.email_user if cfg else '' }}">
+        </div>
+        <div class="form-group">
+          <label>App password</label>
+          <input name="email_password" type="password" value="{{ cfg.email_password if cfg else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Sender filter (email to watch)</label>
+          <input name="sender_filter" value="{{ cfg.sender_filter if cfg else 'comunicaciones@itau.com.uy' }}">
+        </div>
+        <div class="form-group">
+          <label>Categories</label>
+          <p class="cat-hint">
+            Cada categoría tiene keywords. Si alguna keyword aparece en el <em>tipo de movimiento</em> o en el <em>comercio</em> de una transacción, cae en esa categoría. Enter o coma para agregar una keyword, clic en × para sacarla.
+          </p>
+          <div class="cat-editor" id="cat-editor">
+            {% if cfg and cfg.categories %}
+              {% for cat, kws in cfg.categories.items() %}
+              <div class="cat-block" data-name="{{ cat }}">
+                <div class="cat-head">
+                  <div>
+                    <span class="badge cat-{{ cat }}">{{ cat }}</span>
+                    <span class="cat-meta">{{ kws|length }} keyword{{ 's' if kws|length != 1 }}</span>
+                  </div>
+                  <button type="button" class="btn-chip-del" data-act="del-cat">Eliminar categoría</button>
+                </div>
+                <div class="cat-chips">
+                  {% for kw in kws %}
+                  <span class="chip" data-kw="{{ kw }}">{{ kw }}<button type="button" class="chip-x" data-act="del-kw">×</button></span>
+                  {% endfor %}
+                  <input type="text" class="chip-input" placeholder="+ keyword">
+                </div>
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+          <div class="cat-new">
+            <input type="text" id="new-cat-name" placeholder="Nombre de nueva categoría (ej. 'mascotas')">
+            <button type="button" id="btn-add-cat" class="btn-save btn-add-cat">+ Agregar categoría</button>
+          </div>
+          <textarea name="categories_raw" id="categories_raw" style="display:none"></textarea>
+        </div>
+        <div style="margin-top:1rem">
+          <button type="submit" class="btn-save">Save config</button>
+        </div>
+      </form>
+    </div>
+
+    {% endif %}
+  </main>
+
+  <script>
+    const running = {{ 'true' if running else 'false' }};
+    function scrollLog() {
+      const el = document.getElementById("log-box");
+      if (el) el.scrollTop = el.scrollHeight;
+    }
+    function pollLog(ms) {
+      const badge = document.getElementById("live-badge");
+      if (badge) badge.classList.add("active");
+      const iv = setInterval(() => {
+        fetch("/log").then(r => r.json()).then(d => {
+          const el = document.getElementById("log-box");
+          if (el) { el.textContent = d.log; scrollLog(); }
+        });
+      }, 2000);
+      setTimeout(() => {
+        clearInterval(iv);
+        if (badge) badge.classList.remove("active");
+      }, ms);
+    }
+    scrollLog();
+    if (running) pollLog(30000);
+
+    (function() {
+      const editor = document.getElementById("cat-editor");
+      if (!editor) return;
+      const raw = document.getElementById("categories_raw");
+      const form = document.getElementById("config-form");
+      const addBtn = document.getElementById("btn-add-cat");
+      const newInput = document.getElementById("new-cat-name");
+
+      const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const esc  = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+      const makeChip = kw => {
+        const c = document.createElement("span");
+        c.className = "chip";
+        c.dataset.kw = kw;
+        c.innerHTML = esc(kw) + '<button type="button" class="chip-x" data-act="del-kw">×</button>';
+        return c;
+      };
+
+      const updateMeta = block => {
+        const n = block.querySelectorAll(".chip").length;
+        const meta = block.querySelector(".cat-meta");
+        if (meta) meta.textContent = n + " keyword" + (n === 1 ? "" : "s");
+      };
+
+      const addKeyword = (block, kw) => {
+        kw = kw.trim();
+        if (!kw) return;
+        const existing = [...block.querySelectorAll(".chip")].some(c => c.dataset.kw.toLowerCase() === kw.toLowerCase());
+        if (existing) return;
+        const input = block.querySelector(".chip-input");
+        block.querySelector(".cat-chips").insertBefore(makeChip(kw), input);
+        updateMeta(block);
+      };
+
+      editor.addEventListener("click", e => {
+        if (e.target.dataset.act === "del-kw") {
+          const block = e.target.closest(".cat-block");
+          e.target.closest(".chip").remove();
+          updateMeta(block);
+        } else if (e.target.dataset.act === "del-cat") {
+          const block = e.target.closest(".cat-block");
+          if (confirm("Eliminar la categoría '" + block.dataset.name + "'?")) block.remove();
+        }
+      });
+
+      editor.addEventListener("keydown", e => {
+        if (!e.target.classList.contains("chip-input")) return;
+        if (e.key === "Enter" || e.key === ",") {
+          e.preventDefault();
+          addKeyword(e.target.closest(".cat-block"), e.target.value);
+          e.target.value = "";
+        } else if (e.key === "Backspace" && !e.target.value) {
+          const chips = e.target.closest(".cat-chips").querySelectorAll(".chip");
+          if (chips.length) {
+            chips[chips.length - 1].remove();
+            updateMeta(e.target.closest(".cat-block"));
+          }
+        }
+      });
+      editor.addEventListener("blur", e => {
+        if (e.target.classList && e.target.classList.contains("chip-input") && e.target.value.trim()) {
+          addKeyword(e.target.closest(".cat-block"), e.target.value);
+          e.target.value = "";
+        }
+      }, true);
+
+      addBtn.addEventListener("click", () => {
+        const name = newInput.value.trim();
+        if (!name) { newInput.focus(); return; }
+        if ([...editor.querySelectorAll(".cat-block")].some(b => b.dataset.name === name)) {
+          alert("Ya existe una categoría con ese nombre.");
+          return;
+        }
+        const block = document.createElement("div");
+        block.className = "cat-block";
+        block.dataset.name = name;
+        block.innerHTML =
+          '<div class="cat-head">' +
+            '<div><span class="badge cat-' + slug(name) + '">' + esc(name) + '</span> <span class="cat-meta">0 keywords</span></div>' +
+            '<button type="button" class="btn-chip-del" data-act="del-cat">Eliminar categoría</button>' +
+          '</div>' +
+          '<div class="cat-chips"><input type="text" class="chip-input" placeholder="+ keyword"></div>';
+        editor.appendChild(block);
+        newInput.value = "";
+        block.querySelector(".chip-input").focus();
+      });
+      newInput.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addBtn.click(); } });
+
+      form.addEventListener("submit", () => {
+        const lines = [...editor.querySelectorAll(".cat-block")].map(block => {
+          const name = block.dataset.name;
+          const kws  = [...block.querySelectorAll(".chip")].map(c => c.dataset.kw);
+          const pending = block.querySelector(".chip-input").value.trim();
+          if (pending) kws.push(pending);
+          return name + ": " + kws.join(", ");
+        });
+        raw.value = lines.join("\n");
+      });
+    })();
+
+    (function() {
+      const dz = document.getElementById("drop-zone");
+      const fi = document.getElementById("pdf-input");
+      const fn = document.getElementById("filename");
+      const bt = document.getElementById("upload-btn");
+      if (!dz) return;
+      const setFile = (file) => {
+        if (!file) return;
+        fn.textContent = file.name + "  (" + (file.size / 1024).toFixed(1) + " KB)";
+        bt.disabled = false;
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fi.files = dt.files;
+      };
+      dz.addEventListener("click", () => fi.click());
+      fi.addEventListener("change", () => { if (fi.files[0]) setFile(fi.files[0]); });
+      ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("dragover"); }));
+      ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("dragover"); }));
+      dz.addEventListener("drop", e => {
+        const file = e.dataTransfer.files[0];
+        if (file && file.type === "application/pdf") setFile(file);
+        else alert("Please drop a PDF file.");
+      });
+    })();
+  </script>
+</body>
+</html>

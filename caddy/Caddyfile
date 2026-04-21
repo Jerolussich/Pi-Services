@@ -27,7 +27,7 @@ http://news.pi {
 }
 
 http://finance.pi {
-    reverse_proxy itau-tracker-ui:8085
+    reverse_proxy finance-tracker-ui:8085
 }
 
 http://prometheus.pi {
