@@ -65,7 +65,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -89,7 +89,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(pasos)) as pasos FROM actividad",
           "refId": "A",
           "queryType": "table"
@@ -97,7 +97,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -119,7 +119,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(calorias)) as calorias FROM actividad",
           "refId": "A",
           "queryType": "table"
@@ -127,7 +127,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -149,7 +149,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(distancia_km), 1) as distancia FROM actividad",
           "refId": "A",
           "queryType": "table"
@@ -157,7 +157,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -179,7 +179,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(minutos_activos)) as minutos FROM actividad",
           "refId": "A",
           "queryType": "table"
@@ -187,7 +187,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#5794F2", "mode": "fixed" },
@@ -215,7 +215,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, pasos FROM actividad ORDER BY fecha",
           "refId": "A",
           "queryType": "table"
@@ -223,7 +223,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#FF9830", "mode": "fixed" },
@@ -251,7 +251,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, calorias FROM actividad ORDER BY fecha",
           "refId": "A",
           "queryType": "table"
@@ -266,7 +266,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -288,7 +288,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(total_min) / 60.0, 1) as horas FROM sueno WHERE total_min > 0",
           "refId": "A",
           "queryType": "table"
@@ -296,7 +296,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -318,7 +318,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(eficiencia_pct), 1) as eficiencia FROM sueno WHERE eficiencia_pct > 0",
           "refId": "A",
           "queryType": "table"
@@ -326,7 +326,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -348,7 +348,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(rem_min)) as rem FROM sueno WHERE rem_min > 0",
           "refId": "A",
           "queryType": "table"
@@ -356,7 +356,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -378,7 +378,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(deep_min)) as deep FROM sueno WHERE deep_min > 0",
           "refId": "A",
           "queryType": "table"
@@ -386,7 +386,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -418,7 +418,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, deep_min, light_min, rem_min, despierto_min FROM sueno WHERE total_min > 0 ORDER BY fecha",
           "refId": "A",
           "queryType": "table"
@@ -426,7 +426,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -452,7 +452,7 @@
       "type": "piechart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT 'Deep' as fase, ROUND(AVG(deep_min)) as minutos FROM sueno WHERE deep_min > 0 UNION ALL SELECT 'Light', ROUND(AVG(light_min)) FROM sueno WHERE light_min > 0 UNION ALL SELECT 'REM', ROUND(AVG(rem_min)) FROM sueno WHERE rem_min > 0 UNION ALL SELECT 'Despierto', ROUND(AVG(despierto_min)) FROM sueno WHERE despierto_min > 0",
           "refId": "A",
           "queryType": "table"
@@ -467,7 +467,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -497,7 +497,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(resting_hr)) as bpm FROM heart_rate WHERE resting_hr > 0",
           "refId": "A",
           "queryType": "table"
@@ -505,7 +505,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -527,7 +527,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT MIN(resting_hr) as bpm FROM heart_rate WHERE resting_hr > 0",
           "refId": "A",
           "queryType": "table"
@@ -535,7 +535,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -557,7 +557,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT SUM(cardio_min) as minutos FROM heart_rate",
           "refId": "A",
           "queryType": "table"
@@ -565,7 +565,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#F2495C", "mode": "fixed" },
@@ -592,7 +592,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, resting_hr FROM heart_rate WHERE resting_hr > 0 ORDER BY fecha",
           "refId": "A",
           "queryType": "table"
@@ -600,7 +600,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -632,7 +632,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, out_of_range_min, fat_burn_min, cardio_min, peak_min FROM heart_rate ORDER BY fecha",
           "refId": "A",
           "queryType": "table"
@@ -647,7 +647,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -669,7 +669,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT COUNT(*) as entrenamientos FROM ejercicios",
           "refId": "A",
           "queryType": "table"
@@ -677,7 +677,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -699,7 +699,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(duracion_min)) as minutos FROM ejercicios",
           "refId": "A",
           "queryType": "table"
@@ -707,7 +707,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -729,7 +729,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT SUM(calorias) as calorias FROM ejercicios",
           "refId": "A",
           "queryType": "table"
@@ -737,7 +737,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -759,7 +759,7 @@
       "type": "stat",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT ROUND(AVG(hr_avg)) as bpm FROM ejercicios WHERE hr_avg > 0",
           "refId": "A",
           "queryType": "table"
@@ -767,7 +767,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -793,7 +793,7 @@
       "type": "piechart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT actividad, COUNT(*) as cantidad FROM ejercicios GROUP BY actividad ORDER BY cantidad DESC",
           "refId": "A",
           "queryType": "table"
@@ -801,7 +801,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#73BF69", "mode": "fixed" },
@@ -828,7 +828,7 @@
       "type": "barchart",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT actividad, ROUND(AVG(duracion_min)) as duracion FROM ejercicios GROUP BY actividad ORDER BY duracion DESC",
           "refId": "A",
           "queryType": "table"
@@ -836,7 +836,7 @@
       ]
     },
     {
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -866,7 +866,7 @@
       "type": "table",
       "targets": [
         {
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffdmnvien4hdse" },
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "ffgi9l44uw54wb" },
           "rawQueryText": "SELECT fecha, hora_inicio, actividad, duracion_min, calorias, hr_avg FROM ejercicios ORDER BY fecha DESC, hora_inicio DESC LIMIT 50",
           "refId": "A",
           "queryType": "table"

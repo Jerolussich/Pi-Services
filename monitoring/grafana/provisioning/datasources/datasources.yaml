@@ -1,0 +1,37 @@
+apiVersion: 1
+
+# Origenes de datos declarados en el repo, no creados a mano en Grafana.
+#
+# Antes vivian solo dentro de grafana.db, dentro del volumen de Docker. Cuando
+# ese volumen se perdio, los tableros quedaron apuntando a UIDs inexistentes y
+# los paneles de Fitbit y Finance se veian vacios sin mostrar ningun error.
+#
+# Los UID de abajo NO son arbitrarios: son exactamente los que referencian los
+# JSON de dashboards/. Si se cambia uno, hay que cambiarlo tambien alli o el
+# tablero queda mudo.
+
+datasources:
+  - name: prometheus
+    type: prometheus
+    uid: afdfqn8b7ss1sf
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  # Los dos siguientes usan el plugin frser-sqlite-datasource, que se instala
+  # via GF_INSTALL_PLUGINS en docker-compose.yml. Sin ese plugin Grafana
+  # descarta el origen de datos entero y sus paneles quedan vacios.
+  - name: Fitbit
+    type: frser-sqlite-datasource
+    uid: ffgi9l44uw54wb
+    jsonData:
+      path: /var/fitbit/fitbit.db
+    editable: false
+
+  - name: Finance
+    type: frser-sqlite-datasource
+    uid: cfdqep2yn124gf
+    jsonData:
+      path: /var/finance/finance.db
+    editable: false

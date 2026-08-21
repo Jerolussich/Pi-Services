@@ -7,6 +7,11 @@ services:
     container_name: grafana
     image: grafana/grafana-oss
     restart: unless-stopped
+    environment:
+      # Plugin SQLite para los tableros de Fitbit y Finance. Sin esto Grafana
+      # no reconoce el tipo frser-sqlite-datasource y descarta esos origenes
+      # de datos, dejando sus paneles vacios sin mostrar ningun error.
+      - GF_INSTALL_PLUGINS=frser-sqlite-datasource
     volumes:
     - grafana-data:/var/lib/grafana
     - ${FITBIT_EXPORTS_PATH}:/var/fitbit:ro
