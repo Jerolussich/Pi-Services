@@ -1,3 +1,30 @@
+- Media:
+    - Jellyfin:
+        icon: jellyfin.png
+        href: http://jellyfin.pi
+        description: Reproducir peliculas y series
+        siteMonitor: http://jellyfin:8096
+    - Radarr:
+        icon: radarr.png
+        href: http://radarr.pi
+        description: Agregar y automatizar peliculas
+        siteMonitor: http://radarr:7878
+    - qBittorrent:
+        icon: qbittorrent.png
+        href: http://qbit.pi
+        description: Descargas en curso
+        siteMonitor: http://qbittorrent:8080
+    - Bazarr:
+        icon: bazarr.png
+        href: http://bazarr.pi
+        description: Subtitulos automaticos
+        siteMonitor: http://bazarr:6767
+    - Prowlarr:
+        icon: prowlarr.png
+        href: http://prowlarr.pi
+        description: Indexers (se configura una vez)
+        siteMonitor: http://prowlarr:9696
+
 - Network:
     - Pi-hole:
         icon: pi-hole.png
