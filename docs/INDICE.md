@@ -9,12 +9,14 @@ Punto de entrada del repositorio. Desde acá llegás a cualquier cosa sin tener 
 Grabá Raspberry Pi OS **Lite de 64 bits**, entrá por SSH, cloná el repo y corré:
 
 ```bash
-./bootstrap.sh
+./instalador.sh
 ```
 
-Te va guiando paso a paso por los 13 pasos de la instalación: te explica qué va a hacer antes de hacerlo, te pide los datos que necesita, y te deja saltear lo que no tengas a mano. Al final te dice qué quedó pendiente.
+Te muestra el estado de cada módulo, elegís cuáles querés (y hasta qué servicios sueltos dentro de cada uno), te pide los datos que necesita explicándote de dónde sacarlos, y levanta todo. Lo que no tengas a mano lo salteás y al final te dice exactamente qué quedó sin completar.
 
-Es idempotente: si lo cortás, volvés a correrlo y sigue donde estaba. También podés arrancar desde un paso puntual con `./bootstrap.sh --desde 7`, o ver la lista con `--listar`.
+**Podés volver a correrlo cuando quieras** para sumar un módulo, completar un dato que salteaste o levantar un servicio que dejaste apagado. Detecta lo que ya funciona y no lo toca.
+
+Cómo funciona por dentro: [INSTALADOR.md](INSTALADOR.md).
 
 Si preferís entender antes de ejecutar, o hacerlo a mano:
 
