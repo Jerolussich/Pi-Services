@@ -164,7 +164,66 @@ VARIABLES=(
 "media|media/.env|DAS_ROOT|texto|Donde esta montado el disco externo|Si todavia no lo tenes, dejalo en /mnt/das"
 "media|media/.env|JELLYFIN_PublishedServerUrl|auto|URL con la que Jellyfin se anuncia|"
 "media|media/.env|QBIT_TORRENT_PORT|auto|Puerto de conexiones entrantes|"
+"news|news/news-filter/.env|FRESHRSS_USERNAME|texto|Tu usuario de FreshRSS|El nombre con el que creaste la cuenta. Por defecto: admin"
+"news|news/news-filter/.env|WALLABAG_USERNAME|texto|Tu usuario de Wallabag|El nombre con el que creaste la cuenta. Por defecto: wallabag"
 )
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  ARCHIVOS QUE HACEN FALTA Y NO SON VARIABLES
+#
+#  Algunos servicios necesitan un archivo, no una variable de entorno: tokens
+#  de OAuth, listas de palabras. Sin esto el instalador reportaria el modulo
+#  como "funcionando" aunque no pueda hacer absolutamente nada.
+#
+#  Ademas importa crearlos ANTES de levantar el contenedor: si el compose
+#  monta un archivo que no existe, Docker crea un DIRECTORIO con ese nombre
+#  y el servicio nunca puede escribir ahi.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# modulo|ruta|descripcion|como conseguirlo|plantilla|marcador de "sin completar"
+ARCHIVOS=(
+"fitbit|fitbit-exporter/tokens.json|Credenciales OAuth de Fitbit|Registra una app en dev.fitbit.com y corre el flujo de autorizacion, ver fitbit-exporter/README.md|fitbit-exporter/tokens.json.example|YOUR_CLIENT_ID"
+"finance|finance/finance-tracker/data/token.json|Token de Microsoft Graph|Se genera autorizando por codigo de dispositivo, ver finance/finance-tracker/README.md||"
+"news|news/news-filter/config/keywords.txt|Palabras clave del filtro de noticias|Una por linea. Las elegis vos: temas que te interesen||"
+)
+
+# Un archivo esta completo si existe, es archivo (no directorio), tiene
+# contenido, y no quedo con los marcadores de la plantilla
+archivo_completo() {
+    local ruta="$1" marcador="${2:-}"
+    [ -f "$ruta" ] || return 1
+    [ -s "$ruta" ] || return 1
+    [ -n "$marcador" ] && grep -q "$marcador" "$ruta" 2>/dev/null && return 1
+    return 0
+}
+
+# Crea los archivos que falten, desde su plantilla si la hay.
+# Esto evita que Docker los cree como directorios al montarlos.
+crear_archivos_faltantes() {
+    local linea m ruta desc como plantilla marcador creados=0
+    for linea in "${ARCHIVOS[@]}"; do
+        IFS='|' read -r m ruta desc como plantilla marcador <<< "$linea"
+        [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
+
+        # Si Docker ya lo creo como directorio, hay que sacarlo
+        if [ -d "$ruta" ]; then
+            rmdir "$ruta" 2>/dev/null || sudo rm -rf "$ruta"
+            aviso "$ruta estaba creado como directorio, lo corrijo"
+        fi
+
+        if [ ! -e "$ruta" ]; then
+            mkdir -p "$(dirname "$ruta")"
+            if [ -n "$plantilla" ] && [ -f "$plantilla" ]; then
+                cp "$plantilla" "$ruta"
+            else
+                touch "$ruta"
+            fi
+            creados=$((creados+1))
+        fi
+    done
+    [ "$creados" -gt 0 ] && ok "Cree $creados archivos vacios, para que Docker no los cree como directorios"
+    return 0
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  UTILIDADES
@@ -290,6 +349,14 @@ detectar() {
             [ "$tipo" = "auto" ] && continue
             completa "$arch" "$v" || faltan=$((faltan+1))
         done
+        # Los archivos (tokens de OAuth, listas) cuentan igual que las variables:
+        # sin ellos el servicio corre pero no puede hacer nada
+        local ruta marcador
+        for linea in "${ARCHIVOS[@]}"; do
+            IFS='|' read -r m ruta _ _ _ marcador <<< "$linea"
+            [ "$m" = "$mod" ] || continue
+            archivo_completo "$ruta" "$marcador" || faltan=$((faltan+1))
+        done
 
         if [ "$arriba" -eq "$total" ] && [ "$faltan" -eq 0 ]; then
             ESTADO[$mod]=activo; DETALLE[$mod]="$arriba de $total contenedores arriba"
@@ -363,7 +430,11 @@ listar_faltantes() {
             mod_previo="$m"
         fi
         echo "     ${C}·${N} $desc"
-        gris "         va en:  $arch  ->  $v="
+        if [ "$tipo" = "archivo" ]; then
+            gris "         es el archivo:  $arch"
+        else
+            gris "         va en:  $arch  ->  $v="
+        fi
         [ -n "$ayuda" ] && gris "         donde:  $ayuda"
     done
 }
@@ -383,6 +454,19 @@ faltantes_detallado() {
             corriendo_falta+=("$linea")
         else
             apagado_falta+=("$linea")
+        fi
+    done
+
+    # Los archivos se reportan igual que las variables, en el mismo formato
+    local ruta como plantilla marcador
+    for linea in "${ARCHIVOS[@]}"; do
+        IFS='|' read -r m ruta desc como plantilla marcador <<< "$linea"
+        archivo_completo "$ruta" "$marcador" && continue
+        local fila="$m|$ruta|(archivo)|archivo|$desc|$como"
+        if [ "$(corriendo "$m")" -gt 0 ]; then
+            corriendo_falta+=("$fila")
+        else
+            apagado_falta+=("$fila")
         fi
     done
 
@@ -612,6 +696,17 @@ recolectar() {
     titulo "Datos que hacen falta"
 
     crear_envs_vacios
+    crear_archivos_faltantes
+
+    # Los archivos de token no se pueden pedir por consola: salen de un flujo
+    # de autorizacion en el navegador. Se avisan como pendientes.
+    local la m ruta desc como plantilla marcador
+    for la in "${ARCHIVOS[@]}"; do
+        IFS='|' read -r m ruta desc como plantilla marcador <<< "$la"
+        [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
+        archivo_completo "$ruta" "$marcador" && continue
+        INCOMPLETOS+=("$m|$ruta|(archivo)|$desc|$como")
+    done
 
     # Primero los automaticos, sin molestar al usuario
     local linea m arch v tipo desc ayuda auto=0
@@ -1192,7 +1287,11 @@ resumen() {
         for linea in "${INCOMPLETOS[@]}"; do
             IFS='|' read -r m arch v desc ayuda <<< "$linea"
             echo "  ${B}·${N} ${C}$desc${N}"
-            gris "      va en:  $arch  ->  $v="
+            if [ "$v" = "(archivo)" ]; then
+                gris "      es el archivo:  $arch"
+            else
+                gris "      va en:  $arch  ->  $v="
+            fi
             [ -n "$ayuda" ] && gris "      donde:  $ayuda"
         done
         echo ""

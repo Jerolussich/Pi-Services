@@ -50,6 +50,10 @@ Lo que ya está corriendo y le falta un dato es **lo urgente**: el contenedor es
 
 Esto hace que correr el instalador sirva también solo para preguntar: entrás, mirás qué falta, y salís sin tocar nada dejando el menú en blanco.
 
+**No mira solo variables de entorno.** Algunos servicios necesitan un archivo, no una variable: el token de OAuth de Fitbit, el de Microsoft Graph para el lector del banco, la lista de palabras clave del filtro. Sin contarlos, el instalador reportaría esos módulos como "funcionando" aunque no puedan hacer absolutamente nada, que es la peor forma de mentir.
+
+Y los crea vacíos antes de levantar los contenedores, por una razón concreta: **si Compose monta un archivo que no existe, Docker crea un directorio con ese nombre**. El servicio después nunca puede escribir ahí y falla de una forma bastante difícil de rastrear. Si encuentra uno mal creado, lo corrige.
+
 ### 2. Elegís módulos
 
 Un menú numerado con los doce módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
