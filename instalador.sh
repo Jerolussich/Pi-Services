@@ -1298,8 +1298,15 @@ arr_autenticacion() {
     actual=$(arr_api "$svc" "$puerto" "$ver" GET /config/host 2>/dev/null | python3 -c \
         'import sys,json;print(json.load(sys.stdin).get("authenticationMethod",""))' 2>/dev/null)
     case "$actual" in
-        forms|basic) gris "     $svc ya tenia contrasena, no la piso"; return 0 ;;
-        "")          aviso "$svc: no pude leer su configuracion"; return 1 ;;
+        forms|basic)
+            # Ya tiene una. Como la API key nos deja cambiarla sin saber la
+            # vieja, se puede ofrecer unificarla en vez de dejarte con dos.
+            if ! unificar_claves; then
+                gris "     $svc queda con la contrasena que ya tenia"
+                return 0
+            fi
+            ;;
+        "") aviso "$svc: no pude leer su configuracion"; return 1 ;;
     esac
     nuevo=$(arr_api "$svc" "$puerto" "$ver" GET /config/host 2>/dev/null | CLAVE="$clave" python3 -c '
 import sys, json, os
@@ -1314,7 +1321,8 @@ print(json.dumps(d))' 2>/dev/null)
     id=$(echo "$nuevo" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
     arr_api "$svc" "$puerto" "$ver" PUT "/config/host/$id" "$nuevo" >/dev/null 2>&1
     ok "$svc: usuario ${B}admin${N} con tu contrasena"
-    gris "     antes se entraba sin ninguna"
+    [ "$actual" = "none" ] && gris "     antes se entraba sin ninguna"
+    return 0
 }
 
 cfg_radarr() {
@@ -1423,6 +1431,29 @@ print(json.dumps({
 #  los pocos intentos fallidos y qBittorrent BANEA la IP. Asi que nunca se
 #  adivina: o la sabes, o se resetea a proposito, o se deja como esta.
 
+# Radarr, Prowlarr, Bazarr, Grafana y Pi-hole se manejan por API o por linea de
+# comandos, asi que su contrasena se puede cambiar SIN saber la vieja. Si ya
+# tenian una, se pregunta una sola vez si unificarlas todas.
+UNIFICAR=""
+
+unificar_claves() {
+    if [ -z "$UNIFICAR" ]; then
+        echo ""
+        aviso "Algunos servicios ya tenian contrasena puesta de antes."
+        gris "     A estos los manejo por API, asi que puedo ponerles la nueva"
+        gris "     sin necesidad de saber la vieja."
+        echo ""
+        if preguntar "¿Les pongo la contrasena nueva y queda una sola para todo?" "s"; then
+            UNIFICAR=si
+        else
+            UNIFICAR=no
+            info "Los dejo con la que tenian."
+        fi
+        echo ""
+    fi
+    [ "$UNIFICAR" = "si" ]
+}
+
 # Donde vive el /config de un contenedor, en el host
 ruta_config() {
     $DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}' "$1" 2>/dev/null
@@ -1491,8 +1522,11 @@ qbit_clave_temporal() {
 qbit_resetear() {
     local cfg
     cfg=$(ruta_config qbittorrent)
-    if [ -z "$cfg" ] || [ ! -f "$cfg/qBittorrent/qBittorrent.conf" ]; then
+    # El test va con sudo: los volumenes viven en /var/lib/docker/volumes, que
+    # es solo de root, y sin sudo un archivo que existe se ve como inexistente.
+    if [ -z "$cfg" ] || ! sudo test -f "$cfg/qBittorrent/qBittorrent.conf"; then
         aviso "No encontre la configuracion de qBittorrent"
+        gris "     buscaba en: ${cfg:-(ruta vacia)}"
         return 1
     fi
     info "Lo paro, le saco la contrasena y lo vuelvo a levantar."
@@ -1627,8 +1661,10 @@ jf_api() {
 jf_resetear() {
     local nueva="$1" cfg resp uid
     cfg=$(ruta_config jellyfin)
-    if [ -z "$cfg" ] || [ ! -f "$cfg/data/jellyfin.db" ]; then
+    # Con sudo, por lo mismo que en qBittorrent: la ruta es solo de root
+    if [ -z "$cfg" ] || ! sudo test -f "$cfg/data/jellyfin.db"; then
         aviso "No encontre la base de datos de Jellyfin"
+        gris "     buscaba en: ${cfg:-(ruta vacia)}"
         return 1
     fi
 
@@ -1650,12 +1686,21 @@ PY
         return 1
     fi
 
-    JF_TOKEN=""
-    resp=$(jf_api POST /Users/AuthenticateByName '{"Username":"admin","Pw":""}' 2>/dev/null)
-    JF_TOKEN=$(echo "$resp" | python3 -c \
-        'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
-    uid=$(echo "$resp" | python3 -c \
-        'import sys,json;print(json.load(sys.stdin).get("User",{}).get("Id",""))' 2>/dev/null)
+    # Jellyfin contesta 200 en /System/Info/Public antes de estar listo para
+    # autenticar, asi que hay que reintentar. Es seguro: la contrasena quedo
+    # vacia, o sea que no estamos adivinando nada, y ademas Jellyfin pone el
+    # contador de intentos fallidos en cero cuando uno entra bien.
+    local i
+    JF_TOKEN=""; uid=""
+    for i in 1 2 3 4 5 6 7 8; do
+        sleep 4
+        resp=$(jf_api POST /Users/AuthenticateByName '{"Username":"admin","Pw":""}' 2>/dev/null)
+        JF_TOKEN=$(echo "$resp" | python3 -c \
+            'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
+        uid=$(echo "$resp" | python3 -c \
+            'import sys,json;print(json.load(sys.stdin).get("User",{}).get("Id",""))' 2>/dev/null)
+        [ -n "$JF_TOKEN" ] && [ -n "$uid" ] && break
+    done
 
     if [ -z "$JF_TOKEN" ] || [ -z "$uid" ]; then
         aviso "Jellyfin: no pude entrar ni despues de resetear"
@@ -1765,7 +1810,14 @@ cfg_bazarr() {
     fi
     cp "$tmpf" "$tmpf.previo"
 
-    salida=$(CLAVE="$clave" RADARR_KEY="${kr:-}" ARCHIVO="$tmpf" python3 <<'PY' 2>&1
+    # Si ya tiene contrasena, se pisa solo si dijiste que si a unificarlas.
+    # Su contrasena vive en el mismo archivo, asi que no hace falta la vieja.
+    local forzar=no
+    if $DOCKER exec bazarr sh -c 'grep -A3 "^auth:" /config/config/config.yaml | grep -q "type: form"' 2>/dev/null; then
+        unificar_claves && forzar=si
+    fi
+
+    salida=$(CLAVE="$clave" RADARR_KEY="${kr:-}" ARCHIVO="$tmpf" FORZAR="$forzar" python3 <<'PY' 2>&1
 import os, hashlib, yaml
 
 RUTA = os.environ["ARCHIVO"]
@@ -1783,7 +1835,7 @@ if key and c["radarr"].get("apikey") != key:
     hecho.append("radarr")
 
 # Bazarr guarda la contrasena del panel como md5 en su propio config.yaml
-if not c["auth"].get("type"):
+if not c["auth"].get("type") or os.environ.get("FORZAR") == "si":
     c["auth"]["type"] = "form"
     c["auth"]["username"] = "admin"
     c["auth"]["password"] = hashlib.md5(os.environ["CLAVE"].encode()).hexdigest()
