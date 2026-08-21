@@ -6,15 +6,35 @@ Punto de entrada del repositorio. Desde acá llegás a cualquier cosa sin tener 
 
 ## Empezar de cero
 
-Si tenés que rearmar el Pi desde nada, este es el orden:
+Grabá Raspberry Pi OS **Lite de 64 bits**, entrá por SSH, cloná el repo y corré:
 
-| Paso | Documento |
+```bash
+./bootstrap.sh
+```
+
+Te va guiando paso a paso por los 13 pasos de la instalación: te explica qué va a hacer antes de hacerlo, te pide los datos que necesita, y te deja saltear lo que no tengas a mano. Al final te dice qué quedó pendiente.
+
+Es idempotente: si lo cortás, volvés a correrlo y sigue donde estaba. También podés arrancar desde un paso puntual con `./bootstrap.sh --desde 7`, o ver la lista con `--listar`.
+
+Si preferís entender antes de ejecutar, o hacerlo a mano:
+
+| Para | Documento |
 |---|---|
-| 1. Entender qué es cada cosa | [ARQUITECTURA.md](ARQUITECTURA.md) |
-| 2. Levantar todo | [OPERACION.md](OPERACION.md) |
-| 3. Configurar cada servicio | el README de cada servicio, abajo |
-| 4. Acceso remoto | [../TAILSCALE.md](../TAILSCALE.md) |
-| 5. Endurecer el Pi | [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+| Entender qué es cada cosa y por qué | [ARQUITECTURA.md](ARQUITECTURA.md) |
+| Levantar, bajar y diagnosticar | [OPERACION.md](OPERACION.md) |
+| Configurar cada servicio | el README de cada uno, abajo |
+| Acceso remoto | [../TAILSCALE.md](../TAILSCALE.md) |
+| Que no se vuelva a romper | [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+
+## Uso diario
+
+Después de un reinicio **no hay nada que hacer**: Pi-hole, Tailscale y Calibre son servicios del sistema y arrancan solos, y los contenedores tienen `restart: unless-stopped`.
+
+Si igual querés levantar todo a mano, es un solo comando:
+
+```bash
+cd ~/pi-services && docker compose up -d
+```
 
 ---
 
