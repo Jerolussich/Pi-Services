@@ -1250,12 +1250,20 @@ ejecutar() {
 esta_arriba() { $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"; }
 
 # Recien levantado un contenedor puede tardar en atender. Esperamos.
+#
+# Importa mirar el codigo y no solo si curl anduvo: Jellyfin contesta 503 un
+# buen rato mientras arranca, y curl devuelve exito igual. Dar eso por listo
+# hace que todo lo que venga despues falle sin motivo aparente.
 esperar_http() {
-    local svc="$1" puerto="$2" ruta="${3:-/}" i
-    for i in $(seq 1 30); do
+    local svc="$1" puerto="$2" ruta="${3:-/}" i code
+    for i in $(seq 1 45); do
         esta_arriba "$svc" || return 1
-        $DOCKER exec "$svc" curl -s -o /dev/null --max-time 4 \
-            "http://localhost:$puerto$ruta" 2>/dev/null && return 0
+        code=$($DOCKER exec "$svc" curl -s -o /dev/null -w '%{http_code}' --max-time 4 \
+            "http://localhost:$puerto$ruta" 2>/dev/null)
+        case "$code" in
+            ""|000|5*) ;;   # sin respuesta o todavia arrancando
+            *) return 0 ;;
+        esac
         sleep 2
     done
     return 1
@@ -1408,14 +1416,103 @@ print(json.dumps({
     arr_autenticacion prowlarr 9696 v1 "$clave"
 }
 
+# ── Recuperar una credencial que ya existe ────────────────────────────────────
+#
+#  Un servicio que ya tiene contrasena no se puede reconfigurar a ciegas. Y
+#  probar candidatas es peor que no hacer nada: Jellyfin BLOQUEA la cuenta a
+#  los pocos intentos fallidos y qBittorrent BANEA la IP. Asi que nunca se
+#  adivina: o la sabes, o se resetea a proposito, o se deja como esta.
+
+# Donde vive el /config de un contenedor, en el host
+ruta_config() {
+    $DOCKER inspect -f '{{range .Mounts}}{{if eq .Destination "/config"}}{{.Source}}{{end}}{{end}}' "$1" 2>/dev/null
+}
+
+# Devuelve por stdout: la contrasena que escribas, "RESET", o vacio para dejarlo.
+# Los mensajes van a /dev/tty para no ensuciar lo que devuelve.
+menu_credencial() {
+    local svc="$1" v=""
+    {
+        echo ""
+        echo "        ${A}!${N} ${B}$svc${N} ya tiene una contrasena distinta a la que elegiste."
+        echo "          No la puedo adivinar: probar de a una bloquea la cuenta."
+        echo ""
+        echo "          ${B}1${N})  la escribo yo"
+        echo "          ${B}2${N})  resetearla y ponerle la nueva"
+        echo "          ${B}3${N})  dejarlo como esta"
+        echo ""
+        printf "          ${B}que hago${N} [1/2/3]: "
+    } > /dev/tty 2>/dev/null
+    read -r v < /dev/tty 2>/dev/null || v=3
+    case "$v" in
+        1)
+            printf "          ${B}contrasena actual:${N} " > /dev/tty 2>/dev/null
+            v=""
+            read -r -s v < /dev/tty 2>/dev/null || true
+            echo "" > /dev/tty 2>/dev/null
+            echo "$v"
+            ;;
+        2) echo "RESET" ;;
+        *) echo "" ;;
+    esac
+}
+
 # ── qBittorrent ───────────────────────────────────────────────────────────────
 
 # La contrasena con la que qBittorrent quedo realmente. Puede no ser la general
 # si la general tiene menos de 6 caracteres. Radarr la necesita para conectarse.
 CLAVE_QBIT=""
 
+# Un solo intento de login. La 5.x contesta 204 sin cuerpo, las viejas 200 con
+# "Ok.": verificar contra el texto da falso negativo con un login que anduvo.
+qbit_login() {
+    local pass="$1" ck="$2" code
+    [ -n "$pass" ] || return 1
+    code=$($DOCKER exec qbittorrent curl -s -o /dev/null -w '%{http_code}' -c "$ck" -X POST \
+        -H "Referer: http://localhost:8080" \
+        --data-urlencode "username=admin" --data-urlencode "password=$pass" \
+        "http://localhost:8080/api/v2/auth/login" 2>/dev/null)
+    [ "$code" = "200" ] || [ "$code" = "204" ]
+}
+
+# Su propia configuracion dice si hay contrasena, sin tener que probar ninguna
+qbit_tiene_clave() {
+    $DOCKER exec qbittorrent sh -c \
+        'grep -q "Password_PBKDF2" /config/qBittorrent/qBittorrent.conf' 2>/dev/null
+}
+
+qbit_clave_temporal() {
+    $DOCKER logs qbittorrent 2>&1 \
+        | grep -oE "temporary password is provided for this session: [^ ]+" \
+        | tail -1 | awk '{print $NF}'
+}
+
+# Vuelve a dejarlo sin contrasena, para poder ponerle una nueva
+qbit_resetear() {
+    local cfg
+    cfg=$(ruta_config qbittorrent)
+    if [ -z "$cfg" ] || [ ! -f "$cfg/qBittorrent/qBittorrent.conf" ]; then
+        aviso "No encontre la configuracion de qBittorrent"
+        return 1
+    fi
+    info "Lo paro, le saco la contrasena y lo vuelvo a levantar."
+    gris "     Hay que pararlo si o si: andando, reescribe su configuracion al salir"
+    gris "     y pisa cualquier cambio hecho desde afuera."
+    $DOCKER stop qbittorrent >/dev/null 2>&1
+    sudo cp "$cfg/qBittorrent/qBittorrent.conf" "$cfg/qBittorrent/qBittorrent.conf.previo" 2>/dev/null
+    sudo sed -i '/Password_PBKDF2/d' "$cfg/qBittorrent/qBittorrent.conf"
+    $DOCKER start qbittorrent >/dev/null 2>&1
+    if ! esperar_http qbittorrent 8080; then
+        aviso "qBittorrent no volvio a levantar"
+        return 1
+    fi
+    sleep 4
+    ok "qBittorrent reseteado, respaldo en qBittorrent.conf.previo"
+    return 0
+}
+
 cfg_qbittorrent() {
-    local clave="$1" ck=/tmp/instalador.cookie tmp pass code entro=0 prefs resp
+    local clave="$1" ck=/tmp/instalador.cookie tmp entro=0 prefs resp
     esperar_http qbittorrent 8080 || { aviso "qBittorrent no contesta"; return 1; }
 
     # Minimo 6 caracteres, impuesto por qBittorrent.
@@ -1442,24 +1539,30 @@ cfg_qbittorrent() {
     done
 
     $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
-    tmp=$($DOCKER logs qbittorrent 2>&1 \
-        | grep -oE "temporary password is provided for this session: [^ ]+" \
-        | tail -1 | awk '{print $NF}')
 
-    # Probamos primero la definitiva: si ya se corrio el instalador, es esa.
-    for pass in "$clave" "$tmp" "adminadmin"; do
-        [ -n "$pass" ] || continue
-        code=$($DOCKER exec qbittorrent curl -s -o /dev/null -w '%{http_code}' -c "$ck" -X POST \
-            -H "Referer: http://localhost:8080" \
-            --data-urlencode "username=admin" --data-urlencode "password=$pass" \
-            "http://localhost:8080/api/v2/auth/login" 2>/dev/null)
-        # La 5.x contesta 204 sin cuerpo; las viejas 200 con "Ok."
-        if [ "$code" = "200" ] || [ "$code" = "204" ]; then entro=1; break; fi
-    done
+    # No se adivina. La conf dice si hay contrasena puesta o no, y eso decide
+    # todo: sin ella, la temporal del log es la buena; con ella, hay que
+    # preguntar. Probar candidatas hace que qBittorrent banee la IP.
+    if qbit_tiene_clave; then
+        qbit_login "$clave" "$ck" && entro=1
+        if [ "$entro" != "1" ]; then
+            local eleccion; eleccion=$(menu_credencial "qBittorrent")
+            if [ "$eleccion" = "RESET" ]; then
+                qbit_resetear || return 1
+                tmp=$(qbit_clave_temporal)
+                [ -n "$tmp" ] && qbit_login "$tmp" "$ck" && entro=1
+            elif [ -n "$eleccion" ]; then
+                qbit_login "$eleccion" "$ck" && entro=1
+                [ "$entro" = "1" ] || aviso "Esa contrasena tampoco entra"
+            fi
+        fi
+    else
+        tmp=$(qbit_clave_temporal)
+        [ -n "$tmp" ] && qbit_login "$tmp" "$ck" && entro=1
+    fi
 
     if [ "$entro" != "1" ]; then
-        aviso "qBittorrent: no pude entrar a su API"
-        gris "     suele ser un baneo temporal por intentos fallidos"
+        aviso "qBittorrent: quedo con la contrasena que ya tenia"
         pendiente "Poner contrasena a qBittorrent a mano en http://qbit.pi"
         return 1
     fi
@@ -1515,6 +1618,58 @@ jf_api() {
     fi
 }
 
+# Lo deja sin contrasena para poder ponerle una nueva.
+#
+# Limpiar el contador de intentos fallidos no es opcional: Jellyfin bloquea la
+# cuenta a los pocos fallos y despues devuelve 401 hasta con la contrasena
+# correcta. Sin esto, resetear la contrasena no alcanza y el sintoma es
+# indistinguible de una contrasena equivocada.
+jf_resetear() {
+    local nueva="$1" cfg resp uid
+    cfg=$(ruta_config jellyfin)
+    if [ -z "$cfg" ] || [ ! -f "$cfg/data/jellyfin.db" ]; then
+        aviso "No encontre la base de datos de Jellyfin"
+        return 1
+    fi
+
+    info "Lo paro, le saco la contrasena y le limpio el contador de intentos."
+    $DOCKER stop jellyfin >/dev/null 2>&1
+    sudo cp "$cfg/data/jellyfin.db" "$cfg/data/jellyfin.db.previo" 2>/dev/null
+    sudo python3 - "$cfg/data/jellyfin.db" <<'PY' >/dev/null 2>&1
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+cur = c.cursor()
+cur.execute("UPDATE Users SET Password = NULL, InvalidLoginAttemptCount = 0, MustUpdatePassword = 0")
+cur.execute("UPDATE Permissions SET Value = 0 WHERE Kind = 2")   # Kind 2 = IsDisabled
+c.commit()
+c.close()
+PY
+    $DOCKER start jellyfin >/dev/null 2>&1
+    if ! esperar_http jellyfin 8096 /System/Info/Public; then
+        aviso "Jellyfin no volvio a levantar"
+        return 1
+    fi
+
+    JF_TOKEN=""
+    resp=$(jf_api POST /Users/AuthenticateByName '{"Username":"admin","Pw":""}' 2>/dev/null)
+    JF_TOKEN=$(echo "$resp" | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
+    uid=$(echo "$resp" | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("User",{}).get("Id",""))' 2>/dev/null)
+
+    if [ -z "$JF_TOKEN" ] || [ -z "$uid" ]; then
+        aviso "Jellyfin: no pude entrar ni despues de resetear"
+        gris "     la base anterior quedo en jellyfin.db.previo"
+        return 1
+    fi
+
+    jf_api POST "/Users/$uid/Password" "$(CLAVE="$nueva" python3 -c \
+        'import json,os;print(json.dumps({"CurrentPw":"","NewPw":os.environ["CLAVE"]}))')" >/dev/null 2>&1
+    ok "Jellyfin: contrasena reseteada y puesta en la nueva"
+    gris "     respaldo de la base en jellyfin.db.previo"
+    return 0
+}
+
 cfg_jellyfin() {
     local clave="$1" listo resp
     esperar_http jellyfin 8096 /System/Info/Public || { aviso "Jellyfin no contesta"; return 1; }
@@ -1539,9 +1694,23 @@ cfg_jellyfin() {
         'import json,os;print(json.dumps({"Username":"admin","Pw":os.environ["CLAVE"]}))')" 2>/dev/null)
     JF_TOKEN=$(echo "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
 
+    # Un solo intento. Si no entro, se pregunta: Jellyfin bloquea la cuenta a
+    # los pocos intentos fallidos, asi que probar candidatas la deja inservible.
     if [ -z "$JF_TOKEN" ]; then
-        aviso "Jellyfin: no pude autenticarme, salteo biblioteca y aceleracion"
-        gris "     probablemente ya tenia otro usuario con otra contrasena"
+        local eleccion; eleccion=$(menu_credencial "Jellyfin")
+        if [ "$eleccion" = "RESET" ]; then
+            jf_resetear "$clave"
+        elif [ -n "$eleccion" ]; then
+            resp=$(jf_api POST /Users/AuthenticateByName "$(CLAVE="$eleccion" python3 -c \
+                'import json,os;print(json.dumps({"Username":"admin","Pw":os.environ["CLAVE"]}))')" 2>/dev/null)
+            JF_TOKEN=$(echo "$resp" | python3 -c \
+                'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
+            [ -n "$JF_TOKEN" ] || aviso "Esa contrasena tampoco entra"
+        fi
+    fi
+
+    if [ -z "$JF_TOKEN" ]; then
+        aviso "Jellyfin: sin entrar, salteo la biblioteca y la aceleracion"
         pendiente "Revisar Jellyfin en http://jellyfin.pi"
         return 1
     fi
