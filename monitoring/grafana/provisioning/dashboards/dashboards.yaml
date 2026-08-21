@@ -13,9 +13,20 @@ providers:
     updateIntervalSeconds: 10
     options:
       path: /var/lib/grafana/dashboards/finance
+
   - name: Pihole
     folder: Pihole
     type: file
     updateIntervalSeconds: 10
     options:
       path: /var/lib/grafana/dashboards/pihole
+
+  # Node Exporter Full, el tablero 1860 de grafana.com. Antes estaba importado
+  # a mano y vivia solo dentro del volumen, asi que se perdio con el. La
+  # homepage enlaza a su UID rYdddlPWk, que se conserva a proposito.
+  - name: System
+    folder: System
+    type: file
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards/system
