@@ -35,6 +35,12 @@ pendiente() { PENDIENTES+=("$1"); }
 
 DOCKER="sudo docker"
 
+# Una sola contrasena para todo. Se pregunta una vez y se usa en todos lados:
+# el hash de Caddy, los paneles propios, y las cuentas de los servicios que el
+# instalador crea solo. Podes pedir una distinta para alguno, pero es explicito.
+CLAVE_MAESTRA=""
+CLAVE_POR_SERVICIO=0
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  DEFINICION DE MODULOS
 #
@@ -266,6 +272,78 @@ completa() {
         your_*|change*|CHANGE*|generate_with_*|*_here|tu_*) return 1 ;;
     esac
     return 0
+}
+
+# ── Contrasena unica ──────────────────────────────────────────────────────────
+#
+#  La primera version de este instalador pedia una contrasena por servicio y
+#  terminabas con dos distintas sin darte cuenta: el hash de Caddy con una y
+#  los paneles con otra, y despues no entrabas a la homepage. Ahora se pide
+#  una sola vez.
+
+pedir_clave_maestra() {
+    [ -n "$CLAVE_MAESTRA" ] && return 0
+
+    echo ""
+    echo "  ${B}${C}Contrasena${N}"
+    info "Una sola contrasena para todo: la homepage, los paneles, y las cuentas"
+    info "que voy a crear solo (Jellyfin, qBittorrent, Radarr, Prowlarr, Bazarr,"
+    info "Grafana y Pi-hole)."
+    echo ""
+    gris "     Asi no te pasa lo de terminar con dos contrasenas distintas y no"
+    gris "     saber cual va en cada lado."
+    echo ""
+
+    local v1 v2
+    while true; do
+        read -r -s -p "  ${B}Contrasena:${N} " v1 </dev/tty; echo ""
+        if [ -z "$v1" ]; then
+            aviso "No puede quedar vacia."
+            continue
+        fi
+        read -r -s -p "  ${B}Repetila:${N}   " v2 </dev/tty; echo ""
+        [ "$v1" = "$v2" ] && break
+        falla "No coinciden, probemos de nuevo."
+    done
+    CLAVE_MAESTRA="$v1"
+    unset v1 v2
+    ok "Guardada. La uso en todos los servicios."
+
+    # qBittorrent rechaza contrasenas de menos de 6 caracteres. Es regla suya.
+    # Mejor avisarlo ahora que dejar que falle a mitad de la instalacion.
+    if [ ${#CLAVE_MAESTRA} -lt 6 ] && [[ " ${SELECCION[*]} " == *" media "* ]]; then
+        echo ""
+        aviso "qBittorrent no acepta contrasenas de menos de 6 caracteres."
+        gris "     Es una regla suya, no mia. El resto de los servicios la toman."
+        echo ""
+        if preguntar "¿Elegis otra de 6 o mas, y la usamos en todo?" "s"; then
+            CLAVE_MAESTRA=""
+            pedir_clave_maestra
+            return
+        fi
+        info "Bien: a qBittorrent le pongo una aparte y te la pido cuando llegue."
+    fi
+
+    echo ""
+    if preguntar "¿Queres una contrasena distinta para algun servicio puntual?" "n"; then
+        CLAVE_POR_SERVICIO=1
+        info "Bien: te la voy pidiendo servicio por servicio."
+        gris "     Enter en cualquiera y usa la general."
+    fi
+    echo ""
+}
+
+# Devuelve la contrasena que corresponde a un servicio. Con la opcion de
+# contrasenas separadas activada, la pregunta; si no, devuelve la general.
+clave_para() {
+    local que="$1" v
+    pedir_clave_maestra
+    if [ "$CLAVE_POR_SERVICIO" = "1" ]; then
+        printf "        ${B}contrasena para %s${N} (Enter para la general): " "$que" > /dev/tty
+        read -r -s v </dev/tty; echo "" > /dev/tty
+        [ -n "$v" ] && { echo "$v"; return; }
+    fi
+    echo "$CLAVE_MAESTRA"
 }
 
 # Cuenta contenedores de un modulo que estan corriendo
@@ -736,10 +814,23 @@ recolectar() {
         return
     fi
 
+    # Las contrasenas salen todas de la misma, asi que se pregunta una sola vez
+    # antes del recorrido y despues no se vuelve a molestar con ninguna.
+    local claves=0 otros=0
+    for linea in "${faltantes[@]}"; do
+        IFS='|' read -r _ _ _ tipo _ _ <<< "$linea"
+        case "$tipo" in clave|hash) claves=$((claves+1)) ;; *) otros=$((otros+1)) ;; esac
+    done
+    [ "$claves" -gt 0 ] && pedir_clave_maestra
+
     echo ""
-    info "Te voy a pedir ${B}${#faltantes[@]}${N} datos, de a uno."
-    info "Si alguno no lo tenes a mano, apreta Enter y seguimos: el modulo se"
-    info "instala igual y al final te digo exactamente que quedo sin completar."
+    if [ "$otros" -eq 0 ]; then
+        info "Con la contrasena alcanza: los otros $claves campos salen de ahi."
+    else
+        info "Te voy a pedir ${B}$otros${N} datos mas, de a uno."
+        info "Si alguno no lo tenes a mano, apreta Enter y seguimos: el modulo se"
+        info "instala igual y al final te digo exactamente que quedo sin completar."
+    fi
     echo ""
 
     local i=1 total=${#faltantes[@]}
@@ -753,7 +844,8 @@ recolectar() {
         local valor=""
         case "$tipo" in
             clave|hash)
-                read -r -s -p "        ${B}valor${N} (Enter para saltear): " valor </dev/tty; echo ""
+                valor=$(clave_para "$desc")
+                gris "        uso la contrasena que elegiste"
                 ;;
             *)
                 read -r -p "        ${B}valor${N} (Enter para saltear): " valor </dev/tty
@@ -1142,6 +1234,517 @@ ejecutar() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  CONFIGURACION AUTOMATICA
+#
+#  Todo lo que antes te tocaba hacer a mano en el navegador y se puede hacer
+#  por API o por linea de comandos. Dos reglas:
+#
+#    1. Idempotente. Si algo ya esta configurado, lo deja como esta.
+#    2. Nunca deja un servicio peor de como lo encontro. Si un paso falla,
+#       avisa y lo pasa a la lista de pendientes en vez de romper.
+#
+#  Las llamadas HTTP salen desde ADENTRO de cada contenedor contra su propio
+#  localhost, porque ninguno publica su puerto al host. Todos traen curl.
+# ══════════════════════════════════════════════════════════════════════════════
+
+esta_arriba() { $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"; }
+
+# Recien levantado un contenedor puede tardar en atender. Esperamos.
+esperar_http() {
+    local svc="$1" puerto="$2" ruta="${3:-/}" i
+    for i in $(seq 1 30); do
+        esta_arriba "$svc" || return 1
+        $DOCKER exec "$svc" curl -s -o /dev/null --max-time 4 \
+            "http://localhost:$puerto$ruta" 2>/dev/null && return 0
+        sleep 2
+    done
+    return 1
+}
+
+# ── Radarr y Prowlarr ─────────────────────────────────────────────────────────
+
+# Su API key se autogenera en config.xml en el primer arranque
+api_key_arr() {
+    $DOCKER exec "$1" sh -c 'grep -oE "<ApiKey>[^<]*" /config/config.xml' 2>/dev/null | cut -d'>' -f2
+}
+
+arr_api() {
+    local svc="$1" puerto="$2" ver="$3" metodo="$4" ruta="$5" cuerpo="${6:-}" k
+    k=$(api_key_arr "$svc")
+    [ -n "$k" ] || return 1
+    if [ -n "$cuerpo" ]; then
+        $DOCKER exec -i "$svc" curl -s -X "$metodo" -H "X-Api-Key: $k" \
+            -H "Content-Type: application/json" -d @- \
+            "http://localhost:$puerto/api/$ver$ruta" <<< "$cuerpo"
+    else
+        $DOCKER exec "$svc" curl -s -X "$metodo" -H "X-Api-Key: $k" \
+            "http://localhost:$puerto/api/$ver$ruta"
+    fi
+}
+
+# Radarr, Prowlarr y Bazarr salen de fabrica SIN contrasena, y Caddy tampoco
+# les pone una porque se asume que traen la propia. O sea que quedan abiertos
+# a cualquiera en tu red. Esto lo cierra.
+arr_autenticacion() {
+    local svc="$1" puerto="$2" ver="$3" clave="$4" actual nuevo id
+    actual=$(arr_api "$svc" "$puerto" "$ver" GET /config/host 2>/dev/null | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("authenticationMethod",""))' 2>/dev/null)
+    case "$actual" in
+        forms|basic) gris "     $svc ya tenia contrasena, no la piso"; return 0 ;;
+        "")          aviso "$svc: no pude leer su configuracion"; return 1 ;;
+    esac
+    nuevo=$(arr_api "$svc" "$puerto" "$ver" GET /config/host 2>/dev/null | CLAVE="$clave" python3 -c '
+import sys, json, os
+d = json.load(sys.stdin)
+d["authenticationMethod"] = "forms"
+d["authenticationRequired"] = "enabled"
+d["username"] = "admin"
+d["password"] = os.environ["CLAVE"]
+d["passwordConfirmation"] = os.environ["CLAVE"]
+print(json.dumps(d))' 2>/dev/null)
+    [ -n "$nuevo" ] || { aviso "$svc: no pude armar la configuracion"; return 1; }
+    id=$(echo "$nuevo" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
+    arr_api "$svc" "$puerto" "$ver" PUT "/config/host/$id" "$nuevo" >/dev/null 2>&1
+    ok "$svc: usuario ${B}admin${N} con tu contrasena"
+    gris "     antes se entraba sin ninguna"
+}
+
+cfg_radarr() {
+    local clave="$1" cuerpo
+    esperar_http radarr 7878 /api/v3/system/status || { aviso "Radarr no contesta"; return 1; }
+
+    local resp
+    if arr_api radarr 7878 v3 GET /rootfolder 2>/dev/null | grep -q '/data/media/movies'; then
+        gris "     carpeta raiz ya cargada"
+    else
+        resp=$(arr_api radarr 7878 v3 POST /rootfolder '{"path":"/data/media/movies"}' 2>/dev/null)
+        if echo "$resp" | grep -q '"errorMessage"'; then
+            gris "     carpeta raiz: $(echo "$resp" | python3 -c \
+                'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
+        else
+            ok "Radarr: carpeta raiz ${B}/data/media/movies${N}"
+        fi
+    fi
+
+    # Hardlinks: una pelicula ocupa espacio una sola vez aunque figure en
+    # descargas y en la biblioteca. Sin esto el DAS se llena al doble.
+    local mm
+    mm=$(arr_api radarr 7878 v3 GET /config/mediamanagement 2>/dev/null)
+    if [ "$(echo "$mm" | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("copyUsingHardlinks"))' 2>/dev/null)" = "True" ]; then
+        gris "     hardlinks ya activados"
+    elif [ -n "$mm" ]; then
+        local mm2 mmid
+        mm2=$(echo "$mm" | python3 -c 'import sys,json;d=json.load(sys.stdin);d["copyUsingHardlinks"]=True;print(json.dumps(d))' 2>/dev/null)
+        mmid=$(echo "$mm" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
+        arr_api radarr 7878 v3 PUT "/config/mediamanagement/$mmid" "$mm2" >/dev/null 2>&1
+        ok "Radarr: hardlinks activados"
+    fi
+
+    if arr_api radarr 7878 v3 GET /downloadclient 2>/dev/null | grep -qi 'qbittorrent'; then
+        gris "     qBittorrent ya estaba conectado"
+    elif esta_arriba qbittorrent; then
+        # Con la contrasena real de qBittorrent, que puede no ser la general.
+        # Radarr valida la conexion al guardar: si no puede entrar, no guarda.
+        cuerpo=$(CLAVE="${CLAVE_QBIT:-$clave}" python3 -c '
+import json, os
+print(json.dumps({
+  "enable": True, "protocol": "torrent", "priority": 1,
+  "removeCompletedDownloads": True, "removeFailedDownloads": True,
+  "name": "qBittorrent", "implementation": "QBittorrent",
+  "implementationName": "qBittorrent", "configContract": "QBittorrentSettings",
+  "fields": [
+    {"name": "host", "value": "qbittorrent"},
+    {"name": "port", "value": 8080},
+    {"name": "useSsl", "value": False},
+    {"name": "username", "value": "admin"},
+    {"name": "password", "value": os.environ["CLAVE"]},
+    {"name": "movieCategory", "value": "radarr"},
+    {"name": "contentLayout", "value": 0},
+    {"name": "initialState", "value": 0},
+    {"name": "recentMoviePriority", "value": 0},
+    {"name": "olderMoviePriority", "value": 0},
+    {"name": "sequentialOrder", "value": False},
+    {"name": "firstAndLast", "value": False}
+  ], "tags": []}))' 2>/dev/null)
+        resp=$(arr_api radarr 7878 v3 POST /downloadclient "$cuerpo" 2>/dev/null)
+        if echo "$resp" | grep -q '"errorMessage"'; then
+            aviso "Radarr: no pudo conectarse a qBittorrent"
+            gris "     $(echo "$resp" | python3 -c \
+                'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
+            pendiente "Conectar qBittorrent en http://radarr.pi, Settings, Download Clients"
+        else
+            ok "Radarr: qBittorrent conectado como cliente de descargas"
+        fi
+    fi
+
+    arr_autenticacion radarr 7878 v3 "$clave"
+}
+
+cfg_prowlarr() {
+    local clave="$1" kr cuerpo
+    esperar_http prowlarr 9696 /api/v1/system/status || { aviso "Prowlarr no contesta"; return 1; }
+
+    kr=$(api_key_arr radarr)
+    if arr_api prowlarr 9696 v1 GET /applications 2>/dev/null | grep -qi '"name": *"Radarr"'; then
+        gris "     Radarr ya estaba enlazado"
+    elif [ -n "$kr" ] && esta_arriba radarr; then
+        cuerpo=$(KR="$kr" python3 -c '
+import json, os
+print(json.dumps({
+  "name": "Radarr", "implementation": "Radarr",
+  "implementationName": "Radarr", "configContract": "RadarrSettings",
+  "syncLevel": "fullSync",
+  "fields": [
+    {"name": "prowlarrUrl", "value": "http://prowlarr:9696"},
+    {"name": "baseUrl", "value": "http://radarr:7878"},
+    {"name": "apiKey", "value": os.environ["KR"]}
+  ], "tags": []}))' 2>/dev/null)
+        arr_api prowlarr 9696 v1 POST /applications "$cuerpo" >/dev/null 2>&1
+        ok "Prowlarr: enlazado con Radarr"
+        gris "     los indexers que cargues se le sincronizan solos"
+    fi
+
+    arr_autenticacion prowlarr 9696 v1 "$clave"
+}
+
+# ── qBittorrent ───────────────────────────────────────────────────────────────
+
+# La contrasena con la que qBittorrent quedo realmente. Puede no ser la general
+# si la general tiene menos de 6 caracteres. Radarr la necesita para conectarse.
+CLAVE_QBIT=""
+
+cfg_qbittorrent() {
+    local clave="$1" ck=/tmp/instalador.cookie tmp pass code entro=0 prefs resp
+    esperar_http qbittorrent 8080 || { aviso "qBittorrent no contesta"; return 1; }
+
+    # Minimo 6 caracteres, impuesto por qBittorrent.
+    # El contador corta el bucle si no hay terminal donde preguntar: sin el,
+    # un read que falla deja la variable como estaba y esto gira para siempre.
+    local intentos=0
+    while [ ${#clave} -lt 6 ]; do
+        intentos=$((intentos+1))
+        if [ "$intentos" -gt 3 ]; then clave=""; fi
+        if [ -n "$clave" ]; then
+            echo ""
+            aviso "qBittorrent exige 6 caracteres o mas, y esa tiene ${#clave}."
+            printf "        ${B}contrasena solo para qBittorrent:${N} " > /dev/tty 2>/dev/null
+            clave=""
+            read -r -s clave < /dev/tty 2>/dev/null || true
+            echo "" > /dev/tty 2>/dev/null
+        fi
+        if [ -z "$clave" ]; then
+            aviso "qBittorrent se queda con su contrasena temporal"
+            gris "     esa cambia en cada reinicio, asi que conviene ponerle una"
+            pendiente "Poner contrasena a qBittorrent en http://qbit.pi"
+            return 1
+        fi
+    done
+
+    $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
+    tmp=$($DOCKER logs qbittorrent 2>&1 \
+        | grep -oE "temporary password is provided for this session: [^ ]+" \
+        | tail -1 | awk '{print $NF}')
+
+    # Probamos primero la definitiva: si ya se corrio el instalador, es esa.
+    for pass in "$clave" "$tmp" "adminadmin"; do
+        [ -n "$pass" ] || continue
+        code=$($DOCKER exec qbittorrent curl -s -o /dev/null -w '%{http_code}' -c "$ck" -X POST \
+            -H "Referer: http://localhost:8080" \
+            --data-urlencode "username=admin" --data-urlencode "password=$pass" \
+            "http://localhost:8080/api/v2/auth/login" 2>/dev/null)
+        # La 5.x contesta 204 sin cuerpo; las viejas 200 con "Ok."
+        if [ "$code" = "200" ] || [ "$code" = "204" ]; then entro=1; break; fi
+    done
+
+    if [ "$entro" != "1" ]; then
+        aviso "qBittorrent: no pude entrar a su API"
+        gris "     suele ser un baneo temporal por intentos fallidos"
+        pendiente "Poner contrasena a qBittorrent a mano en http://qbit.pi"
+        return 1
+    fi
+
+    # save_path viene de fabrica en /downloads, que en este stack NO EXISTE:
+    # el DAS se monta en /data. Si no se corrige, las descargas caen dentro
+    # del contenedor y encima se pierde el hardlink con la biblioteca.
+    prefs=$(CLAVE="$clave" python3 -c '
+import json, os
+print(json.dumps({
+  "web_ui_username": "admin",
+  "web_ui_password": os.environ["CLAVE"],
+  "save_path": "/data/downloads/complete",
+  "temp_path_enabled": True,
+  "temp_path": "/data/downloads/incomplete",
+  "create_subfolder_enabled": False,
+  "start_paused_enabled": False}))' 2>/dev/null)
+
+    resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
+        -H "Referer: http://localhost:8080" \
+        --data-urlencode "json=$prefs" \
+        "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null)
+
+    $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
+
+    if [ -n "$resp" ]; then
+        aviso "qBittorrent: $resp"
+        pendiente "Revisar la contrasena de qBittorrent en http://qbit.pi"
+        return 1
+    fi
+
+    # Recien aca damos la contrasena por buena. Radarr la va a usar para
+    # conectarse, y darsela sin que haya quedado aplicada lo haria fallar.
+    CLAVE_QBIT="$clave"
+    ok "qBittorrent: contrasena puesta y descargas en ${B}/data/downloads${N}"
+    gris "     venia apuntando a /downloads, que en este stack no existe"
+}
+
+# ── Jellyfin ──────────────────────────────────────────────────────────────────
+
+JF_TOKEN=""
+
+jf_api() {
+    local metodo="$1" ruta="$2" cuerpo="${3:-}" auth
+    auth="MediaBrowser Client=\"instalador\", Device=\"pi\", DeviceId=\"instalador-pi\", Version=\"1.0.0\""
+    [ -n "$JF_TOKEN" ] && auth="$auth, Token=\"$JF_TOKEN\""
+    if [ -n "$cuerpo" ]; then
+        $DOCKER exec -i jellyfin curl -s -X "$metodo" -H "Content-Type: application/json" \
+            -H "Authorization: $auth" -d @- "http://localhost:8096$ruta" <<< "$cuerpo"
+    else
+        $DOCKER exec jellyfin curl -s -X "$metodo" -H "Content-Type: application/json" \
+            -H "Authorization: $auth" "http://localhost:8096$ruta"
+    fi
+}
+
+cfg_jellyfin() {
+    local clave="$1" listo resp
+    esperar_http jellyfin 8096 /System/Info/Public || { aviso "Jellyfin no contesta"; return 1; }
+
+    listo=$(jf_api GET /System/Info/Public 2>/dev/null | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("StartupWizardCompleted"))' 2>/dev/null)
+
+    if [ "$listo" != "True" ]; then
+        jf_api POST /Startup/Configuration \
+            '{"UICulture":"es","MetadataCountryCode":"UY","PreferredMetadataLanguage":"es"}' >/dev/null 2>&1
+        jf_api POST /Startup/User "$(CLAVE="$clave" python3 -c \
+            'import json,os;print(json.dumps({"Name":"admin","Password":os.environ["CLAVE"]}))')" >/dev/null 2>&1
+        jf_api POST /Startup/RemoteAccess \
+            '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' >/dev/null 2>&1
+        jf_api POST /Startup/Complete >/dev/null 2>&1
+        ok "Jellyfin: asistente completado, usuario ${B}admin${N}"
+    else
+        gris "     el asistente ya estaba completo"
+    fi
+
+    resp=$(jf_api POST /Users/AuthenticateByName "$(CLAVE="$clave" python3 -c \
+        'import json,os;print(json.dumps({"Username":"admin","Pw":os.environ["CLAVE"]}))')" 2>/dev/null)
+    JF_TOKEN=$(echo "$resp" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
+
+    if [ -z "$JF_TOKEN" ]; then
+        aviso "Jellyfin: no pude autenticarme, salteo biblioteca y aceleracion"
+        gris "     probablemente ya tenia otro usuario con otra contrasena"
+        pendiente "Revisar Jellyfin en http://jellyfin.pi"
+        return 1
+    fi
+
+    if jf_api GET /Library/VirtualFolders 2>/dev/null | grep -q '/media/movies'; then
+        gris "     la biblioteca de peliculas ya existia"
+    else
+        jf_api POST '/Library/VirtualFolders?name=Peliculas&collectionType=movies&refreshLibrary=true' \
+            '{"LibraryOptions":{"PathInfos":[{"Path":"/media/movies"}],"EnableRealtimeMonitor":true}}' >/dev/null 2>&1
+        ok "Jellyfin: biblioteca ${B}Peliculas${N} en /media/movies"
+    fi
+
+    # La Pi 5 decodifica por hardware pero NO codifica: activamos VAAPI solo
+    # para decodificar. Dejar la codificacion por hardware prendida la haria
+    # fallar en cada transcodificacion.
+    local enc nuevo
+    enc=$(jf_api GET /System/Configuration/encoding 2>/dev/null)
+    if echo "$enc" | grep -q '"HardwareAccelerationType":"vaapi"'; then
+        gris "     la aceleracion por hardware ya estaba activa"
+    elif [ -n "$enc" ] && [ -e /dev/dri/renderD128 ]; then
+        nuevo=$(echo "$enc" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+d["HardwareAccelerationType"] = "vaapi"
+d["VaapiDevice"] = "/dev/dri/renderD128"
+d["EnableHardwareEncoding"] = False
+d["HardwareDecodingCodecs"] = ["h264", "hevc", "vc1"]
+print(json.dumps(d))' 2>/dev/null)
+        [ -n "$nuevo" ] && jf_api POST /System/Configuration/encoding "$nuevo" >/dev/null 2>&1
+        ok "Jellyfin: decodificacion por hardware (VAAPI)"
+        gris "     la codificacion queda en CPU: la Pi 5 no tiene codificador"
+    fi
+}
+
+# ── Bazarr ────────────────────────────────────────────────────────────────────
+
+cfg_bazarr() {
+    local clave="$1" kr salida code tmpf
+    esperar_http bazarr 6767 || { aviso "Bazarr no contesta"; return 1; }
+    kr=$(api_key_arr radarr)
+
+    # Bazarr no se configura por API: su configuracion vive en un YAML. Y su
+    # contenedor no trae PyYAML alcanzable, asi que el archivo se edita afuera:
+    # se saca, se modifica con el python del sistema, y se vuelve a escribir
+    # sobre el mismo archivo para no cambiarle el dueno ni los permisos.
+    tmpf=$(mktemp)
+    $DOCKER exec bazarr cat /config/config/config.yaml > "$tmpf" 2>/dev/null
+    if [ ! -s "$tmpf" ]; then
+        aviso "Bazarr: no pude leer su configuracion"
+        rm -f "$tmpf"
+        return 1
+    fi
+    cp "$tmpf" "$tmpf.previo"
+
+    salida=$(CLAVE="$clave" RADARR_KEY="${kr:-}" ARCHIVO="$tmpf" python3 <<'PY' 2>&1
+import os, hashlib, yaml
+
+RUTA = os.environ["ARCHIVO"]
+with open(RUTA) as f:
+    c = yaml.safe_load(f) or {}
+for s in ("general", "radarr", "auth"):
+    c.setdefault(s, {})
+
+hecho = []
+key = os.environ.get("RADARR_KEY", "")
+if key and c["radarr"].get("apikey") != key:
+    c["general"]["use_radarr"] = True
+    c["radarr"].update({"ip": "radarr", "port": 7878, "apikey": key,
+                        "ssl": False, "base_url": "/"})
+    hecho.append("radarr")
+
+# Bazarr guarda la contrasena del panel como md5 en su propio config.yaml
+if not c["auth"].get("type"):
+    c["auth"]["type"] = "form"
+    c["auth"]["username"] = "admin"
+    c["auth"]["password"] = hashlib.md5(os.environ["CLAVE"].encode()).hexdigest()
+    hecho.append("auth")
+
+if hecho:
+    with open(RUTA, "w") as f:
+        yaml.safe_dump(c, f, default_flow_style=False)
+print(",".join(hecho) if hecho else "nada")
+PY
+)
+
+    case "$salida" in
+        nada)
+            gris "     Bazarr ya estaba configurado"
+            rm -f "$tmpf" "$tmpf.previo"
+            return 0 ;;
+        *radarr*|*auth*) : ;;
+        *)
+            aviso "Bazarr: no pude preparar su configuracion"
+            gris "     $salida"
+            rm -f "$tmpf" "$tmpf.previo"
+            return 1 ;;
+    esac
+
+    $DOCKER exec -i bazarr sh -c 'cat > /config/config/config.yaml' < "$tmpf"
+    $DOCKER restart bazarr >/dev/null 2>&1
+    esperar_http bazarr 6767 >/dev/null 2>&1
+    [[ "$salida" == *radarr* ]] && ok "Bazarr: conectado a Radarr"
+
+    # Si pusimos contrasena, verificamos que se pueda entrar. Un hash mal
+    # calculado te dejaria afuera de tu propio Bazarr, asi que si el login
+    # no funciona lo dejamos como estaba.
+    if [[ "$salida" == *auth* ]]; then
+        sleep 3
+        code=$($DOCKER exec bazarr curl -s -o /dev/null -w '%{http_code}' -X POST \
+            --data-urlencode "username=admin" --data-urlencode "password=$clave" \
+            "http://localhost:6767/api/system/account?action=login" 2>/dev/null)
+        if [ "$code" = "204" ] || [ "$code" = "200" ]; then
+            ok "Bazarr: usuario ${B}admin${N} con tu contrasena"
+        else
+            # Saco la contrasena y dejo el resto: un hash mal calculado te
+            # dejaria afuera de tu propio Bazarr sin forma de entrar.
+            local tmp2; tmp2=$(mktemp)
+            $DOCKER exec bazarr cat /config/config/config.yaml > "$tmp2" 2>/dev/null
+            ARCHIVO="$tmp2" python3 <<'PY' >/dev/null 2>&1
+import os, yaml
+RUTA = os.environ["ARCHIVO"]
+c = yaml.safe_load(open(RUTA)) or {}
+previo = c.get("auth", {})
+c["auth"] = {"type": None, "username": "", "password": "",
+             "apikey": previo.get("apikey", "")}
+yaml.safe_dump(c, open(RUTA, "w"), default_flow_style=False)
+PY
+            $DOCKER exec -i bazarr sh -c 'cat > /config/config/config.yaml' < "$tmp2"
+            rm -f "$tmp2"
+            $DOCKER restart bazarr >/dev/null 2>&1
+            aviso "Bazarr: la contrasena no verifico (HTTP $code), la saque para no dejarte afuera"
+            pendiente "Poner contrasena a Bazarr a mano en http://bazarr.pi, Settings, General"
+        fi
+    fi
+
+    rm -f "$tmpf" "$tmpf.previo"
+}
+
+# ── Servicios de fuera del stack multimedia ───────────────────────────────────
+
+cfg_grafana() {
+    esperar_http grafana 3000 /api/health || { aviso "Grafana no contesta"; return 1; }
+    if $DOCKER exec grafana grafana cli --homepath /usr/share/grafana \
+         admin reset-admin-password "$1" >/dev/null 2>&1; then
+        ok "Grafana: contrasena de ${B}admin${N} puesta"
+        gris "     ya no te pide cambiarla en el primer login"
+    else
+        aviso "Grafana: no pude cambiarle la contrasena"
+        pendiente "Entrar a http://grafana.pi con admin/admin y cambiarla"
+    fi
+}
+
+cfg_pihole() {
+    if sudo pihole setpassword "$1" >/dev/null 2>&1; then
+        ok "Pi-hole: contrasena del panel puesta"
+    else
+        aviso "Pi-hole: no pude ponerle contrasena"
+        pendiente "Correr:  sudo pihole setpassword"
+    fi
+}
+
+configurar_servicios() {
+    local hay=0 mod
+    for mod in media monitoring pihole; do
+        [[ " ${SELECCION[*]} " == *" $mod "* ]] && hay=1
+    done
+    [ "$hay" = "1" ] || return 0
+
+    titulo "Configurando los servicios"
+
+    info "Esto es lo que antes tenias que hacer a mano en el navegador."
+    info "Lo que ya este configurado no lo toco."
+    echo ""
+
+    pedir_clave_maestra
+
+    local elegidos_media; elegidos_media=$(servicios_elegidos media)
+
+    if [[ " ${SELECCION[*]} " == *" pihole "* ]]; then
+        cfg_pihole "$(clave_para 'Pi-hole')"
+    fi
+
+    if [[ " ${SELECCION[*]} " == *" monitoring "* ]] && esta_arriba grafana; then
+        cfg_grafana "$(clave_para 'Grafana')"
+    fi
+
+    if [[ " ${SELECCION[*]} " == *" media "* ]]; then
+        # El orden importa: qBittorrent y Radarr tienen que estar configurados
+        # antes de que Radarr los conecte y Prowlarr enlace a Radarr.
+        esta_arriba qbittorrent && [[ " $elegidos_media " == *" qbittorrent "* ]] && \
+            cfg_qbittorrent "$(clave_para 'qBittorrent')"
+        esta_arriba radarr && [[ " $elegidos_media " == *" radarr "* ]] && \
+            cfg_radarr "$(clave_para 'Radarr')"
+        esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]] && \
+            cfg_prowlarr "$(clave_para 'Prowlarr')"
+        esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]] && \
+            cfg_bazarr "$(clave_para 'Bazarr')"
+        esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]] && \
+            cfg_jellyfin "$(clave_para 'Jellyfin')"
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  GUIA DE CREACION DE CUENTAS
 #
 #  Crear cuentas es lo unico que un script no puede hacer por vos. Pero si
@@ -1152,16 +1755,62 @@ ejecutar() {
 #  DESPUES de crear las cuentas de FreshRSS y Wallabag.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# modulo|servicio|url|que hacer
+# Solo lo que NO se puede automatizar: crear una cuenta desde cero, y las
+# elecciones que son tuyas (que indexers usas, en que idioma queres los
+# subtitulos). Todo lo demas lo dejo hecho antes de llegar aca.
+#
+# modulo|servicio|url|de que se trata
 CUENTAS=(
-"monitoring|grafana|http://grafana.pi|Entra con usuario ${B}admin${N} y contrasena ${B}admin${N}. Te va a obligar a cambiarla en el primer login."
-"news|freshrss|http://freshrss.pi|Segui el asistente y crea tu usuario. Al terminar, entra a Configuracion, Perfil, y activa la ${B}API de administracion${N} poniendo una contrasena de API."
-"news|wallabag|http://wallabag.pi|Entra con ${B}wallabag${N} / ${B}wallabag${N} y cambia la contrasena. Despues anda a Configuracion, Clientes API, y crea un cliente nuevo."
-"media|jellyfin|http://jellyfin.pi|Segui el asistente: idioma, tu usuario, y despues agrega una biblioteca de Peliculas apuntando a ${B}/media/movies${N}."
-"media|qbittorrent|http://qbit.pi|Tu contrasena temporal esta abajo. Entra, cambiala, y configura las descargas en ${B}/data/downloads${N}."
-"media|prowlarr|http://prowlarr.pi|Crea tu usuario y agrega tus indexers. Despues, en Settings, Apps, agrega Radarr con la URL ${B}http://radarr:7878${N}."
-"media|radarr|http://radarr.pi|Crea tu usuario. Carpeta raiz ${B}/data/media/movies${N}, y activa ${B}Use Hardlinks instead of Copy${N}."
-"media|bazarr|http://bazarr.pi|Crea tu usuario, conecta Radarr en ${B}http://radarr:7878${N} y elegi proveedores de subtitulos."
+"news|freshrss|http://freshrss.pi|Crear tu cuenta y habilitar la API"
+"news|wallabag|http://wallabag.pi|Cambiar la contrasena y crear el cliente de API"
+"media|prowlarr|http://prowlarr.pi|Cargar los indexers que uses"
+"media|bazarr|http://bazarr.pi|Elegir idiomas y proveedores de subtitulos"
+"media|jellyfin|http://jellyfin.pi|Instalar los complementos"
+)
+
+# El paso a paso de cada uno, una linea por paso.
+declare -A PASOS=(
+[freshrss]="El asistente te pide el idioma: elegi Espanol y Continuar.
+En 'Verificaciones' tiene que estar todo en verde. Continuar.
+Base de datos: dejala en ${B}SQLite${N}, no toques nada. Continuar.
+Crea tu usuario. Usa ${B}admin${N} y la misma contrasena que el resto.
+Ya adentro: Configuracion, Perfil, y abajo de todo esta
+   ${B}Contrasena de la API${N}. Ponela y guarda.
+Esa contrasena de API es la que te pido despues: sin ella el filtro
+   de noticias no puede leer tus feeds."
+
+[wallabag]="Entra con ${B}wallabag${N} / ${B}wallabag${N} (las de fabrica).
+Arriba a la derecha, Configuracion, pestana ${B}Cambiar contrasena${N}.
+Cambiala por la tuya y guarda.
+Volve a Configuracion, pestana ${B}Clientes API${N}.
+Toca ${B}Crear un nuevo cliente${N}, ponele cualquier nombre y crea.
+Te muestra un ${B}ID${N} y un ${B}Secreto${N}: no cierres esa pantalla,
+   te los pido en cuanto termines este paso."
+
+[prowlarr]="Entra con ${B}admin${N} y tu contrasena. Ya se la configure.
+Anda a ${B}Indexers${N}, boton ${B}Add Indexer${N}, y busca los que uses.
+Cada uno te pide sus datos: los publicos no piden nada, los privados
+   piden la cuenta que tengas en ese tracker.
+${B}No hace falta que los cargues tambien en Radarr.${N} Ya enlace los dos:
+   lo que agregues aca se le sincroniza a Radarr solo.
+En Settings, Apps, tiene que figurar Radarr. Si esta, quedo bien."
+
+[bazarr]="Entra con ${B}admin${N} y tu contrasena. Ya se la configure.
+${B}Settings, Languages${N}: agrega Espanol e Ingles, y despues crea un
+   perfil de idiomas con los dos. Sin perfil no baja ningun subtitulo.
+${B}Settings, Providers${N}: elegi de donde bajarlos. Los que andan bien sin
+   pagar son OpenSubtitles.com (pide crear cuenta propia) y Subdivx.
+${B}Settings, Radarr${N}: ya esta conectado, no toques nada ahi.
+Si en Providers no elegis ninguno, Bazarr corre pero nunca baja nada."
+
+[jellyfin]="Entra con ${B}admin${N} y tu contrasena. Ya cree el usuario, la
+   biblioteca y la aceleracion por hardware.
+${B}Panel, Complementos, Catalogo${N}, e instala los que quieras.
+Los recomendados y por que, en ${B}media/JELLYFIN-PLUGINS.md${N}:
+   Intro Skipper, Cinema Mode, Trickplay y Merge Versions.
+Reinicia Jellyfin cuando termines de instalarlos, o no aparecen.
+La biblioteca va a estar vacia hasta que montes el DAS y le pongas
+   peliculas adentro."
 )
 
 # Tokens que salen de una cuenta recien creada.
@@ -1187,13 +1836,17 @@ guia_cuentas() {
 
     [ ${#pendientes[@]} -eq 0 ] && return 0
 
-    titulo "Crear las cuentas"
+    titulo "Lo que queda para vos"
 
-    info "Esto es lo unico que un script no puede hacer por vos: cada servicio"
-    info "necesita que crees tu usuario la primera vez."
+    info "Ya configure todo lo que se puede configurar solo. Lo que queda es"
+    info "de dos tipos:"
     echo ""
-    info "Te llevo de a uno, ${B}en el orden correcto${N}, y despues de cada uno te"
-    info "pido los datos que hayan salido de ahi."
+    info "  ${B}·${N} crear una cuenta desde cero, que necesita un navegador"
+    info "  ${B}·${N} elecciones que son tuyas, como que indexers usar o en que"
+    info "    idioma queres los subtitulos"
+    echo ""
+    info "Te llevo de a uno, ${B}en el orden correcto${N}, con el paso a paso, y"
+    info "despues de cada uno te pido los datos que hayan salido de ahi."
     echo ""
     aviso "Necesitas un navegador que resuelva los nombres .pi."
     gris "     Si no te abren, revisa que tu DNS apunte a $IP_FIJA."
@@ -1208,17 +1861,22 @@ guia_cuentas() {
     for linea in "${pendientes[@]}"; do
         IFS='|' read -r m srv url que <<< "$linea"
         echo ""
-        echo "  ${B}[$i/$total]  ${C}${srv}${N}"
+        echo "  ${B}[$i/$total]  ${C}${srv}${N}   ${G}$que${N}"
         echo "        ${B}$url${N}"
         echo ""
-        echo "        $que"
 
-        # qBittorrent genera una contrasena temporal en su log
-        if [ "$srv" = "qbittorrent" ]; then
-            local tmp
-            tmp=$($DOCKER logs qbittorrent 2>&1 | grep -oE "temporary password is provided for this session: [^ ]+" | tail -1 | awk '{print $NF}')
-            [ -n "$tmp" ] && echo "        ${A}contrasena temporal: ${B}$tmp${N}"
-        fi
+        # Las lineas que arrancan con espacios son continuacion del paso de
+        # arriba, no un paso nuevo: no se numeran.
+        local paso n=1
+        while IFS= read -r paso; do
+            [ -n "$paso" ] || continue
+            if [[ "$paso" == " "* ]]; then
+                echo "           ${paso#"${paso%%[![:space:]]*}"}"
+            else
+                printf "        ${B}%d.${N} %s\n" "$n" "$paso"
+                n=$((n+1))
+            fi
+        done <<< "${PASOS[$srv]:-$que}"
 
         echo ""
         read -r -p "        ${B}Enter cuando termines${N} (o 's' para saltear): " r </dev/tty
@@ -1307,22 +1965,32 @@ resumen() {
         for p in "${PENDIENTES[@]}"; do echo "  ${B}·${N} $p"; done
     fi
 
-    echo ""
-    echo "  ${B}Cuentas que tenes que crear vos${N}"
-    echo ""
-    info "La primera vez que entres a cada uno te va a pedir crear usuario."
-    info "Eso no lo puede hacer un script."
-    echo ""
-    local cuentas=""
-    [[ " ${SELECCION[*]} " == *" monitoring "* ]] && cuentas="$cuentas grafana.pi"
-    [[ " ${SELECCION[*]} " == *" news "* ]] && cuentas="$cuentas freshrss.pi wallabag.pi"
-    [[ " ${SELECCION[*]} " == *" media "* ]] && cuentas="$cuentas jellyfin.pi radarr.pi prowlarr.pi bazarr.pi qbit.pi"
-    for c in $cuentas; do gris "     http://$c"; done
-    [[ " ${SELECCION[*]} " == *" media "* ]] && {
+    if [ -n "$CLAVE_MAESTRA" ]; then
         echo ""
-        info "La contrasena temporal de qBittorrent:"
-        gris "     docker logs qbittorrent 2>&1 | grep -i password"
-    }
+        echo "  ${B}Con que entras a cada cosa${N}"
+        echo ""
+        info "Usuario ${B}admin${N} en todos, con la contrasena que elegiste."
+        echo ""
+        local c
+        [[ " ${SELECCION[*]} " == *" core "* ]]       && gris "     http://homepage.pi     panel de inicio"
+        [[ " ${SELECCION[*]} " == *" monitoring "* ]] && gris "     http://grafana.pi      tableros"
+        [[ " ${SELECCION[*]} " == *" monitoring "* ]] && gris "     http://prometheus.pi   metricas crudas"
+        [[ " ${SELECCION[*]} " == *" pihole "* ]]     && gris "     http://pihole.pi       DNS y bloqueo"
+        [[ " ${SELECCION[*]} " == *" media "* ]]      && {
+            gris "     http://jellyfin.pi     peliculas"
+            gris "     http://qbit.pi         descargas"
+            gris "     http://radarr.pi       automatizacion"
+            gris "     http://prowlarr.pi     indexers"
+            gris "     http://bazarr.pi       subtitulos"
+        }
+        [[ " ${SELECCION[*]} " == *" calibre "* ]]    && gris "     http://calibre.pi      libros"
+        [[ " ${SELECCION[*]} " == *" news "* ]]       && {
+            echo ""
+            info "Estos dos los creaste vos, con lo que hayas puesto:"
+            gris "     http://freshrss.pi     lector de RSS"
+            gris "     http://wallabag.pi     articulos guardados"
+        }
+    fi
 
     echo ""
     echo "  ${B}Documentacion${N}"
@@ -1340,6 +2008,18 @@ resumen() {
 # ══════════════════════════════════════════════════════════════════════════════
 
 [ -f "$REPO/docker-compose.yml" ] || { falla "Corré esto parado en la raiz del repo."; exit 1; }
+
+# Todo el instalador pregunta cosas. Sin terminal, cada pregunta fallaria en
+# silencio y algunas quedarian girando en vano.
+if ! : < /dev/tty 2>/dev/null; then
+    falla "Este instalador es interactivo y no encuentra una terminal."
+    info "Corrélo parado en la Pi, o por SSH abriendo sesion:"
+    echo ""
+    echo "    ssh jlussich@$IP_FIJA"
+    echo "    cd ~/pi-services && ./instalador.sh"
+    echo ""
+    exit 1
+fi
 
 if ! sudo -n true 2>/dev/null; then
     falla "sudo pide contrasena y el instalador lo necesita seguido."
@@ -1360,5 +2040,6 @@ menu
 elegir_servicios
 recolectar
 ejecutar
+configurar_servicios
 guia_cuentas
 resumen
