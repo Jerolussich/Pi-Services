@@ -8,6 +8,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy-data:/data
       - caddy-config:/config
+      # Log de acceso en ruta fija del host, para que fail2ban no dependa
+      # del ID del contenedor y sobreviva a cada recreacion.
+      - /var/log/caddy:/var/log/caddy
     env_file:
       - .env
     extra_hosts:

@@ -3,7 +3,26 @@
     auto_https off
 }
 
+# Log de acceso en un archivo de ruta fija del host, montado en el contenedor.
+# Antes fail2ban leia el log JSON de Docker, cuya ruta incluye el ID del
+# contenedor: cada vez que se recreaba Caddy, la ruta cambiaba y fail2ban
+# quedaba apuntando a un archivo inexistente y no arrancaba.
+#
+# La rotacion la hace el propio Caddy, no logrotate, para no depender de un
+# servicio externo que puede romperse sin avisar.
+(accesslog) {
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 20MiB
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+}
+
 http://homepage.pi {
+    import accesslog
     basic_auth {
         {$CADDY_USER} {$CADDY_PASSWORD_HASH}
     }
@@ -11,26 +30,32 @@ http://homepage.pi {
 }
 
 http://grafana.pi {
+    import accesslog
     reverse_proxy grafana:3000
 }
 
 http://wallabag.pi {
+    import accesslog
     reverse_proxy wallabag:80
 }
 
 http://freshrss.pi {
+    import accesslog
     reverse_proxy freshrss:80
 }
 
 http://news.pi {
+    import accesslog
     reverse_proxy news-filter-ui:8084
 }
 
 http://finance.pi {
+    import accesslog
     reverse_proxy finance-tracker-ui:8085
 }
 
 http://prometheus.pi {
+    import accesslog
     basic_auth {
         {$CADDY_USER} {$CADDY_PASSWORD_HASH}
     }
@@ -38,21 +63,56 @@ http://prometheus.pi {
 }
 
 http://pihole.pi {
+    import accesslog
     redir / /admin/
     reverse_proxy 192.168.68.66:8181
 }
 
 http://fitbit.pi {
+    import accesslog
     reverse_proxy fitbit-exporter-ui:8086
 }
 
 http://calibre.pi {
+    import accesslog
     basic_auth {
         {$CADDY_USER} {$CADDY_PASSWORD_HASH}
     }
     reverse_proxy 192.168.68.66:8083
 }
 
+# ── Stack multimedia (profile "media") ────────────────────────────────────
+# Estas entradas responden 502 mientras el stack no este levantado, que es
+# lo esperado si todavia no montaste el DAS.
+
+http://jellyfin.pi {
+    import accesslog
+    reverse_proxy jellyfin:8096
+}
+
+# Radarr, Prowlarr, Bazarr y qBittorrent traen su propio login, asi que
+# Caddy solo hace proxy. Mismo criterio que Grafana, Wallabag y FreshRSS.
+http://radarr.pi {
+    import accesslog
+    reverse_proxy radarr:7878
+}
+
+http://prowlarr.pi {
+    import accesslog
+    reverse_proxy prowlarr:9696
+}
+
+http://bazarr.pi {
+    import accesslog
+    reverse_proxy bazarr:6767
+}
+
+http://qbit.pi {
+    import accesslog
+    reverse_proxy qbittorrent:8080
+}
+
 http:// {
+    import accesslog
     respond "Access denied" 403
 }
