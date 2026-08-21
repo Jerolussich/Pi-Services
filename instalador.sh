@@ -346,6 +346,34 @@ clave_para() {
     echo "$CLAVE_MAESTRA"
 }
 
+# ── El DAS ────────────────────────────────────────────────────────────────────
+#
+#  DAS_ROOT trae /mnt/das por defecto, y esa carpeta existe aunque no haya
+#  ningun disco conectado. O sea que el stack multimedia arranca igual, se ve
+#  sano, y baja todo a la tarjeta del sistema hasta llenarla. Una tarjeta llena
+#  es justo lo que corrompe el sistema de archivos.
+#
+#  La pregunta correcta no es "existe la carpeta" ni siquiera "es un punto de
+#  montaje", sino si esta en OTRO dispositivo que la raiz del sistema.
+
+das_ruta() {
+    local r; r=$(leer_var media/.env DAS_ROOT 2>/dev/null)
+    echo "${r:-/mnt/das}"
+}
+
+das_montado() {
+    local raiz dev_das dev_raiz
+    raiz=$(das_ruta)
+    [ -d "$raiz" ] || return 1
+    dev_das=$(df --output=source "$raiz" 2>/dev/null | tail -1)
+    dev_raiz=$(df --output=source / 2>/dev/null | tail -1)
+    [ -n "$dev_das" ] && [ "$dev_das" != "$dev_raiz" ]
+}
+
+das_libre() {
+    df -h --output=avail "$(das_ruta)" 2>/dev/null | tail -1 | tr -d ' '
+}
+
 # Cuenta contenedores de un modulo que estan corriendo
 corriendo() {
     local mod="$1" n=0 s
@@ -1424,6 +1452,56 @@ print(json.dumps({
     arr_autenticacion prowlarr 9696 v1 "$clave"
 }
 
+# ── Sin DAS, las descargas van a la tarjeta ───────────────────────────────────
+
+# pausa = configurar todo pero sin bajar nada  ·  igual = bajar igual  ·  no = no tocar
+MEDIA_MODO="igual"
+
+decidir_das() {
+    if das_montado; then
+        ok "DAS montado en $(das_ruta), $(das_libre) libres"
+        MEDIA_MODO="igual"
+        return 0
+    fi
+
+    local raiz; raiz=$(das_ruta)
+    echo ""
+    aviso "${B}El disco externo no esta montado.${N}"
+    info "DAS_ROOT apunta a ${B}$raiz${N}, que hoy es una carpeta comun en la"
+    info "MISMA tarjeta donde corre el sistema. Quedan ${B}$(das_libre)${N} libres."
+    echo ""
+    info "Eso significa que si cargas un indexer y agregas una pelicula, la"
+    info "cadena entera funciona y el archivo termina en la tarjeta. Dos o tres"
+    info "peliculas la llenan, y una tarjeta llena es lo que corrompe el sistema."
+    echo ""
+    info "Ademas se pierden los hardlinks: cada pelicula ocuparia el doble,"
+    info "una vez en descargas y otra en la biblioteca."
+    echo ""
+    echo "     ${B}1${N})  configurar todo, pero con las descargas ${B}en pausa${N}   ${G}(recomendado)${N}"
+    gris "         queda listo para cuando conectes el disco, y mientras tanto"
+    gris "         nada baja solo. Se despausa desde qbit.pi cuando quieras."
+    echo "     ${B}2${N})  configurar todo y bajar igual"
+    gris "         solo si sabes lo que estas haciendo y vas a mirar el espacio"
+    echo "     ${B}3${N})  no tocar multimedia hasta que tengas el disco"
+    echo ""
+
+    local r
+    read -r -p "     ${B}Que hago${N} [1/2/3]: " r </dev/tty 2>/dev/null || r=1
+    case "$r" in
+        2) MEDIA_MODO="igual"
+           aviso "Bajando a la tarjeta. Vigila el espacio con: df -h /"
+           pendiente "Conectar el DAS: las descargas estan yendo a la tarjeta" ;;
+        3) MEDIA_MODO="no"
+           info "Multimedia queda sin configurar"
+           pendiente "Montar el DAS y volver a correr el instalador para multimedia" ;;
+        *) MEDIA_MODO="pausa"
+           ok "Configuro todo, con las descargas en pausa"
+           pendiente "Montar el DAS (ver media/DAS.md) y despausar en http://qbit.pi" ;;
+    esac
+    echo ""
+    return 0
+}
+
 # ── Recuperar una credencial que ya existe ────────────────────────────────────
 #
 #  Un servicio que ya tiene contrasena no se puede reconfigurar a ciegas. Y
@@ -1604,7 +1682,9 @@ cfg_qbittorrent() {
     # save_path viene de fabrica en /downloads, que en este stack NO EXISTE:
     # el DAS se monta en /data. Si no se corrige, las descargas caen dentro
     # del contenedor y encima se pierde el hardlink con la biblioteca.
-    prefs=$(CLAVE="$clave" python3 -c '
+    # Sin DAS, los torrents entran en pausa: asi Radarr puede mandarlos y no
+    # se baja un solo byte a la tarjeta hasta que conectes el disco.
+    prefs=$(CLAVE="$clave" PAUSA="$MEDIA_MODO" python3 -c '
 import json, os
 print(json.dumps({
   "web_ui_username": "admin",
@@ -1613,7 +1693,7 @@ print(json.dumps({
   "temp_path_enabled": True,
   "temp_path": "/data/downloads/incomplete",
   "create_subfolder_enabled": False,
-  "start_paused_enabled": False}))' 2>/dev/null)
+  "start_paused_enabled": os.environ.get("PAUSA") == "pausa"}))' 2>/dev/null)
 
     resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
         -H "Referer: http://localhost:8080" \
@@ -1950,6 +2030,11 @@ configurar_servicios() {
     fi
 
     if [[ " ${SELECCION[*]} " == *" media "* ]]; then
+        # Antes de tocar nada: sin disco externo, todo esto baja a la tarjeta
+        decidir_das
+    fi
+
+    if [[ " ${SELECCION[*]} " == *" media "* ]] && [ "$MEDIA_MODO" != "no" ]; then
         # El orden importa: qBittorrent y Radarr tienen que estar configurados
         # antes de que Radarr los conecte y Prowlarr enlace a Radarr.
         esta_arriba qbittorrent && [[ " $elegidos_media " == *" qbittorrent "* ]] && \
@@ -1962,6 +2047,14 @@ configurar_servicios() {
             cfg_bazarr "$(clave_para 'Bazarr')"
         esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]] && \
             cfg_jellyfin "$(clave_para 'Jellyfin')"
+
+        if [ "$MEDIA_MODO" = "pausa" ]; then
+            echo ""
+            aviso "Las descargas quedaron ${B}en pausa${N} a proposito."
+            gris "     Podes cargar indexers y agregar peliculas sin riesgo: se van a"
+            gris "     encolar, pero no se baja nada hasta que conectes el disco y las"
+            gris "     despauses desde http://qbit.pi."
+        fi
     fi
 }
 
