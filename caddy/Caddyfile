@@ -68,6 +68,15 @@ http://pihole.pi {
     reverse_proxy 192.168.68.66:8181
 }
 
+# pi.hole es el nombre canonico que publica el propio Pi-hole y el que queda
+# en los marcadores y en otros dispositivos. Sin este bloque cae en el catch
+# all del final y responde 403, porque su interfaz ya no vive en el puerto 80.
+http://pi.hole {
+    import accesslog
+    redir / /admin/
+    reverse_proxy 192.168.68.66:8181
+}
+
 http://fitbit.pi {
     import accesslog
     reverse_proxy fitbit-exporter-ui:8086
