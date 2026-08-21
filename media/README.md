@@ -119,6 +119,8 @@ docker compose --profile media up -d
 
 ## Configuración inicial
 
+**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de multimedia, y deja los cinco servicios configurados y hablando entre ellos. Lo que sigue está para que sepas qué quedó hecho, y para hacerlo a mano si alguna vez lo necesitás.
+
 El orden importa, porque cada pieza se registra contra la anterior.
 
 ### 1. qBittorrent
@@ -131,6 +133,8 @@ docker logs qbittorrent | grep -i password
 
 Entrá a `http://qbit.pi`, cambiala, y configurá las rutas como `/data/downloads/incomplete` y `/data/downloads/complete`.
 
+Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los cinco contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
+
 ### 2. Prowlarr
 
 En `http://prowlarr.pi`, agregá tus indexers. Después, en `Settings → Apps`, agregá Radarr con URL `http://radarr:7878`. Prowlarr le sincroniza los indexers solo, y no vas a tener que cargarlos de nuevo en cada aplicación.
@@ -142,15 +146,23 @@ En `http://radarr.pi`:
 - `Settings → Media Management`: carpeta raíz `/data/media/movies`, y activá **`Use Hardlinks instead of Copy`**.
 - `Settings → Download Clients`: qBittorrent, host `qbittorrent`, puerto `8080`.
 
+Radarr **valida la conexión al guardar**: si la contraseña de qBittorrent no es la correcta, no guarda nada y responde `Unable to connect to qBittorrent`.
+
 ### 4. Bazarr
 
 En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y elegí proveedores e idiomas.
+
+Sin un **perfil de idiomas** creado no baja ningún subtítulo, aunque tengas proveedores configurados. Es el paso que más se olvida.
 
 ### 5. Jellyfin
 
 En `http://jellyfin.pi`, creá la biblioteca de películas apuntando a `/media/movies`. En `Dashboard → Playback`, activá aceleración por hardware con **VAAPI** y dispositivo `/dev/dri/renderD128`.
 
-Una advertencia concreta sobre el Pi 5: **no tiene codificador de video por hardware**. Decodifica H.264 y HEVC por hardware, pero al codificar usa CPU. En la práctica conviene reproducir en formato nativo y evitar transcodificar. Si tus clientes soportan el códec original, el Pi 5 alcanza de sobra.
+Una advertencia concreta sobre el Pi 5: **no tiene codificador de video por hardware**. Decodifica H.264 y HEVC por hardware, pero al codificar usa CPU. Por eso hay que dejar la codificación por hardware **apagada**: si la activás, cada transcodificación falla. En la práctica conviene reproducir en formato nativo y evitar transcodificar. Si tus clientes soportan el códec original, el Pi 5 alcanza de sobra.
+
+### Contraseñas
+
+Los tres `*arr` salen de fábrica **sin contraseña ninguna**, con `authenticationMethod: none`. Y Caddy tampoco les pone la suya, porque se asume que traen login propio. O sea que hasta que les pongas una, `radarr.pi`, `prowlarr.pi` y `bazarr.pi` están abiertos a cualquiera en tu red. El instalador se las configura; si lo hacés a mano, es en `Settings → General → Security`.
 
 ---
 

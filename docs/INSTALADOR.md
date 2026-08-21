@@ -14,9 +14,11 @@ Un script de instalación común te obliga a decidir todo de entrada y correrlo 
 
 Tampoco te hace copiar y pegar comandos. Si necesita una contraseña o un token, te lo pide en el momento y te explica de dónde sacarlo. Y si no lo tenés a mano, apretás Enter, el módulo se instala igual, y al final te dice con precisión qué quedó sin completar.
 
+Y no se queda en levantar contenedores: **también los configura**. Deja a Jellyfin con tu usuario y la biblioteca creada, a Radarr apuntando a la carpeta correcta y hablando con qBittorrent, y a Prowlarr enlazado con Radarr. Todo eso antes de que abras el navegador por primera vez.
+
 ---
 
-## Los siete pasos
+## Los ocho pasos
 
 ### 1. Diagnóstico
 
@@ -104,9 +106,19 @@ Después te pide lo que sí necesita de vos, **de a uno**, y para cada dato te d
         valor (Enter para saltear):
 ```
 
-Las contraseñas se escriben ocultas y no quedan en el historial. La de Caddy además se convierte en hash bcrypt, con los `$` escapados como `$$`, que es el detalle que hace fallar la autenticación en silencio si se hace a mano.
-
 **Saltear siempre es una opción válida.** Enter y sigue.
+
+#### Una sola contraseña
+
+Las contraseñas no se piden una por una. Se pide **una sola vez, al principio**, y esa misma va a todos lados: la homepage, los paneles propios, y las cuentas que el instalador crea solo en Jellyfin, qBittorrent, Radarr, Prowlarr, Bazarr, Grafana y Pi-hole.
+
+Es a propósito. La versión anterior pedía una contraseña por servicio y era fácil terminar con dos distintas sin darte cuenta: el hash de Caddy generado con una y los paneles con otra. Después no entrabas a la homepage y no había forma de saber por qué.
+
+Si querés una distinta para algún servicio puntual, decís que sí a la pregunta que viene después y te la pide servicio por servicio, con Enter para usar la general en los que no te importe.
+
+Se escriben ocultas y no quedan en el historial. La de Caddy además se convierte en hash bcrypt, con los `$` escapados como `$$`, que es el detalle que hace fallar la autenticación en silencio si se hace a mano.
+
+**Una excepción, y es de qBittorrent, no del instalador:** rechaza contraseñas de menos de 6 caracteres. Si la tuya es más corta y elegiste el módulo de multimedia, te avisa en el momento de elegirla y te deja decidir: cambiarla por una de 6 o más y seguir teniendo una sola, o dejar la corta y ponerle una aparte solo a qBittorrent.
 
 ### 5. Instala
 
@@ -118,19 +130,48 @@ En orden de dependencias. Para cada módulo:
 
 Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alguno no levantó, cuál fue y con qué comando ver su log.
 
-### 6. Te guía para crear las cuentas
+### 6. Configura los servicios solo
 
-Crear cuentas es lo único que un script no puede hacer por vos. Pero sí puede llevarte de la mano.
+Levantar un contenedor no alcanza. Jellyfin recién levantado te recibe con un asistente de cinco pantallas, Radarr no sabe dónde guardar las películas, y qBittorrent viene apuntando a una carpeta que en este stack no existe. Todo eso lo hace el instalador antes de que abras el navegador.
 
-Terminada la instalación, te lleva servicio por servicio **en el orden correcto**, con la URL y qué hacer exactamente en cada uno:
+Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`, porque ninguno publica su puerto al host. Todos traen `curl`.
+
+| Servicio | Qué deja hecho |
+|---|---|
+| **Jellyfin** | Completa el asistente entero, crea tu usuario, arma la biblioteca de Películas apuntando a `/media/movies`, y activa la decodificación por hardware con VAAPI |
+| **qBittorrent** | Lee la contraseña temporal del log, la reemplaza por la tuya, y corrige las rutas de descarga a `/data/downloads` |
+| **Radarr** | Carpeta raíz `/data/media/movies`, hardlinks activados, y qBittorrent conectado como cliente de descargas con sus credenciales |
+| **Prowlarr** | Lo enlaza con Radarr, así los indexers que cargues se sincronizan solos |
+| **Bazarr** | Lo conecta a Radarr con su API key |
+| **Grafana** | Le pone la contraseña de admin, así no te pide cambiarla en el primer login |
+| **Pi-hole** | Le pone la contraseña del panel |
+
+Y a Radarr, Prowlarr y Bazarr **les pone contraseña**, que es más importante de lo que parece: los tres vienen de fábrica con `authenticationMethod: none`, y Caddy tampoco les pide nada porque se asume que traen la suya. Sin este paso quedan abiertos a cualquiera en tu red.
+
+Dos reglas gobiernan todo el paso:
+
+**No pisa nada.** Si algo ya está configurado, lo dice y sigue. Podés correr el instalador diez veces seguidas sin miedo.
+
+**No deja un servicio peor de como lo encontró.** Si un paso falla, avisa con el error textual y lo anota como pendiente, en vez de romper. El caso más claro es Bazarr: después de ponerle contraseña **verifica que se pueda entrar**, y si el login no funciona se la saca, porque un hash mal calculado te dejaría afuera de tu propio Bazarr sin forma de volver.
+
+El orden importa y no es casual: qBittorrent antes que Radarr, porque Radarr necesita su contraseña para conectarse; y Radarr antes que Prowlarr y Bazarr, porque los dos se enganchan contra él.
+
+### 7. Te guía con lo que queda
+
+Después de todo eso, lo que queda es de dos tipos: **crear una cuenta desde cero**, que necesita un navegador, y **elecciones que son tuyas**, como qué indexers usás o en qué idioma querés los subtítulos.
+
+Son cinco pantallas, no ocho, y cada una viene con el paso a paso numerado:
 
 ```
-  [2/8]  freshrss
+  [1/5]  freshrss   Crear tu cuenta y habilitar la API
         http://freshrss.pi
 
-        Segui el asistente y crea tu usuario. Al terminar, entra a
-        Configuracion, Perfil, y activa la API de administracion
-        poniendo una contrasena de API.
+        1. El asistente te pide el idioma: elegi Espanol y Continuar.
+        2. En 'Verificaciones' tiene que estar todo en verde. Continuar.
+        3. Base de datos: dejala en SQLite, no toques nada. Continuar.
+        4. Crea tu usuario. Usa admin y la misma contrasena que el resto.
+        5. Ya adentro: Configuracion, Perfil, y abajo de todo esta
+           Contrasena de la API. Ponela y guarda.
 
         Enter cuando termines (o 's' para saltear):
 ```
@@ -145,13 +186,11 @@ Y acá está lo que hace la diferencia: **apenas terminás, te pide los datos qu
 
 Eso resuelve el problema del huevo y la gallina del filtro de noticias: sus credenciales **solo existen después** de crear las cuentas de FreshRSS y Wallabag. El instalador las pide justo ahí y después recrea el contenedor solo para que las tome.
 
-Para qBittorrent va un paso más: **lee su contraseña temporal del log y te la muestra en pantalla**, así no tenés que ir a buscarla.
-
-El orden no es casual: primero FreshRSS y Wallabag, después el filtro. Primero Prowlarr, después Radarr, después Bazarr. Cada uno se registra contra el anterior.
+En los de multimedia los pasos también te dicen **qué no tenés que hacer**, que es igual de útil: no hace falta que cargues los indexers en Radarr, porque Prowlarr ya está enlazado y se los sincroniza; y no toques la pestaña de Radarr en Bazarr, porque ya está conectada.
 
 Saltear siempre es válido: apretás `s` y queda anotado como pendiente.
 
-### 7. Resumen
+### 8. Resumen
 
 Te muestra cómo quedó cada módulo elegido, y después tres listas:
 
@@ -159,7 +198,7 @@ Te muestra cómo quedó cada módulo elegido, y después tres listas:
 
 **Tareas pendientes.** Cosas que quedaron a medias, como reiniciar para activar log2ram o aprobar la ruta en la consola de Tailscale.
 
-**Cuentas que tenés que crear.** Solo las de los módulos que elegiste. Eso ningún script lo puede hacer por vos.
+**Con qué entrás a cada cosa.** La lista de URLs de lo que instalaste, con el recordatorio de que el usuario es `admin` en todas y la contraseña es la que elegiste. FreshRSS y Wallabag van aparte, porque esas cuentas las creaste vos.
 
 ---
 
@@ -237,6 +276,26 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 **Todos los `.env` tienen que existir**, aunque solo levantes un módulo. Docker Compose lee la configuración completa y falla si le falta uno. El instalador los crea todos, pero solo te pide datos de los módulos que elegiste.
 
 **El hash de Caddy necesita los `$` duplicados.** Compose interpreta `$` como variable, así que un hash sin escapar rompe la autenticación sin decir por qué.
+
+**Radarr, Prowlarr y Bazarr salen de fábrica sin contraseña.** Vienen con `authenticationMethod: none`, y Caddy tampoco les pone la suya porque se asume que traen login propio. El resultado es que quedan abiertos en la red. El instalador les configura autenticación por formulario.
+
+**qBittorrent viene apuntando a `/downloads`, que en este stack no existe.** El DAS se monta en `/data`, en los cinco contenedores. Si no se corrige, las descargas caen adentro del contenedor y encima se pierde el hardlink con la biblioteca, así que cada película termina ocupando el doble.
+
+**qBittorrent no acepta contraseñas de menos de 6 caracteres.** Contesta `400` con el motivo en el cuerpo, y si no se lee ese cuerpo el fallo parece un éxito. Peor: la contraseña queda sin cambiar y después Radarr no se puede conectar, así que un error silencioso se convierte en dos.
+
+**Su login contesta `204`, no `Ok.`** La versión 5 cambió la respuesta. Verificar contra el texto `Ok.` da falso negativo con un login que en realidad funcionó.
+
+**Y reescribe su configuración al apagarse.** Editar `qBittorrent.conf` con el contenedor andando no sirve de nada: al reiniciar la pisa con lo que tenía en memoria. Hay que parar el contenedor primero.
+
+**Bazarr no se configura por API, y su contenedor no trae PyYAML alcanzable.** Su configuración vive en un YAML, así que el instalador lo saca del contenedor, lo edita con el Python del sistema, y lo vuelve a escribir sobre el mismo archivo para no cambiarle el dueño.
+
+**Bazarr guarda la contraseña del panel como md5.** Un hash mal calculado te deja afuera sin forma de entrar, así que el instalador verifica el login después de ponerla y se la saca si no funciona.
+
+**Jellyfin se configura entero por sus endpoints `/Startup`**, que no piden autenticación mientras el asistente esté sin terminar. Después de cerrarlo hay que autenticarse para todo lo demás.
+
+**La Pi 5 decodifica por hardware pero no codifica.** Al activar VAAPI hay que dejar la codificación por hardware apagada, o cada transcodificación falla.
+
+**`pihole setpassword --help` no muestra ayuda: te cambia la contraseña a `--help`.**
 
 ---
 
