@@ -670,8 +670,107 @@ instalar_sistema() {
     fi
 }
 
+# ── Listas de bloqueo ─────────────────────────────────────────────────────────
+#
+#  HaGeZi publica varias listas, de menos a mas agresiva. Cuanto mas estricta,
+#  mas cosas bloquea, y tambien mas chances de romper algo legitimo.
+
+BL_BASE="https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock"
+
+elegir_blocklists() {
+    local actuales
+    actuales=$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM adlist WHERE enabled=1;' 2>/dev/null)
+    local dominios
+    dominios=$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null)
+
+    echo ""
+    info "${B}Listas de bloqueo${N}"
+    gris "     Ahora tenes ${actuales:-0} listas activas y ${dominios:-0} dominios bloqueados."
+    echo ""
+
+    if [ "${dominios:-0}" -gt 1000 ] 2>/dev/null; then
+        preguntar "¿Queres cambiar o agregar listas?" "n" || { ok "Se dejan como estan"; return; }
+    fi
+
+    echo "     HaGeZi publica varias, de menos a mas agresiva:"
+    echo ""
+    echo "     ${B}1${N})  Light        ~60.000 dominios   lo minimo, no rompe nada"
+    echo "     ${B}2${N})  Multi        ~180.000           equilibrio para el dia a dia"
+    echo "     ${B}3${N})  Pro          ~250.000           agrega rastreo y telemetria"
+    echo "     ${B}4${N})  Pro++        ~300.000           suma telemetria de sistemas operativos"
+    echo "     ${B}5${N})  Ultimate     ~365.000           la mas estricta que hay"
+    echo "     ${B}6${N})  Otra URL     pegas la que quieras"
+    echo "     ${B}7${N})  Ninguna      dejar solo la que Pi-hole trae de fabrica"
+    echo ""
+    aviso "Cuanto mas estricta, mas chances de que algo legitimo deje de andar."
+    gris "     Si algo se rompe, se arregla desde el panel: Domains, Add to allowlist."
+    echo ""
+
+    local resp
+    read -r -p "     ${B}Cual${N} (numeros separados por espacio): " resp </dev/tty
+    [ -z "$resp" ] && { ok "Sin cambios"; return; }
+
+    local agregadas=0 n url nombre
+    for n in $resp; do
+        url=""; nombre=""
+        case "$n" in
+            1) url="$BL_BASE/light.txt";     nombre="HaGeZi Light" ;;
+            2) url="$BL_BASE/multi.txt";     nombre="HaGeZi Multi" ;;
+            3) url="$BL_BASE/pro.txt";       nombre="HaGeZi Pro" ;;
+            4) url="$BL_BASE/pro.plus.txt";  nombre="HaGeZi Pro++" ;;
+            5) url="$BL_BASE/ultimate.txt";  nombre="HaGeZi Ultimate" ;;
+            6)
+                read -r -p "     ${B}URL de la lista:${N} " url </dev/tty
+                [ -z "$url" ] && continue
+                nombre="Lista propia"
+                ;;
+            7) ok "Se deja solo la lista de fabrica"; return ;;
+            *) continue ;;
+        esac
+
+        # Verifico que la URL responda antes de meterla en la base
+        local codigo
+        codigo=$(curl -sI --max-time 20 "$url" 2>/dev/null | head -1 | grep -oE "[0-9]{3}")
+        if [ "$codigo" != "200" ]; then
+            falla "$nombre no responde (HTTP ${codigo:-sin respuesta}), la salteo"
+            continue
+        fi
+
+        printf "INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('%s', 1, '%s');\n" "$url" "$nombre" \
+            | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
+        ok "Agregada: $nombre"
+        agregadas=$((agregadas+1))
+    done
+
+    # Dominios sueltos que quieras bloquear a mano
+    echo ""
+    if preguntar "¿Queres bloquear algun sitio puntual? (por ejemplo redes sociales)" "n"; then
+        info "Escribi un dominio por vez. Enter vacio para terminar."
+        while true; do
+            local d
+            read -r -p "     ${B}dominio${N} (Enter para terminar): " d </dev/tty
+            [ -z "$d" ] && break
+            # Regex para que agarre el dominio y todos sus subdominios
+            local limpio="${d#www.}"
+            printf "INSERT OR IGNORE INTO domainlist (type, domain, enabled, comment) VALUES (3, '(\\.|^)%s\$', 1, 'Bloqueado a mano');\n" \
+                "${limpio//./\\.}" | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
+            ok "Bloqueado: $limpio y sus subdominios"
+        done
+    fi
+
+    if [ "$agregadas" -gt 0 ] || [ "${dominios:-0}" -lt 1000 ]; then
+        info "Descargando las listas, tarda unos minutos..."
+        sudo pihole -g >/dev/null 2>&1
+        ok "$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null) dominios bloqueados"
+    fi
+}
+
 instalar_pihole() {
-    if [ "${ESTADO[pihole]}" = "activo" ]; then ok "Ya estaba funcionando"; return; fi
+    if [ "${ESTADO[pihole]}" = "activo" ]; then
+        ok "Ya estaba funcionando"
+        elegir_blocklists
+        return
+    fi
 
     if ! command -v pihole >/dev/null 2>&1; then
         info "Instalando Pi-hole..."
@@ -713,17 +812,7 @@ EOF
     sudo systemctl restart pihole-FTL
     ok "15 registros DNS cargados (los nombres *.pi)"
 
-    # Listas de bloqueo
-    local dominios; dominios=$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null)
-    if [ "${dominios:-0}" -lt 1000 ] 2>/dev/null; then
-        info "Agregando HaGeZi Ultimate, la lista mas estricta que hay..."
-        printf "INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('%s', 1, 'HaGeZi Ultimate');\n" \
-            "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/ultimate.txt" \
-            | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
-        info "Descargando (tarda unos minutos)..."
-        sudo pihole -g >/dev/null 2>&1
-        ok "$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null) dominios bloqueados"
-    fi
+    elegir_blocklists
 
     if [ -z "$(sudo pihole-FTL --config webserver.api.pwhash 2>/dev/null | tr -d '"')" ]; then
         aviso "Pi-hole quedo sin contrasena: su panel es accesible desde tu LAN"
@@ -901,6 +990,129 @@ ejecutar() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  GUIA DE CREACION DE CUENTAS
+#
+#  Crear cuentas es lo unico que un script no puede hacer por vos. Pero si
+#  puede llevarte de la mano, en el orden correcto, y capturar los tokens
+#  que salen de cada una en el momento en que los tenes en pantalla.
+#
+#  El orden importa: news-filter necesita credenciales que solo existen
+#  DESPUES de crear las cuentas de FreshRSS y Wallabag.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# modulo|servicio|url|que hacer
+CUENTAS=(
+"monitoring|grafana|http://grafana.pi|Entra con usuario ${B}admin${N} y contrasena ${B}admin${N}. Te va a obligar a cambiarla en el primer login."
+"news|freshrss|http://freshrss.pi|Segui el asistente y crea tu usuario. Al terminar, entra a Configuracion, Perfil, y activa la ${B}API de administracion${N} poniendo una contrasena de API."
+"news|wallabag|http://wallabag.pi|Entra con ${B}wallabag${N} / ${B}wallabag${N} y cambia la contrasena. Despues anda a Configuracion, Clientes API, y crea un cliente nuevo."
+"media|jellyfin|http://jellyfin.pi|Segui el asistente: idioma, tu usuario, y despues agrega una biblioteca de Peliculas apuntando a ${B}/media/movies${N}."
+"media|qbittorrent|http://qbit.pi|Tu contrasena temporal esta abajo. Entra, cambiala, y configura las descargas en ${B}/data/downloads${N}."
+"media|prowlarr|http://prowlarr.pi|Crea tu usuario y agrega tus indexers. Despues, en Settings, Apps, agrega Radarr con la URL ${B}http://radarr:7878${N}."
+"media|radarr|http://radarr.pi|Crea tu usuario. Carpeta raiz ${B}/data/media/movies${N}, y activa ${B}Use Hardlinks instead of Copy${N}."
+"media|bazarr|http://bazarr.pi|Crea tu usuario, conecta Radarr en ${B}http://radarr:7878${N} y elegi proveedores de subtitulos."
+)
+
+# Tokens que salen de una cuenta recien creada.
+# modulo|servicio|archivo|VARIABLE|descripcion|donde encontrarlo
+TOKENS_DE_CUENTA=(
+"news|freshrss|news/news-filter/.env|FRESHRSS_API_PASSWORD|Clave de API de FreshRSS|La que acabas de poner en Perfil, API de administracion"
+"news|wallabag|news/news-filter/.env|WALLABAG_CLIENT_ID|ID de cliente de Wallabag|Aparece al crear el cliente API"
+"news|wallabag|news/news-filter/.env|WALLABAG_CLIENT_SECRET|Secreto de cliente de Wallabag|Al lado del ID"
+"news|wallabag|news/news-filter/.env|WALLABAG_PASSWORD|Contrasena de tu cuenta de Wallabag|La que pusiste recien"
+"monitoring|pihole|monitoring/.env|PIHOLE_API_KEY|Clave de API de Pi-hole|Panel de Pi-hole, Settings, API, Generate app password"
+)
+
+guia_cuentas() {
+    # Solo las cuentas de los servicios que efectivamente levantaste
+    local pendientes=() linea m srv url que
+    for linea in "${CUENTAS[@]}"; do
+        IFS='|' read -r m srv url que <<< "$linea"
+        [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
+        [[ " $(servicios_elegidos "$m") " == *" $srv "* ]] || continue
+        $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$srv" || continue
+        pendientes+=("$linea")
+    done
+
+    [ ${#pendientes[@]} -eq 0 ] && return 0
+
+    titulo "Crear las cuentas"
+
+    info "Esto es lo unico que un script no puede hacer por vos: cada servicio"
+    info "necesita que crees tu usuario la primera vez."
+    echo ""
+    info "Te llevo de a uno, ${B}en el orden correcto${N}, y despues de cada uno te"
+    info "pido los datos que hayan salido de ahi."
+    echo ""
+    aviso "Necesitas un navegador que resuelva los nombres .pi."
+    gris "     Si no te abren, revisa que tu DNS apunte a $IP_FIJA."
+    echo ""
+
+    preguntar "¿Las hacemos ahora?" "s" || {
+        pendiente "Crear las cuentas de: $(for l in "${pendientes[@]}"; do IFS='|' read -r _ s _ _ <<< "$l"; printf '%s ' "$s"; done)"
+        return 0
+    }
+
+    local i=1 total=${#pendientes[@]}
+    for linea in "${pendientes[@]}"; do
+        IFS='|' read -r m srv url que <<< "$linea"
+        echo ""
+        echo "  ${B}[$i/$total]  ${C}${srv}${N}"
+        echo "        ${B}$url${N}"
+        echo ""
+        echo "        $que"
+
+        # qBittorrent genera una contrasena temporal en su log
+        if [ "$srv" = "qbittorrent" ]; then
+            local tmp
+            tmp=$($DOCKER logs qbittorrent 2>&1 | grep -oE "temporary password is provided for this session: [^ ]+" | tail -1 | awk '{print $NF}')
+            [ -n "$tmp" ] && echo "        ${A}contrasena temporal: ${B}$tmp${N}"
+        fi
+
+        echo ""
+        read -r -p "        ${B}Enter cuando termines${N} (o 's' para saltear): " r </dev/tty
+        if [[ "$r" =~ ^[Ss]$ ]]; then
+            aviso "Salteado"
+            pendiente "Crear la cuenta de $srv en $url"
+            i=$((i+1)); continue
+        fi
+        ok "Listo"
+
+        # Si de esta cuenta salen tokens, los pido ahora que los tenes a mano
+        local t tm ts tarch tvar tdesc tdonde
+        for t in "${TOKENS_DE_CUENTA[@]}"; do
+            IFS='|' read -r tm ts tarch tvar tdesc tdonde <<< "$t"
+            [ "$ts" = "$srv" ] || continue
+            completa "$tarch" "$tvar" && continue
+            echo ""
+            echo "        ${C}$tdesc${N}"
+            gris "        $tdonde"
+            local valor
+            read -r -p "        ${B}valor${N} (Enter para saltear): " valor </dev/tty
+            if [ -n "$valor" ]; then
+                escribir_var "$tarch" "$tvar" "$valor"
+                ok "Guardado en $tarch"
+            else
+                aviso "Salteado"
+                INCOMPLETOS+=("$tm|$tarch|$tvar|$tdesc|$tdonde")
+            fi
+        done
+
+        i=$((i+1))
+    done
+
+    # Si se completaron las credenciales del filtro de noticias, hay que
+    # recrear el contenedor para que las tome.
+    if [[ " ${SELECCION[*]} " == *" news "* ]] \
+       && completa news/news-filter/.env FRESHRSS_API_PASSWORD \
+       && completa news/news-filter/.env WALLABAG_CLIENT_ID; then
+        echo ""
+        info "Ya estan las credenciales del filtro de noticias. Lo recreo para que las tome."
+        $DOCKER compose up -d --force-recreate news-filter >/dev/null 2>&1
+        ok "news-filter recreado"
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  RESUMEN
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -991,4 +1203,5 @@ menu
 elegir_servicios
 recolectar
 ejecutar
+guia_cuentas
 resumen

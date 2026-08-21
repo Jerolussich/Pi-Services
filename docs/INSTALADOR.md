@@ -16,7 +16,7 @@ Tampoco te hace copiar y pegar comandos. Si necesita una contraseña o un token,
 
 ---
 
-## Los seis pasos
+## Los siete pasos
 
 ### 1. Diagnóstico
 
@@ -96,7 +96,40 @@ En orden de dependencias. Para cada módulo:
 
 Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alguno no levantó, cuál fue y con qué comando ver su log.
 
-### 6. Resumen
+### 6. Te guía para crear las cuentas
+
+Crear cuentas es lo único que un script no puede hacer por vos. Pero sí puede llevarte de la mano.
+
+Terminada la instalación, te lleva servicio por servicio **en el orden correcto**, con la URL y qué hacer exactamente en cada uno:
+
+```
+  [2/8]  freshrss
+        http://freshrss.pi
+
+        Segui el asistente y crea tu usuario. Al terminar, entra a
+        Configuracion, Perfil, y activa la API de administracion
+        poniendo una contrasena de API.
+
+        Enter cuando termines (o 's' para saltear):
+```
+
+Y acá está lo que hace la diferencia: **apenas terminás, te pide los datos que salieron de esa cuenta**, en el momento en que los tenés en pantalla.
+
+```
+        Clave de API de FreshRSS
+        La que acabas de poner en Perfil, API de administracion
+        valor (Enter para saltear):
+```
+
+Eso resuelve el problema del huevo y la gallina del filtro de noticias: sus credenciales **solo existen después** de crear las cuentas de FreshRSS y Wallabag. El instalador las pide justo ahí y después recrea el contenedor solo para que las tome.
+
+Para qBittorrent va un paso más: **lee su contraseña temporal del log y te la muestra en pantalla**, así no tenés que ir a buscarla.
+
+El orden no es casual: primero FreshRSS y Wallabag, después el filtro. Primero Prowlarr, después Radarr, después Bazarr. Cada uno se registra contra el anterior.
+
+Saltear siempre es válido: apretás `s` y queda anotado como pendiente.
+
+### 7. Resumen
 
 Te muestra cómo quedó cada módulo elegido, y después tres listas:
 
@@ -107,6 +140,30 @@ Te muestra cómo quedó cada módulo elegido, y después tres listas:
 **Cuentas que tenés que crear.** Solo las de los módulos que elegiste. Eso ningún script lo puede hacer por vos.
 
 ---
+
+## Las listas de bloqueo
+
+El módulo de Pi-hole te deja elegir cuánto querés bloquear, en vez de imponerte una lista:
+
+```
+     HaGeZi publica varias, de menos a mas agresiva:
+
+     1)  Light        ~60.000 dominios   lo minimo, no rompe nada
+     2)  Multi        ~180.000           equilibrio para el dia a dia
+     3)  Pro          ~250.000           agrega rastreo y telemetria
+     4)  Pro++        ~300.000           suma telemetria de sistemas operativos
+     5)  Ultimate     ~365.000           la mas estricta que hay
+     6)  Otra URL     pegas la que quieras
+     7)  Ninguna      dejar solo la que Pi-hole trae de fabrica
+```
+
+Podés elegir varias a la vez, o pegar la URL de cualquier lista que uses. Antes de meterla en la base **verifica que la URL responda**, así no te quedás con una lista rota que falla en silencio cada vez que actualiza.
+
+Después te ofrece bloquear **dominios sueltos**, por ejemplo una red social. Lo hace con una expresión que agarra el dominio y todos sus subdominios, así bloquear `reddit.com` también cubre `www.reddit.com` y `old.reddit.com`.
+
+Si ya tenías listas cargadas, primero te pregunta si querés tocarlas. Si le decís que no, no las toca.
+
+Un aviso que el instalador te da y vale repetir: **cuanto más estricta la lista, más chances de que algo legítimo deje de andar**. Si eso pasa, se arregla desde el panel de Pi-hole, en `Domains`, agregando el dominio a la lista de permitidos.
 
 ## Volver a correrlo
 
