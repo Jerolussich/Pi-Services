@@ -8,6 +8,7 @@ include:
   - finance/finance-tracker/docker-compose.yml
   - caddy/docker-compose.yml
   - ofelia/docker-compose.yml
+  - media/docker-compose.yml
 networks:
   default:
     name: pi-services

@@ -1,0 +1,82 @@
+# Stack multimedia.
+#
+# Sube junto con el resto del stack, con el mismo `docker compose up -d` de la raiz.
+#
+#
+# Las variables del contenedor van por env_file, igual que el resto del repo.
+# DAS_ROOT lleva valor por defecto porque se interpola al parsear: sin eso,
+# el compose raiz no seria valido hasta que exista media/.env.
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    env_file:
+      - .env
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      # Solo lectura: Jellyfin reproduce, no escribe en la biblioteca.
+      - ${DAS_ROOT:-/mnt/das}/media:/media:ro
+    devices:
+      # Decodificacion por hardware. Requiere el grupo render, ver README.
+      - /dev/dri:/dev/dri
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    env_file:
+      - .env
+    volumes:
+      - qbittorrent-config:/config
+      - ${DAS_ROOT:-/mnt/das}:/data
+    ports:
+      # Unico puerto publicado del stack: conexiones entrantes de pares.
+      # La WebUI NO se publica, va por Caddy como todo lo demas.
+      - ${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}
+      - ${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}/udp
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    env_file:
+      - .env
+    volumes:
+      - prowlarr-config:/config
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    env_file:
+      - .env
+    volumes:
+      - radarr-config:/config
+      # El DAS entero, no subcarpetas sueltas: descargas y biblioteca tienen
+      # que estar bajo el mismo montaje para que los hardlinks funcionen.
+      - ${DAS_ROOT:-/mnt/das}:/data
+    depends_on:
+      - prowlarr
+      - qbittorrent
+    restart: unless-stopped
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    env_file:
+      - .env
+    volumes:
+      - bazarr-config:/config
+      - ${DAS_ROOT:-/mnt/das}:/data
+    depends_on:
+      - radarr
+    restart: unless-stopped
+
+volumes:
+  jellyfin-config:
+  jellyfin-cache:
+  qbittorrent-config:
+  prowlarr-config:
+  radarr-config:
+  bazarr-config:
