@@ -373,7 +373,7 @@
             "type": "prometheus",
             "uid": "afdfqn8b7ss1sf"
           },
-          "expr": "pihole_query_by_status{query_status=\"GRAVITY\"} / pihole_query_count * 100",
+          "expr": "pihole_query_by_status{query_status=\"GRAVITY\"} / on(instance, job) pihole_query_count{category=\"total\"} * 100",
           "instant": false,
           "interval": "",
           "legendFormat": "",
@@ -817,7 +817,7 @@
             "type": "prometheus",
             "uid": "afdfqn8b7ss1sf"
           },
-          "expr": "pihole_query_by_status{query_status=\"GRAVITY\"} / pihole_query_count * 100",
+          "expr": "pihole_query_by_status{query_status=\"GRAVITY\"} / on(instance, job) pihole_query_count{category=\"total\"} * 100",
           "interval": "",
           "legendFormat": "{{ job }}",
           "refId": "A"
