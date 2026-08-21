@@ -12,6 +12,16 @@ cd ~/pi-services && docker compose up -d
 
 Eso levanta los 20 servicios, incluido el stack multimedia. Un solo comando, una sola mecánica.
 
+**En una instalación desde cero, antes hay que crear la red una vez:**
+
+```bash
+docker network create pi-services
+```
+
+Tres servicios (`homepage`, `wallabag` y `finance-tracker`) la declaran como `external: true`, porque están pensados para poder levantarse sueltos. Eso significa que esperan que ya exista, y en un equipo nuevo no existe. Si te salteás este paso, el `up` construye todas las imágenes y recién al final falla con `network pi-services declared as external, but could not be found`, sin levantar nada.
+
+Solo hace falta la primera vez: la red sobrevive a `docker compose down`.
+
 ## Bajar todo
 
 ```bash
