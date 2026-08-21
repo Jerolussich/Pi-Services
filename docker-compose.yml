@@ -1,3 +1,4 @@
+name: pi-services
 include:
   - monitoring/docker-compose.yml
   - homepage/docker-compose.yml

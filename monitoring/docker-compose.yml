@@ -1,3 +1,4 @@
+name: pi-services
 networks:
   default:
     external: true

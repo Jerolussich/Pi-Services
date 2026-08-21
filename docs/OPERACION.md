@@ -18,9 +18,11 @@ Eso levanta los 20 servicios, incluido el stack multimedia. Un solo comando, una
 docker network create pi-services
 ```
 
-Tres servicios (`homepage`, `wallabag` y `finance-tracker`) la declaran como `external: true`, porque están pensados para poder levantarse sueltos. Eso significa que esperan que ya exista, y en un equipo nuevo no existe. Si te salteás este paso, el `up` construye todas las imágenes y recién al final falla con `network pi-services declared as external, but could not be found`, sin levantar nada.
+Ocho de los compose la declaran como `external: true`, porque están pensados para poder levantarse sueltos. Eso significa que esperan que ya exista, y en un equipo nuevo no existe. Si te salteás este paso, el `up` construye todas las imágenes y recién al final falla con `network pi-services declared as external, but could not be found`, sin levantar nada.
 
-Solo hace falta la primera vez: la red sobrevive a `docker compose down`.
+Solo hace falta la primera vez: la red sobrevive a `docker compose down`, y como se creó a mano no lleva etiquetas de Compose, así que Compose no la considera suya y no la borra.
+
+**El instalador se encarga de esto solo**, y lo comprueba antes de cada módulo, no una sola vez. Así da lo mismo que levantes dos módulos hoy y tres el mes que viene.
 
 ## Bajar todo
 
@@ -37,6 +39,10 @@ Cada carpeta funciona por su cuenta:
 ```bash
 cd ~/pi-services/monitoring && docker compose up -d
 ```
+
+Esto es seguro porque **todos los compose fijan `name: pi-services`** en su primera línea. Sin eso, Compose usa el nombre de la carpeta como nombre de proyecto, y los volúmenes pasarían a llamarse `monitoring_grafana-data` en vez de `pi-services_grafana-data`. El servicio arrancaría vacío, como recién instalado, y los datos viejos quedarían en un volumen huérfano ocupando espacio. Es un modo de fallar especialmente feo porque parece pérdida de datos y no lo es.
+
+Por el mismo motivo el repo puede vivir en una carpeta con cualquier nombre: sin el `name:` fijo, clonarlo como `Pi-Services` en vez de `pi-services` bastaría para que todo apareciera vacío.
 
 O desde la raíz, nombrándolo:
 

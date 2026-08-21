@@ -1,3 +1,4 @@
+name: pi-services
 services:
   freshrss:
     image: freshrss/freshrss:latest

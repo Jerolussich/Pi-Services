@@ -1,3 +1,4 @@
+name: pi-services
 # Stack multimedia.
 #
 # Sube junto con el resto del stack, con el mismo `docker compose up -d` de la raiz.

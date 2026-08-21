@@ -1110,9 +1110,12 @@ levantar_modulo() {
     local servicios; servicios=$(servicios_elegidos "$mod")
     [ -n "$servicios" ] || return 0
 
-    # La red tiene que existir ANTES. Tres composes la declaran como externa
-    # porque estan pensados para correr sueltos; si no existe, el up construye
-    # todo durante una hora y recien al final falla sin levantar nada.
+    # La red tiene que existir ANTES. Ocho composes la declaran como externa
+    # porque estan pensados para poder correr sueltos; si no existe, el up
+    # construye todo durante una hora y recien al final falla sin levantar nada.
+    #
+    # Se comprueba en cada modulo, no una sola vez al principio: asi da igual
+    # que levantes dos modulos hoy y tres el mes que viene.
     if ! $DOCKER network ls --format '{{.Name}}' 2>/dev/null | grep -qx "pi-services"; then
         $DOCKER network create pi-services >/dev/null 2>&1
         ok "Red 'pi-services' creada"

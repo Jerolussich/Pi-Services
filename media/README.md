@@ -109,11 +109,15 @@ id -u; id -g                              # PUID y PGID
 
 ### 4. Levantar
 
-El stack está bajo el profile `media`, así que no arranca con el `up` normal del repo. Es a propósito: sin el DAS montado los contenedores fallarían y te ensuciarían el arranque del resto del Pi.
-
 ```bash
-docker compose --profile media up -d
+cd ~/pi-services && docker compose up -d
 ```
+
+Sube junto con el resto del stack, con el mismo comando que todo lo demás.
+
+**Ojo con esto:** el stack multimedia arranca aunque el DAS no esté montado. `DAS_ROOT` apunta a `/mnt/das`, y esa carpeta existe igual, así que los contenedores levantan, se ven sanos, y descargan a la tarjeta del sistema hasta llenarla.
+
+Quien te protege de eso es el instalador, que comprueba si `/mnt/das` está en otro dispositivo que la raíz del sistema y, si no lo está, te ofrece configurar todo con las descargas en pausa. Si levantás a mano, esa comprobación no corre y quedás por tu cuenta.
 
 ---
 
@@ -187,15 +191,17 @@ Agregás una película en Radarr, que le pide a Prowlarr dónde encontrarla, man
 
 ## Bajar y levantar todo
 
+Los cinco de una, sin tocar el resto del Pi:
+
 ```bash
-docker compose --profile media down
+cd ~/pi-services && docker compose stop jellyfin qbittorrent prowlarr radarr bazarr
 ```
 
 ```bash
-docker compose --profile media up -d
+cd ~/pi-services && docker compose up -d jellyfin qbittorrent prowlarr radarr bazarr
 ```
 
-Los datos viven en volúmenes nombrados y en el DAS, así que `down` no borra nada. Para borrar también la configuración hay que agregar `-v` explícitamente, y eso te deja empezando de cero.
+Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra nada. Para borrar también la configuración hay que agregar `-v` a un `down` explícitamente, y eso te deja empezando de cero.
 
 ---
 
