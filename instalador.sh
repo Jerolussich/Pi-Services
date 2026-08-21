@@ -352,6 +352,63 @@ diagnostico() {
     gris "  ● funcionando    ◐ incompleto    ○ sin instalar"
 }
 
+# Imprime una lista de variables faltantes, agrupadas por modulo
+listar_faltantes() {
+    local mod_previo="" linea m arch v tipo desc ayuda
+    for linea in "$@"; do
+        IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
+        if [ "$m" != "$mod_previo" ]; then
+            echo ""
+            echo "  ${B}${NOMBRE[$m]}${N}"
+            mod_previo="$m"
+        fi
+        echo "     ${C}·${N} $desc"
+        gris "         va en:  $arch  ->  $v="
+        [ -n "$ayuda" ] && gris "         donde:  $ayuda"
+    done
+}
+
+# Detalle de que datos faltan, separando lo que ya esta corriendo de lo que no.
+# Lo que corre con datos faltantes es lo urgente: el servicio esta ahi pero
+# no puede hacer su trabajo.
+faltantes_detallado() {
+    local corriendo_falta=() apagado_falta=()
+    local linea m arch v tipo desc ayuda
+
+    for linea in "${VARIABLES[@]}"; do
+        IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
+        [ "$tipo" = "auto" ] && continue
+        completa "$arch" "$v" && continue
+        if [ "$(corriendo "$m")" -gt 0 ]; then
+            corriendo_falta+=("$linea")
+        else
+            apagado_falta+=("$linea")
+        fi
+    done
+
+    [ ${#corriendo_falta[@]} -eq 0 ] && [ ${#apagado_falta[@]} -eq 0 ] && {
+        echo ""
+        ok "No falta ningun dato. Todo lo que tenes levantado esta completo."
+        return 0
+    }
+
+    if [ ${#corriendo_falta[@]} -gt 0 ]; then
+        titulo "Datos que faltan en lo que ya tenes levantado"
+        aviso "Estos servicios estan corriendo pero no pueden hacer su trabajo"
+        info "hasta que cargues estos datos."
+        listar_faltantes "${corriendo_falta[@]}"
+    fi
+
+    if [ ${#apagado_falta[@]} -gt 0 ]; then
+        echo ""
+        titulo "Datos que van a hacer falta si levantas estos modulos"
+        listar_faltantes "${apagado_falta[@]}"
+    fi
+
+    echo ""
+    info "Elegi el modulo correspondiente en el menu y te los voy pidiendo de a uno."
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  SELECCION
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1199,6 +1256,7 @@ portada
 info "Revisando el estado del equipo..."
 detectar
 diagnostico
+faltantes_detallado
 menu
 elegir_servicios
 recolectar

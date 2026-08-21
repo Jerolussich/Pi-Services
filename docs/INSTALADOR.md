@@ -32,6 +32,24 @@ La distinción entre "funcionando" e "incompleto" importa: un módulo puede tene
 
 Para los módulos de Docker cuenta contenedores efectivamente corriendo. Para los nativos (Pi-hole, Calibre, Tailscale, firewall) consulta systemd y, en el caso de Pi-hole, hasta cuenta cuántos dominios tiene bloqueados para distinguir "instalado" de "instalado y con listas cargadas".
 
+Y después del resumen te dice **exactamente qué datos faltan**, no solo cuántos, separando dos casos que son muy distintos:
+
+```
+━━━ Datos que faltan en lo que ya tenes levantado ━━━
+
+! Estos servicios estan corriendo pero no pueden hacer su trabajo
+  hasta que cargues estos datos.
+
+  Noticias · FreshRSS, Wallabag y el filtro
+     · Clave de API de FreshRSS
+           va en:  news/news-filter/.env  ->  FRESHRSS_API_PASSWORD=
+           donde:  Solo existe DESPUES de crear tu cuenta en freshrss.pi, en Perfil, API
+```
+
+Lo que ya está corriendo y le falta un dato es **lo urgente**: el contenedor está ahí ocupando memoria y sin poder trabajar. Lo que todavía no levantaste es informativo, para que sepas qué te va a pedir si lo elegís.
+
+Esto hace que correr el instalador sirva también solo para preguntar: entrás, mirás qué falta, y salís sin tocar nada dejando el menú en blanco.
+
 ### 2. Elegís módulos
 
 Un menú numerado con los doce módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
