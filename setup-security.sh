@@ -52,7 +52,11 @@ info "Detecting running services..."
 CADDY_PORT=$(sudo ss -tlnp | grep docker-proxy | awk '{print $4}' | grep -v '::' | cut -d: -f2 | sort -n | head -1)
 PIHOLE_PORT=$(sudo ss -tlnp | grep pihole-FTL | grep -v '::' | grep -v ':53' | awk '{print $4}' | cut -d: -f2 | head -1)
 SSH_PORT=$(sudo ss -tlnp | grep sshd | grep -v '::' | awk '{print $4}' | cut -d: -f2 | head -1)
-CADDY_LOG=$(docker inspect caddy 2>/dev/null | grep LogPath | awk -F'"' '{print $4}')
+# Ruta fija del log de acceso de Caddy, montada desde el host.
+# Antes esto salia de `docker inspect caddy`, que devuelve una ruta con el ID
+# del contenedor adentro: al recrear Caddy la ruta cambiaba, fail2ban quedaba
+# apuntando a un archivo inexistente y no arrancaba. Ver caddy/Caddyfile.
+CADDY_LOG=/var/log/caddy/access.log
 
 echo ""
 echo "  Detected configuration:"
@@ -60,14 +64,14 @@ echo "  ┌───────────────────────
 echo "  │ Caddy (reverse proxy) port : ${CADDY_PORT:-not found}"
 echo "  │ Pi-hole web UI port        : ${PIHOLE_PORT:-not found}"
 echo "  │ SSH port                   : ${SSH_PORT:-not found}"
-echo "  │ Caddy log path             : ${CADDY_LOG:0:40}..."
+echo "  │ Caddy access log           : ${CADDY_LOG}"
 echo "  └─────────────────────────────────────────┘"
 echo ""
 
 [ -z "$CADDY_PORT" ]  && error "Could not detect Caddy port. Is Caddy running?"
 [ -z "$PIHOLE_PORT" ] && error "Could not detect Pi-hole port. Is Pi-hole running?"
 [ -z "$SSH_PORT" ]    && error "Could not detect SSH port."
-[ -z "$CADDY_LOG" ]   && error "Could not detect Caddy log path. Is Caddy container running?"
+[ -f "$CADDY_LOG" ]   || warn "Todavia no existe $CADDY_LOG. Se crea cuando Caddy reciba la primera peticion."
 
 confirm "Does this look correct? Continue with setup?" || { echo "Aborting."; exit 0; }
 
@@ -142,7 +146,7 @@ echo "  ┌───────────────────────
 echo "  │ SSH jail     : 5 failures → 1h ban"
 echo "  │ Caddy jail   : 5 failures → 1h ban"
 echo "  │ Window       : 10 minutes"
-echo "  │ Log symlink  : /var/log/caddy-access.log"
+echo "  │ Log de Caddy : ${CADDY_LOG}"
 echo "  └─────────────────────────────────────────┘"
 echo ""
 
@@ -154,7 +158,7 @@ if confirm "Apply fail2ban configuration?"; then
 
     if $DRY_RUN; then
         echo -e "  ${YELLOW}[DRY-RUN]${NC} Would write /etc/fail2ban/filter.d/caddy-auth.conf"
-        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would create symlink /var/log/caddy-access.log → $CADDY_LOG"
+        echo -e "  ${YELLOW}[DRY-RUN]${NC} Would point the caddy-auth jail at $CADDY_LOG"
         echo -e "  ${YELLOW}[DRY-RUN]${NC} Would write /etc/fail2ban/jail.local with SSH + Caddy jails"
         echo -e "  ${YELLOW}[DRY-RUN]${NC} Would restart fail2ban"
     else
@@ -164,8 +168,10 @@ failregex = .*"remote_ip":"<HOST>".*"status":401.*
 ignoreregex =
 EOF
 
-        sudo ln -sf "$CADDY_LOG" /var/log/caddy-access.log
-        success "Symlink created: /var/log/caddy-access.log → $CADDY_LOG"
+        # El directorio lo monta el contenedor de Caddy, pero se crea aca por si
+        # fail2ban se configura antes de que Caddy haya arrancado alguna vez.
+        sudo mkdir -p "$(dirname "$CADDY_LOG")"
+        sudo rm -f /var/log/caddy-access.log   # symlink obsoleto de versiones previas
 
         sudo tee /etc/fail2ban/jail.local > /dev/null << EOF
 [DEFAULT]
@@ -183,7 +189,7 @@ enabled  = true
 port     = ${CADDY_PORT}
 filter   = caddy-auth
 backend  = auto
-logpath  = /var/log/caddy-access.log
+logpath  = ${CADDY_LOG}
 maxretry = 5
 bantime  = 1h
 findtime = 10m
@@ -210,8 +216,8 @@ if $DRY_RUN; then
     echo -e "${YELLOW}DRY-RUN complete — no changes were made.${NC}"
     echo "Run without --dry-run to apply."
 else
-    echo -e "${YELLOW}Note:${NC} If you recreate the Caddy container, update the log symlink:"
-    echo "  sudo ln -sf \$(docker inspect caddy | grep LogPath | awk -F'\"' '{print \$4}') /var/log/caddy-access.log"
-    echo "  sudo systemctl restart fail2ban"
+    echo -e "${YELLOW}Nota:${NC} recrear el contenedor de Caddy ya NO rompe fail2ban."
+    echo "  El log va a ${CADDY_LOG}, ruta fija del host montada en el contenedor,"
+    echo "  y la rotacion la hace el propio Caddy. No hay symlink que actualizar."
 fi
 echo ""
