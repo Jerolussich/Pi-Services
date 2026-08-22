@@ -258,11 +258,6 @@ rev_dns() {
     fi
 }
 
-hosts_del_caddyfile() {
-    grep -oE '^http://[a-z0-9.]+' "$REPO/caddy/Caddyfile" 2>/dev/null \
-        | sed 's|http://||' | grep -v '^$' | sort -u
-}
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  CAPA 2  ·  CADDY
 # ══════════════════════════════════════════════════════════════════════════════
@@ -403,23 +398,6 @@ revisar_contenedor() {
     bien "$svc" "responde, HTTP $code"
 }
 
-puerto_de() {
-    case "$1" in
-        caddy) echo 80 ;;
-        homepage|grafana) echo 3000 ;;
-        prometheus) echo 9090 ;;
-        freshrss|wallabag) echo 80 ;;
-        news-filter-ui) echo 8084 ;;
-        finance-tracker-ui) echo 8085 ;;
-        fitbit-exporter-ui) echo 8086 ;;
-        jellyfin) echo 8096 ;;
-        qbittorrent) echo 8080 ;;
-        prowlarr) echo 9696 ;;
-        radarr) echo 7878 ;;
-        bazarr) echo 6767 ;;
-        *) echo "" ;;
-    esac
-}
 
 segundos_desde() {
     local t; t=$(date -d "$1" +%s 2>/dev/null) || { echo 99999; return; }
@@ -466,26 +444,9 @@ rev_media() {
         fi
     fi
 
-    if esta_arriba radarr; then
-        local raices clientes idx
-        raices=$(arr_api radarr 7878 v3 GET /rootfolder 2>/dev/null | grep -o '"path"' | wc -l)
-        clientes=$(arr_api radarr 7878 v3 GET /downloadclient 2>/dev/null | grep -o '"protocol"' | wc -l)
-        idx=$(arr_api radarr 7878 v3 GET /indexer 2>/dev/null | grep -o '"id"' | wc -l)
-        if [ "${raices:-0}" -eq 0 ]; then
-            ojo "Radarr" "sin carpeta raiz"
-            implica "no sabe donde guardar las peliculas"
-            arreglo "configurarlo" "rep_configurar_radarr"
-        elif [ "${clientes:-0}" -eq 0 ]; then
-            ojo "Radarr" "sin cliente de descargas"
-            implica "encuentra peliculas pero no tiene con que bajarlas"
-            arreglo "conectar qBittorrent" "rep_configurar_radarr"
-        elif [ "${idx:-0}" -eq 0 ]; then
-            ojo "Radarr" "0 indexers sincronizados"
-            implica "consecuencia de que Prowlarr no tenga ninguno"
-        else
-            bien "Radarr" "carpeta, cliente y $idx indexers"
-        fi
-    fi
+    # Radarr y Sonarr se revisan igual: misma API, mismos eslabones.
+    rev_un_arr radarr 7878 Radarr peliculas
+    rev_un_arr sonarr 8989 Sonarr series
 
     if esta_arriba bazarr; then
         local perfiles
@@ -510,6 +471,33 @@ rev_media() {
         else
             bien "Jellyfin" "$n elementos"
         fi
+    fi
+}
+
+# Un *arr puede responder perfecto y no poder bajar nada. Los eslabones son
+# tres y en este orden: donde guardar, con que bajar, y donde buscar.
+rev_un_arr() {
+    local svc="$1" puerto="$2" nombre="$3" que="$4"
+    esta_arriba "$svc" || return 0
+
+    local raices clientes idx
+    raices=$(arr_api "$svc" "$puerto" v3 GET /rootfolder 2>/dev/null | grep -o '"path"' | wc -l)
+    clientes=$(arr_api "$svc" "$puerto" v3 GET /downloadclient 2>/dev/null | grep -o '"protocol"' | wc -l)
+    idx=$(arr_api "$svc" "$puerto" v3 GET /indexer 2>/dev/null | grep -o '"id"' | wc -l)
+
+    if [ "${raices:-0}" -eq 0 ]; then
+        ojo "$nombre" "sin carpeta raiz"
+        implica "no sabe donde guardar las $que"
+        arreglo "configurar $nombre" "rep_configurar_arr" "$svc"
+    elif [ "${clientes:-0}" -eq 0 ]; then
+        ojo "$nombre" "sin cliente de descargas"
+        implica "encuentra $que pero no tiene con que bajarlas"
+        arreglo "conectar qBittorrent a $nombre" "rep_configurar_arr" "$svc"
+    elif [ "${idx:-0}" -eq 0 ]; then
+        ojo "$nombre" "0 indexers sincronizados"
+        implica "consecuencia de que Prowlarr no tenga ninguno"
+    else
+        bien "$nombre" "carpeta, cliente y $idx indexers"
     fi
 }
 
@@ -708,9 +696,13 @@ rep_pausar_descargas() {
     descargas_en_pausa
 }
 
-rep_configurar_radarr() {
+rep_configurar_arr() {
     pedir_clave_maestra
-    cfg_radarr "$CLAVE_MAESTRA"
+    case "$1" in
+        radarr) cfg_radarr "$CLAVE_MAESTRA" ;;
+        sonarr) cfg_sonarr "$CLAVE_MAESTRA" ;;
+        *)      return 1 ;;
+    esac
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

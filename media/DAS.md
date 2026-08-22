@@ -87,7 +87,7 @@ El tamaño de `/mnt/das` tiene que ser aproximadamente la suma de los dos.
 Creala **una sola vez, a través del conjunto**, no en cada disco por separado:
 
 ```bash
-sudo mkdir -p /mnt/das/downloads/{complete,incomplete} /mnt/das/media/movies
+sudo mkdir -p /mnt/das/downloads/{complete,incomplete} /mnt/das/media/{movies,tv}
 sudo chown -R $(id -u):$(id -g) /mnt/das
 ```
 
@@ -99,8 +99,11 @@ Queda así:
 │   ├── complete/
 │   └── incomplete/
 └── media/
-    └── movies/
+    ├── movies/          ← Radarr importa aca
+    └── tv/              ← Sonarr importa aca
 ```
+
+Las dos carpetas de `media` tienen que estar **bajo el mismo montaje que `downloads`**. Es lo que permite el hardlink: si estuvieran en discos distintos, importar copiaría en vez de enlazar y cada archivo ocuparía el doble.
 
 Los contenedores montan `/mnt/das` completo como `/data`, y nunca ven los discos individuales. Para ellos es un solo volumen.
 

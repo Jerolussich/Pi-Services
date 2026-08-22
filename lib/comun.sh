@@ -38,6 +38,31 @@ pendiente() { PENDIENTES+=("$1"); }
 # "1 dato" y no "1 datos". Los mensajes de estado pluralizaban siempre.
 plural() { [ "$1" = "1" ] && echo "$2" || echo "$3"; }
 
+# Los nombres que sirve Caddy, leidos del Caddyfile.
+#
+# Antes esta lista estaba escrita a mano adentro del instalador, asi que
+# agregar un servicio obligaba a acordarse de tocarla en dos lados. Cuando uno
+# se olvidaba, el servicio quedaba levantado y sin resolver, y el sintoma era
+# un error de DNS que no parece tener nada que ver con haber agregado algo.
+# Derivandola del Caddyfile, agregar el bloque alcanza.
+hosts_del_caddyfile() {
+    grep -oE '^http://[a-z0-9.-]+' "$REPO/caddy/Caddyfile" 2>/dev/null \
+        | sed 's|http://||' | grep -v '^$' | sort -u
+}
+
+# El puerto interno de un servicio, tambien del Caddyfile.
+#
+# Misma idea que los registros DNS: el dato ya esta escrito una vez, en la
+# linea reverse_proxy. Tenerlo ademas en una tabla aparte adentro del
+# diagnostico era pedir que las dos se separaran, y cuando se separan el
+# sintoma es un servicio sano reportado como caido, que es peor que no
+# comprobarlo.
+puerto_de() {
+    [ "$1" = "caddy" ] && { echo 80; return; }
+    grep -oE "reverse_proxy +$1:[0-9]+" "$REPO/caddy/Caddyfile" 2>/dev/null \
+        | head -1 | grep -oE '[0-9]+$'
+}
+
 DOCKER="sudo docker"
 
 # Una sola contrasena para todo. Se pregunta una vez y se usa en todos lados:
@@ -63,7 +88,7 @@ declare -A NOMBRE=(
   [news]="Noticias  ·  FreshRSS, Wallabag y el filtro"
   [finance]="Finanzas  ·  lector de mails del banco"
   [fitbit]="Fitbit  ·  datos de salud"
-  [media]="Multimedia  ·  Jellyfin, Radarr, Prowlarr, Bazarr, qBittorrent"
+  [media]="Multimedia  ·  Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr"
   [ofelia]="Ofelia  ·  programador de tareas"
   [calibre]="Calibre  ·  biblioteca de libros"
   [tailscale]="Tailscale  ·  acceso remoto"
@@ -91,7 +116,7 @@ declare -A SERVICIOS=(
   [news]="freshrss wallabag news-filter news-filter-ui"
   [finance]="itau-email-tracker finance-tracker-ui"
   [fitbit]="fitbit-exporter fitbit-exporter-ui"
-  [media]="jellyfin qbittorrent prowlarr radarr bazarr"
+  [media]="jellyfin qbittorrent prowlarr radarr sonarr bazarr"
   [ofelia]="ofelia"
 )
 
@@ -117,6 +142,7 @@ declare -A QUE_HACE=(
   [qbittorrent]="Cliente de descargas"
   [prowlarr]="Gestor central de indexers"
   [radarr]="Automatiza peliculas"
+  [sonarr]="Automatiza series"
   [bazarr]="Descarga subtitulos"
   [ofelia]="Programador de tareas"
 )
@@ -126,7 +152,8 @@ DEPENDENCIAS=(
   "news-filter|freshrss wallabag|lee de FreshRSS y guarda en Wallabag"
   "news-filter-ui|news-filter|es el panel del filtro"
   "radarr|prowlarr qbittorrent|Prowlarr le da los indexers y qBittorrent descarga"
-  "bazarr|radarr|toma de Radarr que peliculas subtitular"
+  "sonarr|prowlarr qbittorrent|Prowlarr le da los indexers y qBittorrent descarga"
+  "bazarr|radarr sonarr|toma de Radarr y Sonarr que subtitular"
   "finance-tracker-ui|itau-email-tracker|muestra lo que el tracker recolecta"
   "fitbit-exporter-ui|fitbit-exporter|es el panel del exporter"
   "grafana|prometheus|sin Prometheus no tiene de donde leer las metricas"
@@ -502,6 +529,8 @@ config_pendiente() {
             [ "$(corriendo media)" -gt 0 ] || return 0
             das_montado || faltas+=("sin disco externo, descargaria a la tarjeta")
             [ "$(arr_conteo prowlarr 9696 v1 /indexer)" = "0" ] && faltas+=("Prowlarr sin indexers")
+            esta_arriba sonarr && [ "$(arr_conteo sonarr 8989 v3 /rootfolder)" = "0" ] && \
+                faltas+=("Sonarr sin carpeta de series")
             bazarr_sin_perfil && faltas+=("Bazarr sin perfil de idiomas")
             ;;
         news)
@@ -751,45 +780,61 @@ print(json.dumps(d))' 2>/dev/null)
     return 0
 }
 
-cfg_radarr() {
-    local clave="$1" cuerpo
-    esperar_http radarr 7878 /api/v3/system/status || { aviso "Radarr no contesta"; pendiente "Configurar Radarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
+# Radarr y Sonarr son el mismo motor con distinto contenido: misma API, mismos
+# endpoints, misma forma de configurarse. Lo unico que cambia son el puerto, la
+# carpeta y como llama a su categoria de descargas.
+#
+# Por eso va una sola funcion y no dos copias. Con dos, cualquier arreglo hay
+# que acordarse de hacerlo dos veces, y el dia que uno se olvida queda un bug
+# que solo aparece en las series, o solo en las peliculas.
+#
+#   $1 servicio   $2 puerto   $3 nombre visible   $4 carpeta   $5 prefijo de campos   $6 contrasena
+cfg_arr() {
+    local svc="$1" puerto="$2" nombre="$3" carpeta="$4" pref="$5" clave="$6"
+    local resp cuerpo
 
-    local resp
-    if arr_api radarr 7878 v3 GET /rootfolder 2>/dev/null | grep -q '/data/media/movies'; then
+    esperar_http "$svc" "$puerto" /api/v3/system/status || {
+        aviso "$nombre no contesta"
+        pendiente "Configurar $nombre: no contestaba al instalar. Volve a correr el instalador"
+        return 1
+    }
+
+    # ── Carpeta raiz ──
+    if arr_api "$svc" "$puerto" v3 GET /rootfolder 2>/dev/null | grep -q "$carpeta"; then
         gris "     carpeta raiz ya cargada"
     else
-        resp=$(arr_api radarr 7878 v3 POST /rootfolder '{"path":"/data/media/movies"}' 2>/dev/null)
+        # Tiene que existir antes: los *arr rechazan una carpeta inexistente.
+        mkdir -p "$(das_ruta)/media/$(basename "$carpeta")" 2>/dev/null
+        resp=$(arr_api "$svc" "$puerto" v3 POST /rootfolder "{\"path\":\"$carpeta\"}" 2>/dev/null)
         if echo "$resp" | grep -q '"errorMessage"'; then
-            gris "     carpeta raiz: $(echo "$resp" | python3 -c \
-                'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
+            gris "     carpeta raiz: $(echo "$resp" | python3 -c                 'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
         else
-            ok "Radarr: carpeta raiz ${B}/data/media/movies${N}"
+            ok "$nombre: carpeta raiz ${B}$carpeta${N}"
         fi
     fi
 
-    # Hardlinks: una pelicula ocupa espacio una sola vez aunque figure en
-    # descargas y en la biblioteca. Sin esto el DAS se llena al doble.
+    # ── Hardlinks: sin esto cada archivo ocupa el doble ──
     local mm
-    mm=$(arr_api radarr 7878 v3 GET /config/mediamanagement 2>/dev/null)
-    if [ "$(echo "$mm" | python3 -c \
-        'import sys,json;print(json.load(sys.stdin).get("copyUsingHardlinks"))' 2>/dev/null)" = "True" ]; then
+    mm=$(arr_api "$svc" "$puerto" v3 GET /config/mediamanagement 2>/dev/null)
+    if [ "$(echo "$mm" | python3 -c         'import sys,json;print(json.load(sys.stdin).get("copyUsingHardlinks"))' 2>/dev/null)" = "True" ]; then
         gris "     hardlinks ya activados"
     elif [ -n "$mm" ]; then
         local mm2 mmid
         mm2=$(echo "$mm" | python3 -c 'import sys,json;d=json.load(sys.stdin);d["copyUsingHardlinks"]=True;print(json.dumps(d))' 2>/dev/null)
         mmid=$(echo "$mm" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
-        arr_api radarr 7878 v3 PUT "/config/mediamanagement/$mmid" "$mm2" >/dev/null 2>&1
-        ok "Radarr: hardlinks activados"
+        arr_api "$svc" "$puerto" v3 PUT "/config/mediamanagement/$mmid" "$mm2" >/dev/null 2>&1
+        ok "$nombre: hardlinks activados"
     fi
 
-    if arr_api radarr 7878 v3 GET /downloadclient 2>/dev/null | grep -qi 'qbittorrent'; then
+    # ── Cliente de descargas ──
+    if arr_api "$svc" "$puerto" v3 GET /downloadclient 2>/dev/null | grep -qi 'qbittorrent'; then
         gris "     qBittorrent ya estaba conectado"
     elif esta_arriba qbittorrent; then
         # Con la contrasena real de qBittorrent, que puede no ser la general.
-        # Radarr valida la conexion al guardar: si no puede entrar, no guarda.
-        cuerpo=$(CLAVE="${CLAVE_QBIT:-$clave}" python3 -c '
+        # Valida la conexion al guardar: si no puede entrar, no guarda nada.
+        cuerpo=$(CLAVE="${CLAVE_QBIT:-$clave}" PREF="$pref" CAT="$svc" python3 -c '
 import json, os
+p = os.environ["PREF"]
 print(json.dumps({
   "enable": True, "protocol": "torrent", "priority": 1,
   "removeCompletedDownloads": True, "removeFailedDownloads": True,
@@ -801,53 +846,75 @@ print(json.dumps({
     {"name": "useSsl", "value": False},
     {"name": "username", "value": "admin"},
     {"name": "password", "value": os.environ["CLAVE"]},
-    {"name": "movieCategory", "value": "radarr"},
+    {"name": p + "Category", "value": os.environ["CAT"]},
     {"name": "contentLayout", "value": 0},
     {"name": "initialState", "value": 0},
-    {"name": "recentMoviePriority", "value": 0},
-    {"name": "olderMoviePriority", "value": 0},
+    {"name": "recent" + p.capitalize() + "Priority", "value": 0},
+    {"name": "older" + p.capitalize() + "Priority", "value": 0},
     {"name": "sequentialOrder", "value": False},
     {"name": "firstAndLast", "value": False}
   ], "tags": []}))' 2>/dev/null)
-        resp=$(arr_api radarr 7878 v3 POST /downloadclient "$cuerpo" 2>/dev/null)
+        resp=$(arr_api "$svc" "$puerto" v3 POST /downloadclient "$cuerpo" 2>/dev/null)
         if echo "$resp" | grep -q '"errorMessage"'; then
-            aviso "Radarr: no pudo conectarse a qBittorrent"
-            gris "     $(echo "$resp" | python3 -c \
-                'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
-            pendiente "Conectar qBittorrent en http://radarr.pi, Settings, Download Clients"
+            aviso "$nombre: no pudo conectarse a qBittorrent"
+            gris "     $(echo "$resp" | python3 -c                 'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
+            pendiente "Conectar qBittorrent en http://$svc.pi, Settings, Download Clients"
         else
-            ok "Radarr: qBittorrent conectado como cliente de descargas"
+            ok "$nombre: qBittorrent conectado como cliente de descargas"
         fi
     fi
 
-    arr_autenticacion radarr 7878 v3 "$clave"
+    arr_autenticacion "$svc" "$puerto" v3 "$clave"
 }
 
-cfg_prowlarr() {
-    local clave="$1" kr cuerpo
-    esperar_http prowlarr 9696 /api/v1/system/status || { aviso "Prowlarr no contesta"; pendiente "Configurar Prowlarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
+cfg_radarr() { cfg_arr radarr 7878 Radarr /data/media/movies movie "$1"; }
+cfg_sonarr() { cfg_arr sonarr 8989 Sonarr /data/media/tv     tv    "$1"; }
 
-    kr=$(api_key_arr radarr)
-    if arr_api prowlarr 9696 v1 GET /applications 2>/dev/null | grep -qi '"name": *"Radarr"'; then
-        gris "     Radarr ya estaba enlazado"
-    elif [ -n "$kr" ] && esta_arriba radarr; then
-        cuerpo=$(KR="$kr" python3 -c '
+cfg_prowlarr() {
+    local clave="$1"
+    esperar_http prowlarr 9696 /api/v1/system/status || {
+        aviso "Prowlarr no contesta"
+        pendiente "Configurar Prowlarr: no contestaba al instalar. Volve a correr el instalador"
+        return 1
+    }
+
+    # Se enlaza con los dos por el mismo camino. Prowlarr no distingue entre
+    # peliculas y series: para el son dos aplicaciones que quieren indexers.
+    enlazar_con_prowlarr radarr 7878 Radarr
+    enlazar_con_prowlarr sonarr 8989 Sonarr
+
+    arr_autenticacion prowlarr 9696 v1 "$clave"
+}
+
+# Le da a Prowlarr una aplicacion a la que sincronizarle los indexers.
+enlazar_con_prowlarr() {
+    local svc="$1" puerto="$2" nombre="$3" k cuerpo
+    esta_arriba "$svc" || return 0
+
+    if arr_api prowlarr 9696 v1 GET /applications 2>/dev/null | grep -qi "\"name\": *\"$nombre\""; then
+        gris "     $nombre ya estaba enlazado"
+        return 0
+    fi
+
+    k=$(api_key_arr "$svc")
+    [ -n "$k" ] || return 0
+
+    cuerpo=$(K="$k" NOMBRE="$nombre" URL="http://$svc:$puerto" python3 -c '
 import json, os
 print(json.dumps({
-  "name": "Radarr", "implementation": "Radarr",
-  "implementationName": "Radarr", "configContract": "RadarrSettings",
+  "name": os.environ["NOMBRE"], "implementation": os.environ["NOMBRE"],
+  "implementationName": os.environ["NOMBRE"],
+  "configContract": os.environ["NOMBRE"] + "Settings",
   "syncLevel": "fullSync",
   "fields": [
     {"name": "prowlarrUrl", "value": "http://prowlarr:9696"},
-    {"name": "baseUrl", "value": "http://radarr:7878"},
-    {"name": "apiKey", "value": os.environ["KR"]}
+    {"name": "baseUrl", "value": os.environ["URL"]},
+    {"name": "apiKey", "value": os.environ["K"]}
   ], "tags": []}))' 2>/dev/null)
-        arr_api prowlarr 9696 v1 POST /applications "$cuerpo" >/dev/null 2>&1
-        ok "Prowlarr: enlazado con Radarr"
-        gris "     los indexers que cargues se le sincronizan solos"
-    fi
 
-    arr_autenticacion prowlarr 9696 v1 "$clave"
+    arr_api prowlarr 9696 v1 POST /applications "$cuerpo" >/dev/null 2>&1
+    ok "Prowlarr: enlazado con $nombre"
+    gris "     los indexers que cargues se le sincronizan solos"
 }
 
 # ── Sin DAS, las descargas van a la tarjeta ───────────────────────────────────
@@ -1317,9 +1384,10 @@ print(json.dumps(d))' 2>/dev/null)
 # ── Bazarr ────────────────────────────────────────────────────────────────────
 
 cfg_bazarr() {
-    local clave="$1" kr salida code tmpf
+    local clave="$1" kr ks salida code tmpf
     esperar_http bazarr 6767 || { aviso "Bazarr no contesta"; pendiente "Configurar Bazarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
     kr=$(api_key_arr radarr)
+    ks=$(api_key_arr sonarr)
 
     # Bazarr no se configura por API: su configuracion vive en un YAML. Y su
     # contenedor no trae PyYAML alcanzable, asi que el archivo se edita afuera:
@@ -1341,22 +1409,25 @@ cfg_bazarr() {
         unificar_claves && forzar=si
     fi
 
-    salida=$(CLAVE="$clave" RADARR_KEY="${kr:-}" ARCHIVO="$tmpf" FORZAR="$forzar" python3 <<'PY' 2>&1
+    salida=$(CLAVE="$clave" RADARR_KEY="${kr:-}" SONARR_KEY="${ks:-}" ARCHIVO="$tmpf" FORZAR="$forzar" python3 <<'PY' 2>&1
 import os, hashlib, yaml
 
 RUTA = os.environ["ARCHIVO"]
 with open(RUTA) as f:
     c = yaml.safe_load(f) or {}
-for s in ("general", "radarr", "auth"):
+for s in ("general", "radarr", "sonarr", "auth"):
     c.setdefault(s, {})
 
 hecho = []
-key = os.environ.get("RADARR_KEY", "")
-if key and c["radarr"].get("apikey") != key:
-    c["general"]["use_radarr"] = True
-    c["radarr"].update({"ip": "radarr", "port": 7878, "apikey": key,
-                        "ssl": False, "base_url": "/"})
-    hecho.append("radarr")
+# Los dos por el mismo camino: Bazarr subtitula peliculas y series igual.
+for nombre, puerto, var in (("radarr", 7878, "RADARR_KEY"),
+                            ("sonarr", 8989, "SONARR_KEY")):
+    key = os.environ.get(var, "")
+    if key and c.setdefault(nombre, {}).get("apikey") != key:
+        c["general"]["use_" + nombre] = True
+        c[nombre].update({"ip": nombre, "port": puerto, "apikey": key,
+                          "ssl": False, "base_url": "/"})
+        hecho.append(nombre)
 
 # Bazarr guarda la contrasena del panel como md5 en su propio config.yaml
 if not c["auth"].get("type") or os.environ.get("FORZAR") == "si":
@@ -1377,7 +1448,7 @@ PY
             gris "     Bazarr ya estaba configurado"
             rm -f "$tmpf" "$tmpf.previo"
             return 0 ;;
-        *radarr*|*auth*) : ;;
+        *radarr*|*sonarr*|*auth*) : ;;
         *)
             aviso "Bazarr: no pude preparar su configuracion"
             gris "     $salida"
@@ -1389,6 +1460,7 @@ PY
     $DOCKER restart bazarr >/dev/null 2>&1
     esperar_http bazarr 6767 >/dev/null 2>&1
     [[ "$salida" == *radarr* ]] && ok "Bazarr: conectado a Radarr"
+    [[ "$salida" == *sonarr* ]] && ok "Bazarr: conectado a Sonarr"
 
     # Si pusimos contrasena, verificamos que se pueda entrar. Un hash mal
     # calculado te dejaria afuera de tu propio Bazarr, asi que si el login
@@ -1453,6 +1525,23 @@ grafana_de_fabrica() {
         -u "admin:admin" http://localhost:3000/api/org 2>/dev/null)" = "200" ]
 }
 
+# Un registro por cada host del Caddyfile, sin listas paralelas que mantener.
+# Se llama tambien cuando Pi-hole ya estaba andando: agregar un servicio nuevo
+# tiene que alcanzar con volver a correr el instalador.
+cargar_registros_dns() {
+    local H="[" h n=0
+    for h in $(hosts_del_caddyfile); do
+        H="$H\"$IP_FIJA $h\","
+        n=$((n+1))
+    done
+    [ "$n" -eq 0 ] && { aviso "No pude leer los nombres del Caddyfile"; return 1; }
+
+    sudo pihole-FTL --config dns.hosts "${H%,}]" >/dev/null 2>&1
+    sudo systemctl restart pihole-FTL >/dev/null 2>&1
+    sleep 2
+    ok "$n registros DNS cargados, uno por cada nombre que sirve Caddy"
+}
+
 cfg_pihole() {
     if sudo pihole setpassword "$1" >/dev/null 2>&1; then
         ok "Pi-hole: contrasena del panel puesta"
@@ -1515,12 +1604,16 @@ configurar_servicios() {
     fi
 
     if [[ " ${SELECCION[*]} " == *" media "* ]] && [ "$MEDIA_MODO" != "no" ]; then
-        # El orden importa: qBittorrent y Radarr tienen que estar configurados
-        # antes de que Radarr los conecte y Prowlarr enlace a Radarr.
+        # El orden importa y sigue el flujo de los datos: qBittorrent primero,
+        # porque Radarr y Sonarr necesitan su contrasena para conectarse.
+        # Despues los dos *arr, porque Prowlarr y Bazarr se enganchan contra
+        # ellos y necesitan sus API keys.
         esta_arriba qbittorrent && [[ " $elegidos_media " == *" qbittorrent "* ]] && \
             cfg_qbittorrent "$(clave_para 'qBittorrent')"
         esta_arriba radarr && [[ " $elegidos_media " == *" radarr "* ]] && \
             cfg_radarr "$(clave_para 'Radarr')"
+        esta_arriba sonarr && [[ " $elegidos_media " == *" sonarr "* ]] && \
+            cfg_sonarr "$(clave_para 'Sonarr')"
         esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]] && \
             cfg_prowlarr "$(clave_para 'Prowlarr')"
         esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]] && \

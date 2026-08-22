@@ -14,7 +14,7 @@ Un script de instalación común te obliga a decidir todo de entrada y correrlo 
 
 Tampoco te hace copiar y pegar comandos. Si necesita una contraseña o un token, te lo pide en el momento y te explica de dónde sacarlo. Y si no lo tenés a mano, apretás Enter, el módulo se instala igual, y al final te dice con precisión qué quedó sin completar.
 
-Y no se queda en levantar contenedores: **también los configura**. Deja a Jellyfin con tu usuario y la biblioteca creada, a Radarr apuntando a la carpeta correcta y hablando con qBittorrent, y a Prowlarr enlazado con Radarr. Todo eso antes de que abras el navegador por primera vez.
+Y no se queda en levantar contenedores: **también los configura**. Deja a Jellyfin con tu usuario y la biblioteca creada, a Radarr y Sonarr apuntando a sus carpetas y hablando con qBittorrent, y a Prowlarr enlazado con los dos. Todo eso antes de que abras el navegador por primera vez.
 
 ---
 
@@ -110,7 +110,7 @@ Después te pide lo que sí necesita de vos, **de a uno**, y para cada dato te d
 
 #### Una sola contraseña
 
-Las contraseñas no se piden una por una. Se pide **una sola vez, al principio**, y esa misma va a todos lados: la homepage, los paneles propios, y las cuentas que el instalador crea solo en Jellyfin, qBittorrent, Radarr, Prowlarr, Bazarr, Grafana y Pi-hole.
+Las contraseñas no se piden una por una. Se pide **una sola vez, al principio**, y esa misma va a todos lados: la homepage, los paneles propios, y las cuentas que el instalador crea solo en Jellyfin, qBittorrent, Radarr, Sonarr, Prowlarr, Bazarr, Grafana y Pi-hole.
 
 Es a propósito. La versión anterior pedía una contraseña por servicio y era fácil terminar con dos distintas sin darte cuenta: el hash de Caddy generado con una y los paneles con otra. Después no entrabas a la homepage y no había forma de saber por qué.
 
@@ -140,13 +140,13 @@ Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`
 |---|---|
 | **Jellyfin** | Completa el asistente entero, crea tu usuario, arma la biblioteca de Películas apuntando a `/media/movies`, y activa la decodificación por hardware con VAAPI |
 | **qBittorrent** | Lee la contraseña temporal del log, la reemplaza por la tuya, y corrige las rutas de descarga a `/data/downloads` |
-| **Radarr** | Carpeta raíz `/data/media/movies`, hardlinks activados, y qBittorrent conectado como cliente de descargas con sus credenciales |
-| **Prowlarr** | Lo enlaza con Radarr, así los indexers que cargues se sincronizan solos |
-| **Bazarr** | Lo conecta a Radarr con su API key |
+| **Radarr** y **Sonarr** | Carpeta raíz (`/data/media/movies` y `/data/media/tv`), hardlinks activados, y qBittorrent conectado con sus credenciales |
+| **Prowlarr** | Lo enlaza con Radarr y Sonarr, así los indexers que cargues se sincronizan solos a los dos |
+| **Bazarr** | Lo conecta a Radarr y a Sonarr con sus API keys |
 | **Grafana** | Le pone la contraseña de admin, así no te pide cambiarla en el primer login |
 | **Pi-hole** | Le pone la contraseña del panel |
 
-Y a Radarr, Prowlarr y Bazarr **les pone contraseña**, que es más importante de lo que parece: los tres vienen de fábrica con `authenticationMethod: none`, y Caddy tampoco les pide nada porque se asume que traen la suya. Sin este paso quedan abiertos a cualquiera en tu red.
+Y a Radarr, Sonarr, Prowlarr y Bazarr **les pone contraseña**, que es más importante de lo que parece: los tres vienen de fábrica con `authenticationMethod: none`, y Caddy tampoco les pide nada porque se asume que traen la suya. Sin este paso quedan abiertos a cualquiera en tu red.
 
 Dos reglas gobiernan todo el paso:
 
@@ -251,7 +251,7 @@ Es la forma normal de usarlo, no una excepción.
 | Noticias | `freshrss`, `wallabag`, `news-filter`, `news-filter-ui` |
 | Finanzas | `itau-email-tracker`, `finance-tracker-ui` |
 | Fitbit | `fitbit-exporter`, `fitbit-exporter-ui` |
-| Multimedia | `jellyfin`, `qbittorrent`, `prowlarr`, `radarr`, `bazarr` |
+| Multimedia | `jellyfin`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` |
 | Ofelia | `ofelia` |
 | Calibre | nativo, con su timer de ingesta |
 | Tailscale | nativo, acceso remoto |

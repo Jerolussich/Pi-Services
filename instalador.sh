@@ -228,6 +228,73 @@ servicios_elegidos() {
     echo "${ELEGIDOS[$mod]:-${SERVICIOS[$mod]:-}}"
 }
 
+# Modulos cuyo .env cambio y por lo tanto hay que recrear. Cambiar el archivo
+# no alcanza: el contenedor ya levantado tiene los valores viejos en memoria.
+RECREAR_POR_CLAVE=()
+
+recrear_por_clave() {
+    [ ${#RECREAR_POR_CLAVE[@]} -eq 0 ] && return 0
+    local mod svcs vistos=" " todos=""
+    for mod in "${RECREAR_POR_CLAVE[@]}"; do
+        [[ "$vistos" == *" $mod "* ]] && continue
+        vistos="$vistos$mod "
+        svcs=$(servicios_elegidos "$mod")
+        [ -n "$svcs" ] && todos="$todos $svcs"
+    done
+    [ -n "$todos" ] || return 0
+    echo ""
+    info "Recreo los contenedores que usan las contrasenas nuevas."
+    gris "     Cambiar el .env no alcanza: los tienen cargados en memoria."
+    # shellcheck disable=SC2086
+    $DOCKER compose up -d --force-recreate $todos >/dev/null 2>&1
+    olvidar_estado
+    sleep 4
+    ok "Listos"
+}
+
+# Las contrasenas que YA estaban cargadas en los .env no se tocaban nunca,
+# porque completa() las daba por buenas y recolectar solo pide lo que falta.
+# El resultado era que cambiar la contrasena general dejaba la homepage y los
+# tres paneles propios con la vieja: los dos mundos que este instalador vino a
+# unificar, otra vez separados y sin que nadie avise.
+actualizar_claves_existentes() {
+    local linea m arch v tipo desc ayuda ya=()
+
+    for linea in "${VARIABLES[@]}"; do
+        IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
+        [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
+        case "$tipo" in clave|hash) ;; *) continue ;; esac
+        completa "$arch" "$v" || continue      # las vacias ya se piden aparte
+        ya+=("$linea")
+    done
+    [ ${#ya[@]} -eq 0 ] && return 0
+
+    # Sin contrasena nueva no hay nada que unificar
+    [ -n "$CLAVE_MAESTRA" ] || return 0
+    unificar_claves || return 0
+
+    local nueva hash
+    for linea in "${ya[@]}"; do
+        IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
+        nueva=$(clave_para "$desc")
+        if [ "$tipo" = "hash" ]; then
+            info "Generando el hash de $desc, bcrypt es lento a proposito..."
+            hash=$($DOCKER run --rm caddy:2-alpine caddy hash-password --plaintext "$nueva" 2>/dev/null)
+            if [ -z "$hash" ]; then
+                aviso "No se pudo generar el hash de $desc"
+                pendiente "Actualizar $v en $arch"
+                continue
+            fi
+            # Cada $ va duplicado o Docker Compose lo toma por variable
+            escribir_var "$arch" "$v" "${hash//\$/\$\$}"
+        else
+            escribir_var "$arch" "$v" "$nueva"
+        fi
+        ok "$desc actualizada"
+        RECREAR_POR_CLAVE+=("$m")
+    done
+}
+
 # ¿Este dato solo existe despues de crear una cuenta? Si es asi no tiene
 # sentido pedirlo antes de que el servicio exista.
 sale_de_una_cuenta() {
@@ -425,6 +492,7 @@ recolectar() {
         case "$tipo" in clave|hash) claves=$((claves+1)) ;; *) otros=$((otros+1)) ;; esac
     done
     [ "$claves" -gt 0 ] && pedir_clave_maestra
+    actualizar_claves_existentes
 
     echo ""
     if [ "$otros" -eq 0 ]; then
@@ -630,6 +698,10 @@ elegir_blocklists() {
 instalar_pihole() {
     if [ "${ESTADO[pihole]}" = "activo" ]; then
         ok "Ya estaba funcionando"
+        # Los registros se recargan igual. Si no, agregar un servicio nuevo
+        # dejaba su nombre sin resolver para siempre, porque este return
+        # temprano se saltea todo lo de abajo y nadie vuelve a mirarlo.
+        cargar_registros_dns
         elegir_blocklists
         return
     fi
@@ -670,15 +742,7 @@ EOF
         ok "Panel movido al 8181, el 80 queda libre para Caddy"
     fi
 
-    # Registros DNS de los servicios
-    local H="["
-    local s
-    for s in homepage grafana wallabag freshrss news finance prometheus pihole fitbit calibre jellyfin radarr prowlarr bazarr qbit; do
-        H="$H\"$IP_FIJA $s.pi\","
-    done
-    sudo pihole-FTL --config dns.hosts "${H%,}]" >/dev/null 2>&1
-    sudo systemctl restart pihole-FTL
-    ok "15 registros DNS cargados (los nombres *.pi)"
+    cargar_registros_dns
 
     elegir_blocklists
 
@@ -1267,6 +1331,7 @@ paso "eligiendo servicios";        elegir_servicios
 paso "pidiendo los datos";         recolectar
 paso "decidiendo lo del disco";    decidir_das_temprano
 paso "levantando los servicios";   ejecutar
+paso "aplicando las contrasenas";  recrear_por_clave
 paso "configurando los servicios"; configurar_servicios
 paso "guiando las cuentas";        guia_cuentas
 paso ""

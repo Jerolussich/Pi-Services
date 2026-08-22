@@ -7,35 +7,44 @@ Stack multimedia del Pi. Descarga, organiza, subtitula y reproduce, con todo el 
 ## Arquitectura
 
 ```
-                    ┌──────────────┐
-   Prowlarr  ──────▶│    Radarr    │  busca y decide que bajar
-  (indexers)        └──────┬───────┘
-                           │ envia el torrent
-                           ▼
-                    ┌──────────────┐
-                    │ qBittorrent  │  descarga a /data/downloads
-                    └──────┬───────┘
-                           │ hardlink (no copia) a /data/media
-                           ▼
-                    ┌──────────────┐
-   Bazarr    ──────▶│  /data/media │  biblioteca final
-  (subtitulos)      └──────┬───────┘
-                           │ solo lectura
-                           ▼
-                    ┌──────────────┐
-                    │   Jellyfin   │  reproduce
-                    └──────┬───────┘
-                           │
-                    ┌──────┴───────┐
-                    │  /mnt/das    │  mergerfs
-                    └──┬────────┬──┘
-                       │        │
-                   /mnt/disk1  /mnt/disk2
+                    ┌──────────┐   ┌──────────┐
+   Prowlarr ───────▶│  Radarr  │   │  Sonarr  │◀─────── Prowlarr
+  (indexers)        │peliculas │   │  series  │        (los mismos)
+                    └────┬─────┘   └─────┬────┘
+                         │  envian el torrent │
+                         └─────────┬─────────-┘
+                                   ▼
+                          ┌──────────────┐
+                          │ qBittorrent  │  baja a /data/downloads
+                          └──────┬───────┘
+                                 │ hardlink, no copia
+                    ┌────────────┴────────────┐
+                    ▼                         ▼
+           /data/media/movies         /data/media/tv
+                    │                         │
+                    └────────────┬────────────┘
+                                 │
+   Bazarr  ─────────────────────▶│  les engancha subtitulos
+  (subtitulos)                   │
+                                 ▼  solo lectura
+                          ┌──────────────┐
+                          │   Jellyfin   │  reproduce
+                          └──────┬───────┘
+                                 │
+                          ┌──────┴───────┐
+                          │  /mnt/das    │  mergerfs
+                          └──┬────────┬──┘
+                             │        │
+                         /mnt/disk1  /mnt/disk2
 ```
+
+**Radarr y Sonarr son el mismo motor con distinto contenido.** Misma API, mismos endpoints, misma forma de configurarse. Cambian la carpeta y poco más: Sonarr además entiende de temporadas, episodios y calendario de emisión, que es lo que justifica que sean dos y no uno.
+
+Comparten indexers (los de Prowlarr), cliente de descargas (qBittorrent) y subtitulador (Bazarr). Lo único que no comparten es la carpeta de destino, y eso es lo que le permite a Jellyfin tener dos bibliotecas distintas.
 
 Dos cosas sostienen todo el diseño:
 
-**Una única raíz de almacenamiento.** Los cinco contenedores montan el DAS en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca.
+**Una única raíz de almacenamiento.** Los seis contenedores montan el DAS en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca.
 
 **Los dos discos se ven como uno.** `mergerfs` los une en `/mnt/das`, así Jellyfin escanea una sola biblioteca y no te importa en qué disco cayó cada archivo. Está todo en [DAS.md](DAS.md).
 
@@ -47,6 +56,7 @@ Dos cosas sostienen todo el diseño:
 |---|---|---|---|---|
 | `jellyfin` | `jellyfin/jellyfin` | `8096` | `jellyfin.pi` | Servidor multimedia y reproducción |
 | `radarr` | `lscr.io/linuxserver/radarr` | `7878` | `radarr.pi` | Gestión y automatización de películas |
+| `sonarr` | `lscr.io/linuxserver/sonarr` | `8989` | `sonarr.pi` | Lo mismo para series, con temporadas y calendario |
 | `prowlarr` | `lscr.io/linuxserver/prowlarr` | `9696` | `prowlarr.pi` | Gestor central de indexers |
 | `bazarr` | `lscr.io/linuxserver/bazarr` | `6767` | `bazarr.pi` | Descarga automática de subtítulos |
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
@@ -123,7 +133,7 @@ Quien te protege de eso es el instalador, que comprueba si `/mnt/das` está en o
 
 ## Configuración inicial
 
-**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de multimedia, y deja los cinco servicios configurados y hablando entre ellos. Lo que sigue está para que sepas qué quedó hecho, y para hacerlo a mano si alguna vez lo necesitás.
+**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de multimedia, y deja los seis servicios configurados y hablando entre ellos. Lo que sigue está para que sepas qué quedó hecho, y para hacerlo a mano si alguna vez lo necesitás.
 
 El orden importa, porque cada pieza se registra contra la anterior.
 
@@ -137,36 +147,44 @@ docker logs qbittorrent | grep -i password
 
 Entrá a `http://qbit.pi`, cambiala, y configurá las rutas como `/data/downloads/incomplete` y `/data/downloads/complete`.
 
-Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los cinco contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
+Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los seis contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
 
 ### 2. Prowlarr
 
-En `http://prowlarr.pi`, agregá tus indexers. Después, en `Settings → Apps`, agregá Radarr con URL `http://radarr:7878`. Prowlarr le sincroniza los indexers solo, y no vas a tener que cargarlos de nuevo en cada aplicación.
+En `http://prowlarr.pi`, agregá tus indexers. Después, en `Settings → Apps`, agregá Radarr con URL `http://radarr:7878` y Sonarr con `http://sonarr:8989`. Prowlarr les sincroniza los indexers solo, y no vas a tener que cargarlos de nuevo en cada aplicación.
 
-### 3. Radarr
+Es el único lugar donde se cargan indexers. Ese es el punto de tener Prowlarr.
 
-En `http://radarr.pi`:
+### 3. Radarr y Sonarr
 
-- `Settings → Media Management`: carpeta raíz `/data/media/movies`, y activá **`Use Hardlinks instead of Copy`**.
-- `Settings → Download Clients`: qBittorrent, host `qbittorrent`, puerto `8080`.
+Los dos igual, cambiando solo la carpeta:
 
-Radarr **valida la conexión al guardar**: si la contraseña de qBittorrent no es la correcta, no guarda nada y responde `Unable to connect to qBittorrent`.
+| | Radarr | Sonarr |
+|---|---|---|
+| URL | `http://radarr.pi` | `http://sonarr.pi` |
+| Carpeta raíz | `/data/media/movies` | `/data/media/tv` |
+
+En los dos, `Settings → Media Management` para la carpeta raíz y para activar **`Use Hardlinks instead of Copy`**, y `Settings → Download Clients` para agregar qBittorrent con host `qbittorrent` y puerto `8080`.
+
+**Validan la conexión al guardar**: si la contraseña de qBittorrent no es la correcta, no guardan nada y responden `Unable to connect to qBittorrent`.
+
+Y no hace falta cargar los indexers acá: Prowlarr se los sincroniza a los dos.
 
 ### 4. Bazarr
 
-En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y elegí proveedores e idiomas.
+En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y Sonarr con host `sonarr` y puerto `8989`. Después elegí proveedores e idiomas.
 
 Sin un **perfil de idiomas** creado no baja ningún subtítulo, aunque tengas proveedores configurados. Es el paso que más se olvida.
 
 ### 5. Jellyfin
 
-En `http://jellyfin.pi`, creá la biblioteca de películas apuntando a `/media/movies`. En `Dashboard → Playback`, activá aceleración por hardware con **VAAPI** y dispositivo `/dev/dri/renderD128`.
+En `http://jellyfin.pi`, creá dos bibliotecas: una de **Películas** apuntando a `/media/movies` y otra de **Series** apuntando a `/media/tv`. Es importante que sean dos y con el tipo correcto, porque Jellyfin busca los metadatos de forma distinta para cada una. En `Dashboard → Playback`, activá aceleración por hardware con **VAAPI** y dispositivo `/dev/dri/renderD128`.
 
 Una advertencia concreta sobre el Pi 5: **no tiene codificador de video por hardware**. Decodifica H.264 y HEVC por hardware, pero al codificar usa CPU. Por eso hay que dejar la codificación por hardware **apagada**: si la activás, cada transcodificación falla. En la práctica conviene reproducir en formato nativo y evitar transcodificar. Si tus clientes soportan el códec original, el Pi 5 alcanza de sobra.
 
 ### Contraseñas
 
-Los tres `*arr` salen de fábrica **sin contraseña ninguna**, con `authenticationMethod: none`. Y Caddy tampoco les pone la suya, porque se asume que traen login propio. O sea que hasta que les pongas una, `radarr.pi`, `prowlarr.pi` y `bazarr.pi` están abiertos a cualquiera en tu red. El instalador se las configura; si lo hacés a mano, es en `Settings → General → Security`.
+Los cuatro `*arr` salen de fábrica **sin contraseña ninguna**, con `authenticationMethod: none`. Y Caddy tampoco les pone la suya, porque se asume que traen login propio. O sea que hasta que les pongas una, `radarr.pi`, `sonarr.pi`, `prowlarr.pi` y `bazarr.pi` están abiertos a cualquiera en tu red. El instalador se las configura; si lo hacés a mano, es en `Settings → General → Security`.
 
 ---
 
@@ -185,7 +203,9 @@ Si alguna app de TV no resuelve los nombres `.pi`, la alternativa es publicar el
 
 ## Uso diario
 
-Agregás una película en Radarr, que le pide a Prowlarr dónde encontrarla, manda la descarga a qBittorrent, y al terminar la importa por hardlink a la biblioteca. Bazarr le engancha los subtítulos y Jellyfin la muestra.
+Agregás una película en Radarr o una serie en Sonarr. El que corresponda le pide a Prowlarr dónde encontrarla, manda la descarga a qBittorrent, y al terminar la importa por hardlink a su carpeta: `movies` o `tv`. Bazarr le engancha los subtítulos y Jellyfin la muestra.
+
+Con las series hay una diferencia que conviene saber: Sonarr sigue emitiendo. Una vez que agregás una serie en curso, se queda esperando los episodios nuevos y los baja al salir, sin que le pidas nada.
 
 ---
 
@@ -194,11 +214,11 @@ Agregás una película en Radarr, que le pide a Prowlarr dónde encontrarla, man
 Los cinco de una, sin tocar el resto del Pi:
 
 ```bash
-cd ~/pi-services && docker compose stop jellyfin qbittorrent prowlarr radarr bazarr
+cd ~/pi-services && docker compose stop jellyfin qbittorrent prowlarr radarr sonarr bazarr
 ```
 
 ```bash
-cd ~/pi-services && docker compose up -d jellyfin qbittorrent prowlarr radarr bazarr
+cd ~/pi-services && docker compose up -d jellyfin qbittorrent prowlarr radarr sonarr bazarr
 ```
 
 Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra nada. Para borrar también la configuración hay que agregar `-v` a un `down` explícitamente, y eso te deja empezando de cero.
@@ -208,7 +228,5 @@ Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra 
 ## Notas
 
 **El tráfico de torrents sale directo**, sin VPN. Tu IP es visible para los otros pares del enjambre. Si más adelante querés cambiarlo, el patrón habitual es un contenedor `gluetun` con killswitch y qBittorrent usando su red.
-
-**Sonarr no está incluido.** Si querés series, entra igual: mismo `/data`, carpeta raíz `/data/media/tv`, y se agrega a Prowlarr y Bazarr con el mismo patrón.
 
 **El DAS no es un backup.** Son dos discos sin redundancia: si uno muere, se pierde lo que tenía. El otro queda intacto y legible, que ya es mejor que un RAID0, pero lo que no sea reemplazable guardalo en otro lado.

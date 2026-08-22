@@ -82,6 +82,7 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 |---|---|---|---|
 | Jellyfin | `jellyfin.pi` | Servidor multimedia | [../media/README.md](../media/README.md) |
 | Radarr | `radarr.pi` | Automatiza películas | [../media/README.md](../media/README.md) |
+| Sonarr | `sonarr.pi` | Automatiza series, con temporadas y calendario | [../media/README.md](../media/README.md) |
 | Prowlarr | `prowlarr.pi` | Gestor de indexers | [../media/README.md](../media/README.md) |
 | Bazarr | `bazarr.pi` | Subtítulos automáticos | [../media/README.md](../media/README.md) |
 | qBittorrent | `qbit.pi` | Cliente de descargas | [../media/README.md](../media/README.md) |
@@ -129,7 +130,7 @@ pi-services/
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio
 ├── monitoring/                ← Prometheus, Grafana y exporters
-├── media/                     ← Jellyfin, Radarr, Prowlarr, Bazarr, qBittorrent
+├── media/                     ← Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent
 ├── news/                      ← FreshRSS, Wallabag, news-filter
 ├── finance/                   ← lector de mails del banco
 ├── fitbit-exporter/           ← datos de salud
