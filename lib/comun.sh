@@ -562,7 +562,16 @@ detectar() {
     fi
 
     if systemctl --user is-active calibre-server >/dev/null 2>&1; then
-        ESTADO[calibre]=activo; DETALLE[calibre]="servidor corriendo en el 8083"
+        # Corriendo con la biblioteca vacia es un servidor de libros que no
+        # sirve ni un libro. Mismo caso que Prowlarr sin indexers.
+        local libros
+        libros=$(find "$HOME/calibre-library" -maxdepth 2 -name "*.epub" -o -maxdepth 2 -name "*.mobi" \
+                 -o -maxdepth 2 -name "*.pdf" 2>/dev/null | head -1)
+        if [ -z "$libros" ]; then
+            ESTADO[calibre]=parcial; DETALLE[calibre]="corriendo, pero la biblioteca esta vacia"
+        else
+            ESTADO[calibre]=activo; DETALLE[calibre]="servidor corriendo en el 8083"
+        fi
     elif command -v calibre-server >/dev/null 2>&1; then
         ESTADO[calibre]=parcial; DETALLE[calibre]="instalado pero el servicio no arranca"
     else
@@ -625,12 +634,12 @@ detectar() {
         elif [ "$arriba" -eq "$total" ] && [ -n "$pendiente_cfg" ]; then
             ESTADO[$mod]=parcial; DETALLE[$mod]="arriba, pero $pendiente_cfg"
         elif [ "$arriba" -eq "$total" ] && [ "$faltan" -gt 0 ]; then
-            ESTADO[$mod]=parcial; DETALLE[$mod]="$arriba de $total arriba, pero faltan $faltan $datos"
+            ESTADO[$mod]=parcial; DETALLE[$mod]="$arriba de $total arriba, pero $(plural "$faltan" "falta" "faltan") $faltan $datos"
         elif [ "$arriba" -gt 0 ]; then
             ESTADO[$mod]=parcial; DETALLE[$mod]="solo $arriba de $total $cont arriba"
         else
             ESTADO[$mod]=inactivo
-            [ "$faltan" -gt 0 ] && DETALLE[$mod]="sin levantar, faltan $faltan $datos" || DETALLE[$mod]="sin levantar"
+            [ "$faltan" -gt 0 ] && DETALLE[$mod]="sin levantar, $(plural "$faltan" "falta" "faltan") $faltan $datos" || DETALLE[$mod]="sin levantar"
         fi
     done
 }

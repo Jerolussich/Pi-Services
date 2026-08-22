@@ -36,21 +36,17 @@ EOF
     echo ""
 }
 
-diagnostico() {
-    titulo "Estado actual"
-    local mod
-    for mod in "${MODULOS[@]}"; do
-        printf "  %s  %-56s %s\n" "$(icono "${ESTADO[$mod]}")" "${NOMBRE[$mod]}" "$(etiqueta "${ESTADO[$mod]}")"
-        [ -n "${DETALLE[$mod]:-}" ] && gris "     ${DETALLE[$mod]}"
-    done
-    echo ""
-    gris "  ● funcionando    ◐ incompleto    ○ sin instalar"
-}
-
-# Imprime una lista de variables faltantes, agrupadas por modulo
+# Imprime una lista de variables faltantes, agrupadas por modulo.
+#
+# Se ordena antes de agrupar. Comparando solo contra la fila anterior, dos
+# datos del mismo modulo separados por uno de otro imprimian el titulo del
+# modulo dos veces, como si fueran grupos distintos.
 listar_faltantes() {
     local mod_previo="" linea m arch v tipo desc ayuda
-    for linea in "$@"; do
+    local ordenadas=()
+    while IFS= read -r linea; do ordenadas+=("$linea"); done < <(printf '%s\n' "$@" | sort -t'|' -k1,1 -s)
+
+    for linea in "${ordenadas[@]}"; do
         IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
         if [ "$m" != "$mod_previo" ]; then
             echo ""
@@ -137,31 +133,60 @@ menu() {
         local marca=""
         [[ " $REQUERIDOS " == *" $mod "* ]] && marca=" ${A}(necesario)${N}"
         printf "  ${B}%2d${N})  %s  %-52s %s%s\n" "$i" "$(icono "${ESTADO[$mod]}")" "${NOMBRE[$mod]}" "$(etiqueta "${ESTADO[$mod]}")" "$marca"
+        # El detalle de lo que ya anda, y para que sirve lo que todavia no.
+        # Estas explicaciones estaban escritas y nunca se mostraban, asi que
+        # habia que saber de antemano que es Prowlarr para poder elegirlo.
+        if [ "${ESTADO[$mod]}" = "activo" ]; then
+            [ -n "${DETALLE[$mod]:-}" ] && gris "        ${DETALLE[$mod]}"
+        else
+            gris "        ${DESCRIPCION[$mod]}"
+            [ -n "${DETALLE[$mod]:-}" ] && gris "        ahora: ${DETALLE[$mod]}"
+        fi
         i=$((i+1))
     done
 
     echo ""
+    gris "  ● funcionando    ◐ incompleto    ○ sin instalar"
+    echo ""
     info "Escribi los numeros separados por espacio.  Ejemplo:  1 2 3 5"
     info "O escribi:  ${B}todo${N}  ·  ${B}faltantes${N} (solo lo incompleto o sin instalar)"
+    info "Para salir sin tocar nada:  ${B}salir${N}"
     echo ""
-    local resp
-    read -r -p "  ${B}Tu eleccion:${N} " resp </dev/tty
 
-    SELECCION=()
-    if [ "$resp" = "todo" ]; then
-        SELECCION=("${MODULOS[@]}")
-    elif [ "$resp" = "faltantes" ]; then
-        for mod in "${MODULOS[@]}"; do
-            [ "${ESTADO[$mod]}" != "activo" ] && SELECCION+=("$mod")
-        done
-    else
-        local n
-        for n in $resp; do
-            if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#INDICE[@]}" ]; then
-                SELECCION+=("${INDICE[$((n-1))]}")
-            fi
-        done
-    fi
+    # Se vuelve a preguntar hasta entender. Antes, un tipeo cualquiera daba
+    # una seleccion vacia y el instalador se cerraba sin explicar por que.
+    local resp intentos=0
+    while true; do
+        intentos=$((intentos+1))
+        read -r -p "  ${B}Tu eleccion:${N} " resp </dev/tty
+
+        SELECCION=()
+        case "$resp" in
+            salir|q|Q) info "Listo, no toco nada."; exit 0 ;;
+            todo) SELECCION=("${MODULOS[@]}") ;;
+            faltantes)
+                for mod in "${MODULOS[@]}"; do
+                    [ "${ESTADO[$mod]}" != "activo" ] && SELECCION+=("$mod")
+                done
+                [ ${#SELECCION[@]} -eq 0 ] && { ok "No hay nada incompleto: ya esta todo."; exit 0; }
+                ;;
+            *)
+                local n malos=""
+                for n in $resp; do
+                    if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#INDICE[@]}" ]; then
+                        SELECCION+=("${INDICE[$((n-1))]}")
+                    else
+                        malos="$malos $n"
+                    fi
+                done
+                [ -n "$malos" ] && aviso "No entendi:${B}$malos${N}. Van numeros del 1 al ${#INDICE[@]}."
+                ;;
+        esac
+
+        [ ${#SELECCION[@]} -gt 0 ] && break
+        [ "$intentos" -ge 3 ] && { falla "Salgo sin tocar nada."; exit 0; }
+        aviso "No elegiste nada valido. Probá de nuevo."
+    done
 
     # Dependencias implicitas
     local mod2 tiene_docker=0
@@ -1233,7 +1258,9 @@ trap 'exit 130' INT TERM
 paso "revisando el equipo";        portada
 info "Revisando el estado del equipo..."
 detectar
-diagnostico
+# La tabla de estado se muestra UNA vez, en el menu, que ya la trae con los
+# numeros al lado. Antes salia dos veces seguidas: la misma lista de doce
+# filas, primero para mirar y despues para elegir.
 faltantes_detallado
 paso "eligiendo modulos";          menu
 paso "eligiendo servicios";        elegir_servicios
