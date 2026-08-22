@@ -180,6 +180,13 @@ findtime = 10m
 maxretry = 5
 backend = systemd
 
+# Sin esto fail2ban se banea a si mismo. Todo el trafico web llega a Caddy
+# desde el gateway del bridge de Docker, asi que un 401 legitimo de cualquiera
+# de la casa se cuenta contra 172.18.0.1, y a los cinco intentos el jail deja
+# afuera a la propia infraestructura en vez de a un atacante. Verificado: la
+# IP baneada en esta Pi era 172.18.0.1.
+ignoreip = 127.0.0.1/8 ::1 172.16.0.0/12 192.168.68.0/22
+
 [sshd]
 enabled = true
 port    = ${SSH_PORT}

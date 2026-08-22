@@ -192,25 +192,44 @@ docker run --rm -v ~/pi-services/caddy/Caddyfile:/etc/caddy/Caddyfile:ro -v ~/pi
 
 Esto es lo importante y lo que más fácil se olvida. **Nada de lo que está en `.gitignore` se va a GitHub**, así que subir el repo no te respalda lo que más duele perder.
 
-Lo que hay que copiar afuera del Pi:
+### Ya corre solo
 
-| Qué | Dónde está |
-|---|---|
-| Contraseñas y tokens | todos los `.env`, más `fitbit-exporter/tokens.json` y `finance/finance-tracker/data/token.json` |
-| Bases de datos | `fitbit-exporter/exports/fitbit.db`, `finance/finance-tracker/data/finance.db`, `news/news-filter/data/seen.db` |
-| Estado de los contenedores | los volúmenes de Docker: Grafana, Wallabag, FreshRSS, Prometheus |
-| Biblioteca de libros | `~/calibre-library` |
-
-Un respaldo de los archivos chicos:
+Hay un timer de systemd que respalda **todos los días a las 4 de la mañana** y guarda los últimos 7 en `~/respaldos`. Cada uno pesa menos de medio mega, así que una semana entera ocupa menos que una foto.
 
 ```bash
-cd ~ && tar czf ~/pi-backup-$(date +%F).tar.gz $(find pi-services -name ".env" -o -name "tokens.json" -o -name "*.db" | grep -v venv)
+systemctl list-timers pi-respaldo
 ```
 
-Y de los volúmenes:
+Para hacer uno ahora mismo:
 
 ```bash
-docker run --rm -v monitoring_grafana-data:/data -v ~/docker-volumes-backup:/backup alpine tar czf /backup/grafana-$(date +%F).tar.gz -C /data .
+cd ~/pi-services && ./respaldo.sh
 ```
 
-Copiá el resultado **fuera del Pi**. Un backup que vive en el mismo disco que se puede corromper no es un backup.
+Y para ver qué capturaría sin hacer nada:
+
+```bash
+cd ~/pi-services && ./respaldo.sh --listar
+```
+
+### Qué entra
+
+Lo irrecuperable, que son unos pocos megas: los 10 `.env` con contraseñas y claves de API, los tokens de OAuth, y las 8 bases de datos, tanto las del repo como las que viven dentro de los volúmenes de Docker.
+
+No entra lo que se reconstruye solo: imágenes, la caché de Jellyfin, el histórico de Prometheus, ni nada que ya esté en GitHub. Meterlo multiplicaría el tamaño por cien sin salvar nada que importe.
+
+**Las bases se copian con la API de SQLite, no con `cp`.** Copiar un `.db` en caliente puede dar un archivo roto, porque SQLite escribe en un WAL aparte y lo une después. La API de respaldo da una copia consistente aunque el servicio esté escribiendo en ese momento.
+
+**Y se arma en `/tmp`, que es RAM.** Un respaldo que desgasta el medio que intenta proteger es un mal negocio, y encima corre justo cuando el disco puede estar por llenarse.
+
+### Falta el paso que importa
+
+Todo lo anterior sigue viviendo en la misma tarjeta que puede morir. Bajate una copia a tu PC:
+
+```bash
+scp jlussich@192.168.68.66:~/respaldos/pi-respaldo-*.tar.gz .
+```
+
+Adentro del `.tar.gz` hay un `MANIFIESTO.txt` con qué contiene y los pasos exactos para restaurarlo, incluida la parte de meter las bases de vuelta en los volúmenes de Docker, que es la que menos se acuerda uno.
+
+**Un respaldo sin restaurar es una suposición.** El script verifica que el archivo se pueda leer, pero eso no prueba que restaure bien. La única prueba de verdad es probarlo.
