@@ -11,7 +11,9 @@ services:
     restart: unless-stopped
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.fitbit-exporter.schedule: "0 6 1 * *"
+      # Seis campos: segundo minuto hora dia mes dia-de-semana.
+      # Con cinco, esto corria todos los dias a la 01:06 en vez de una vez al mes.
+      ofelia.job-exec.fitbit-exporter.schedule: "0 0 6 1 * *"
       ofelia.job-exec.fitbit-exporter.command: "python /app/export.py --source scheduled"
 
   fitbit-exporter-ui:

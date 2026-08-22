@@ -13,7 +13,9 @@ services:
     restart: unless-stopped
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.news-filter.schedule: "0 8 * * *"
+      # Seis campos: segundo minuto hora dia mes dia-de-semana.
+      # Con cinco, esto corria cada hora a las HH:08 en vez de una vez al dia.
+      ofelia.job-exec.news-filter.schedule: "0 0 8 * * *"
       ofelia.job-exec.news-filter.command: "python /app/filter.py"
   news-filter-ui:
     build:

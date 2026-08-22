@@ -10,7 +10,11 @@ services:
     restart: unless-stopped
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.itau-email-tracker.schedule: "0 * * * *"
+      # SEIS campos, y el primero son SEGUNDOS. Con los cinco de cron clasico
+      # Ofelia lee "0 * * * *" como segundo 0 de cada minuto, o sea que esto
+      # corria CADA MINUTO en vez de cada hora: 60 veces las escrituras
+      # previstas sobre la tarjeta, y fallando todas.
+      ofelia.job-exec.itau-email-tracker.schedule: "0 0 * * * *"
       ofelia.job-exec.itau-email-tracker.command: "python /app/fetch.py"
   finance-tracker-ui:
     build:
