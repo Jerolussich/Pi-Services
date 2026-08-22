@@ -106,6 +106,11 @@ http://radarr.pi {
     reverse_proxy radarr:7878
 }
 
+http://sonarr.pi {
+    import accesslog
+    reverse_proxy sonarr:8989
+}
+
 http://prowlarr.pi {
     import accesslog
     reverse_proxy prowlarr:9696

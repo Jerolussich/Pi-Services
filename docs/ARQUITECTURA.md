@@ -130,3 +130,62 @@ Dos piezas corren directamente en el sistema, no en contenedores, y en los dos c
 ## Tareas programadas
 
 En vez de que cada servicio traiga su propio programador, hay uno solo: **Ofelia**, que dispara trabajos en los demás contenedores según etiquetas. Un único lugar donde ver y cambiar todo lo que corre periódicamente. Ver [../ofelia/README.md](../ofelia/README.md).
+
+**El cron de Ofelia lleva seis campos y el primero son segundos.** No es el cron de siempre. Con los cinco clásicos, `0 * * * *` no significa "cada hora" sino "cada minuto", y nadie avisa: las tareas simplemente corren sesenta veces más de lo que pensabas. Para cada hora va `0 0 * * * *`.
+
+---
+
+## Cómo se mantiene solo
+
+Cada dato vive **en un solo lugar** y lo demás se deriva de ahí. Es lo que hace que agregar un servicio no sea un recorrido por seis archivos, acordándose de todos.
+
+El costo de no hacerlo así no es el trabajo extra: es que el día que te olvidás de uno, el síntoma no se parece en nada a la causa. Un servicio sin registro DNS da un error de red. Un puerto desactualizado en una tabla hace que el diagnóstico reporte caído algo que está perfecto.
+
+### Los nombres y los puertos salen del Caddyfile
+
+El Caddyfile ya dice, en una línea, qué nombre atiende y contra qué puerto va:
+
+```
+http://sonarr.pi {
+    import accesslog
+    reverse_proxy sonarr:8989
+}
+```
+
+De ahí se derivan dos cosas que antes estaban escritas a mano:
+
+| Qué | Quién lo usa | Antes |
+|---|---|---|
+| Los registros DNS `*.pi` de Pi-hole | el instalador, al configurar Pi-hole | una lista fija de 15 nombres |
+| El puerto interno de cada servicio | el diagnóstico, para preguntarle si responde | una tabla de 14 entradas |
+
+Las funciones son `hosts_del_caddyfile` y `puerto_de`, las dos en [../lib/comun.sh](../lib/comun.sh).
+
+**Consecuencia práctica:** agregar un servicio es agregar su bloque al Caddyfile. Los registros DNS se cargan solos la próxima vez que corras el instalador, incluso si Pi-hole ya estaba andando.
+
+### El instalador y el diagnóstico comparten lo que saben
+
+`instalador.sh` sabe **configurar** cada servicio. `diagnostico.sh` sabe **comprobarlo**. Son la misma pregunta desde dos lados, así que si cada uno tuviera su propia idea de qué significa "Radarr está bien", en tres meses dirían cosas distintas.
+
+Por eso todo ese conocimiento vive en [../lib/comun.sh](../lib/comun.sh), que los dos cargan: las definiciones de módulos y servicios, las variables requeridas, la detección de estado y la configuración automática por API. Cada script se queda solo con su flujo.
+
+### Los servicios parecidos comparten código, no copias
+
+Radarr y Sonarr son el mismo motor con distinto contenido: misma API, mismos endpoints, misma forma de configurarse. Cambian el puerto, la carpeta, y cómo llama cada uno a su categoría de descargas.
+
+Van por una sola función, `cfg_arr`, con esas tres cosas como parámetros:
+
+```bash
+cfg_radarr() { cfg_arr radarr 7878 Radarr /data/media/movies movie "$1"; }
+cfg_sonarr() { cfg_arr sonarr 8989 Sonarr /data/media/tv     tv    "$1"; }
+```
+
+Con dos copias, cualquier arreglo hay que acordarse de hacerlo dos veces, y el día que te olvidás queda un bug que solo aparece en las series. El diagnóstico usa el mismo patrón con `rev_un_arr`.
+
+### El nombre de proyecto está fijado
+
+Los once compose empiezan con `name: pi-services`. Sin eso, Compose usa el nombre de la carpeta, y ese nombre prefija todos los volúmenes: levantar un módulo desde su carpeta, o clonar el repo con otro nombre, creaba un juego de volúmenes paralelo y todo aparecía vacío. Está explicado en [OPERACION.md](OPERACION.md).
+
+### Qué sigue sin derivarse
+
+Para ser honestos, no todo está resuelto. La lista de servicios por módulo (`SERVICIOS` en `lib/comun.sh`) sigue escrita a mano, y podría salir del `docker-compose.yml` de cada carpeta. Lo mismo la asociación servicio a módulo. Son los dos lugares que hay que tocar al agregar algo, además del Caddyfile.

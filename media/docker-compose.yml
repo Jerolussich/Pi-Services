@@ -62,6 +62,25 @@ services:
       - qbittorrent
     restart: unless-stopped
 
+  # Sonarr es a las series lo que Radarr a las peliculas: mismo motor, misma
+  # forma de configurarse, y comparte indexers y cliente de descargas. Va
+  # aparte y no como un modo de Radarr porque las series tienen temporadas,
+  # episodios y calendario de emision, que son otro problema.
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    env_file:
+      - .env
+    volumes:
+      - sonarr-config:/config
+      # El DAS entero, igual que Radarr: descargas y biblioteca tienen que
+      # compartir montaje o se pierden los hardlinks.
+      - ${DAS_ROOT:-/mnt/das}:/data
+    depends_on:
+      - prowlarr
+      - qbittorrent
+    restart: unless-stopped
+
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
@@ -72,6 +91,7 @@ services:
       - ${DAS_ROOT:-/mnt/das}:/data
     depends_on:
       - radarr
+      - sonarr
     restart: unless-stopped
 
 volumes:
@@ -80,4 +100,5 @@ volumes:
   qbittorrent-config:
   prowlarr-config:
   radarr-config:
+  sonarr-config:
   bazarr-config:
