@@ -35,6 +35,9 @@ titulo()  { echo ""; echo "${B}${C}━━━ $* ━━━${N}"; echo ""; }
 PENDIENTES=()
 pendiente() { PENDIENTES+=("$1"); }
 
+# "1 dato" y no "1 datos". Los mensajes de estado pluralizaban siempre.
+plural() { [ "$1" = "1" ] && echo "$2" || echo "$3"; }
+
 DOCKER="sudo docker"
 
 # Una sola contrasena para todo. Se pregunta una vez y se usa en todos lados:
@@ -376,17 +379,107 @@ das_libre() {
     df -h --output=avail "$(das_ruta)" 2>/dev/null | tail -1 | tr -d ' '
 }
 
+# Un contenedor esta arriba si esta RUNNING. Sin el filtro, `docker ps` lista
+# tambien los que estan en bucle de reinicio, y un servicio que arranca y se
+# cae cada diez segundos se contaba como funcionando.
+esta_arriba() {
+    $DOCKER ps --filter status=running --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+}
+
 # Cuenta contenedores de un modulo que estan corriendo
 corriendo() {
     local mod="$1" n=0 s
     for s in ${SERVICIOS[$mod]:-}; do
-        $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$s" && n=$((n+1))
+        esta_arriba "$s" && n=$((n+1))
+    done
+    echo "$n"
+}
+
+# Cuantos del modulo estan reiniciando en bucle, que no es lo mismo que caidos
+reiniciando() {
+    local mod="$1" n=0 s
+    for s in ${SERVICIOS[$mod]:-}; do
+        [ "$($DOCKER inspect -f '{{.State.Status}}' "$s" 2>/dev/null)" = "restarting" ] && n=$((n+1))
     done
     echo "$n"
 }
 
 total_servicios() {
     local mod="$1"; echo "${SERVICIOS[$mod]:-}" | wc -w
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PUEDE HACER SU TRABAJO?
+#
+#  Contar contenedores arriba y variables cargadas no alcanza. Prowlarr sin
+#  indexers responde perfecto y no encuentra nada; Bazarr sin perfil de idiomas
+#  no baja un solo subtitulo; y el stack multimedia sin disco externo descarga
+#  a la tarjeta del sistema hasta llenarla. Los tres se reportaban como
+#  "funcionando".
+#
+#  Estos chequeos corren al arrancar el instalador, cada vez, asi que tienen
+#  que ser BARATOS: una llamada, sin reintentos, y solo si el contenedor esta
+#  arriba. Y conservadores: un aviso que salta sin motivo ensena a ignorarlos.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Cuenta cuantos elementos devuelve un endpoint de los *arr
+arr_conteo() {
+    esta_arriba "$1" || { echo 0; return; }
+    arr_api "$1" "$2" "$3" GET "$4" 2>/dev/null | grep -o '"id"' | wc -l
+}
+
+bazarr_sin_perfil() {
+    esta_arriba bazarr || return 1
+    ! $DOCKER exec bazarr sh -c 'grep -q "enabled_languages" /config/config/config.yaml' 2>/dev/null
+}
+
+freshrss_sin_instalar() {
+    esta_arriba freshrss || return 1
+    ! $DOCKER exec freshrss sh -c 'test -f /var/www/FreshRSS/data/config.php' 2>/dev/null
+}
+
+# El bind mount puede apuntar a un directorio que ya no existe: el archivo se
+# ve bien desde el host y el contenedor no lo tiene. Falla en silencio.
+keywords_invisible() {
+    esta_arriba news-filter || return 1
+    ! $DOCKER exec news-filter sh -c 'test -s /app/config/keywords.txt' 2>/dev/null
+}
+
+# Devuelve por stdout lo que le falta al modulo para poder trabajar, o vacio.
+config_pendiente() {
+    local mod="$1" faltas=()
+
+    case "$mod" in
+        media)
+            [ "$(corriendo media)" -gt 0 ] || return 0
+            das_montado || faltas+=("sin disco externo, descargaria a la tarjeta")
+            [ "$(arr_conteo prowlarr 9696 v1 /indexer)" = "0" ] && faltas+=("Prowlarr sin indexers")
+            bazarr_sin_perfil && faltas+=("Bazarr sin perfil de idiomas")
+            ;;
+        news)
+            [ "$(corriendo news)" -gt 0 ] || return 0
+            freshrss_sin_instalar && faltas+=("FreshRSS sin terminar de instalar")
+            keywords_invisible && faltas+=("el contenedor no ve keywords.txt")
+            ;;
+        monitoring)
+            esta_arriba prometheus || return 0
+            local caidos
+            caidos=$($DOCKER exec prometheus sh -c \
+                'wget -qO- http://localhost:9090/api/v1/targets 2>/dev/null' 2>/dev/null \
+                | grep -o '"health":"down"' | wc -l)
+            [ "${caidos:-0}" -gt 0 ] && faltas+=("$caidos objetivo(s) de Prometheus sin responder")
+            ;;
+    esac
+
+    [ ${#faltas[@]} -eq 0 ] && return 0
+
+    # Como maximo dos, y el resto contado. La linea de estado tiene que
+    # entrar en el ancho de una terminal, y el detalle completo lo da el
+    # diagnostico, que para eso existe.
+    local salida="${faltas[0]}"
+    [ ${#faltas[@]} -ge 2 ] && salida="$salida, ${faltas[1]}"
+    [ ${#faltas[@]} -gt 2 ] && salida="$salida y $(( ${#faltas[@]} - 2 )) mas"
+    echo "$salida"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -466,15 +559,29 @@ detectar() {
             archivo_completo "$ruta" "$marcador" || faltan=$((faltan+1))
         done
 
-        if [ "$arriba" -eq "$total" ] && [ "$faltan" -eq 0 ]; then
-            ESTADO[$mod]=activo; DETALLE[$mod]="$arriba de $total contenedores arriba"
+        # Y lo que no se ve en las variables: si el servicio puede trabajar
+        local pendiente_cfg; pendiente_cfg=$(config_pendiente "$mod")
+
+        # Reiniciar en bucle no es estar arriba ni estar caido: es su propia cosa
+        local en_bucle; en_bucle=$(reiniciando "$mod")
+
+        local datos; datos=$(plural "$faltan" "dato" "datos")
+        local cont;  cont=$(plural "$total" "contenedor" "contenedores")
+
+        if [ "$en_bucle" -gt 0 ]; then
+            ESTADO[$mod]=parcial
+            DETALLE[$mod]="$en_bucle $(plural "$en_bucle" "contenedor reinicia" "contenedores reinician") en bucle"
+        elif [ "$arriba" -eq "$total" ] && [ "$faltan" -eq 0 ] && [ -z "$pendiente_cfg" ]; then
+            ESTADO[$mod]=activo; DETALLE[$mod]="$arriba de $total $cont arriba"
+        elif [ "$arriba" -eq "$total" ] && [ -n "$pendiente_cfg" ]; then
+            ESTADO[$mod]=parcial; DETALLE[$mod]="arriba, pero $pendiente_cfg"
         elif [ "$arriba" -eq "$total" ] && [ "$faltan" -gt 0 ]; then
-            ESTADO[$mod]=parcial; DETALLE[$mod]="$arriba de $total arriba, pero faltan $faltan datos"
+            ESTADO[$mod]=parcial; DETALLE[$mod]="$arriba de $total arriba, pero faltan $faltan $datos"
         elif [ "$arriba" -gt 0 ]; then
-            ESTADO[$mod]=parcial; DETALLE[$mod]="solo $arriba de $total contenedores arriba"
+            ESTADO[$mod]=parcial; DETALLE[$mod]="solo $arriba de $total $cont arriba"
         else
             ESTADO[$mod]=inactivo
-            [ "$faltan" -gt 0 ] && DETALLE[$mod]="sin levantar, faltan $faltan datos" || DETALLE[$mod]="sin levantar"
+            [ "$faltan" -gt 0 ] && DETALLE[$mod]="sin levantar, faltan $faltan $datos" || DETALLE[$mod]="sin levantar"
         fi
     done
 }
@@ -509,7 +616,6 @@ etiqueta() {
 #  localhost, porque ninguno publica su puerto al host. Todos traen curl.
 # ══════════════════════════════════════════════════════════════════════════════
 
-esta_arriba() { $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"; }
 
 # Recien levantado un contenedor puede tardar en atender. Esperamos.
 #
@@ -589,7 +695,7 @@ print(json.dumps(d))' 2>/dev/null)
 
 cfg_radarr() {
     local clave="$1" cuerpo
-    esperar_http radarr 7878 /api/v3/system/status || { aviso "Radarr no contesta"; return 1; }
+    esperar_http radarr 7878 /api/v3/system/status || { aviso "Radarr no contesta"; pendiente "Configurar Radarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
 
     local resp
     if arr_api radarr 7878 v3 GET /rootfolder 2>/dev/null | grep -q '/data/media/movies'; then
@@ -661,7 +767,7 @@ print(json.dumps({
 
 cfg_prowlarr() {
     local clave="$1" kr cuerpo
-    esperar_http prowlarr 9696 /api/v1/system/status || { aviso "Prowlarr no contesta"; return 1; }
+    esperar_http prowlarr 9696 /api/v1/system/status || { aviso "Prowlarr no contesta"; pendiente "Configurar Prowlarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
 
     kr=$(api_key_arr radarr)
     if arr_api prowlarr 9696 v1 GET /applications 2>/dev/null | grep -qi '"name": *"Radarr"'; then
@@ -734,6 +840,23 @@ decidir_das() {
     esac
     echo ""
     return 0
+}
+
+# La decision del disco va ANTES de levantar nada. Preguntada despues, la
+# opcion de "no tocar multimedia" llega tarde: los cinco contenedores ya
+# estan arriba, y qBittorrent ya puede escribir en la tarjeta.
+decidir_das_temprano() {
+    [[ " ${SELECCION[*]} " == *" media "* ]] || return 0
+    decidir_das
+    [ "$MEDIA_MODO" = "no" ] || return 0
+
+    local m nueva=()
+    for m in "${SELECCION[@]}"; do
+        [ "$m" = "media" ] || nueva+=("$m")
+    done
+    SELECCION=("${nueva[@]}")
+    info "Saco multimedia de la lista: no levanto ninguno de sus contenedores."
+    echo ""
 }
 
 # ── Recuperar una credencial que ya existe ────────────────────────────────────
@@ -859,7 +982,7 @@ qbit_resetear() {
 
 cfg_qbittorrent() {
     local clave="$1" ck=/tmp/instalador.cookie tmp entro=0 prefs resp
-    esperar_http qbittorrent 8080 || { aviso "qBittorrent no contesta"; return 1; }
+    esperar_http qbittorrent 8080 || { aviso "qBittorrent no contesta"; pendiente "Configurar qBittorrent: no contestaba al instalar. Volve a correr el instalador"; return 1; }
 
     # Minimo 6 caracteres, impuesto por qBittorrent.
     # El contador corta el bucle si no hay terminal donde preguntar: sin el,
@@ -918,8 +1041,16 @@ cfg_qbittorrent() {
     # del contenedor y encima se pierde el hardlink con la biblioteca.
     # Sin DAS, los torrents entran en pausa: asi Radarr puede mandarlos y no
     # se baja un solo byte a la tarjeta hasta que conectes el disco.
-    prefs=$(CLAVE="$clave" PAUSA="$MEDIA_MODO" python3 -c '
+    #
+    # Van las DOS claves a proposito: la 4.x la llamaba start_paused_enabled y
+    # la 5.x la renombro a add_stopped_enabled. Mandar solo una hacia que la
+    # pausa no se aplicara en la version instalada, y como la API contesta
+    # vacio igual, el instalador anunciaba una proteccion que no existia.
+    local pausar="False"
+    [ "$MEDIA_MODO" = "pausa" ] && pausar="True"
+    prefs=$(CLAVE="$clave" PAUSA="$pausar" python3 -c '
 import json, os
+p = os.environ["PAUSA"] == "True"
 print(json.dumps({
   "web_ui_username": "admin",
   "web_ui_password": os.environ["CLAVE"],
@@ -927,26 +1058,45 @@ print(json.dumps({
   "temp_path_enabled": True,
   "temp_path": "/data/downloads/incomplete",
   "create_subfolder_enabled": False,
-  "start_paused_enabled": os.environ.get("PAUSA") == "pausa"}))' 2>/dev/null)
+  "start_paused_enabled": p,
+  "add_stopped_enabled": p}))' 2>/dev/null)
 
     resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
         -H "Referer: http://localhost:8080" \
         --data-urlencode "json=$prefs" \
         "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null)
 
-    $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
-
     if [ -n "$resp" ]; then
+        $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
         aviso "qBittorrent: $resp"
         pendiente "Revisar la contrasena de qBittorrent en http://qbit.pi"
         return 1
     fi
 
-    # Recien aca damos la contrasena por buena. Radarr la va a usar para
-    # conectarse, y darsela sin que haya quedado aplicada lo haria fallar.
+    # Leer de vuelta, no confiar en que la respuesta venga vacia. qBittorrent
+    # ignora en silencio las preferencias que no conoce, asi que una clave con
+    # el nombre de otra version se acepta sin quejarse y no hace nada.
+    local aplicado
+    aplicado=$($DOCKER exec qbittorrent curl -s -b "$ck" \
+        "http://localhost:8080/api/v2/app/preferences" 2>/dev/null | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print(d.get("save_path", ""), d.get("add_stopped_enabled", d.get("start_paused_enabled")))' 2>/dev/null)
+    $DOCKER exec qbittorrent sh -c "rm -f $ck" 2>/dev/null
+
     CLAVE_QBIT="$clave"
     ok "qBittorrent: contrasena puesta y descargas en ${B}/data/downloads${N}"
     gris "     venia apuntando a /downloads, que en este stack no existe"
+
+    if [ "$MEDIA_MODO" = "pausa" ]; then
+        if [[ "$aplicado" == *True* ]]; then
+            ok "qBittorrent: los torrents entran en pausa"
+        else
+            aviso "qBittorrent: no pude dejar las descargas en pausa"
+            gris "     sin eso, lo que Radarr mande se baja a la tarjeta"
+            pendiente "Pausar a mano en http://qbit.pi, Opciones, Descargas, 'No iniciar al agregar'"
+        fi
+    fi
 }
 
 # ── Jellyfin ──────────────────────────────────────────────────────────────────
@@ -1031,7 +1181,7 @@ PY
 
 cfg_jellyfin() {
     local clave="$1" listo resp
-    esperar_http jellyfin 8096 /System/Info/Public || { aviso "Jellyfin no contesta"; return 1; }
+    esperar_http jellyfin 8096 /System/Info/Public || { aviso "Jellyfin no contesta"; pendiente "Configurar Jellyfin: no contestaba al instalar. Volve a correr el instalador"; return 1; }
 
     listo=$(jf_api GET /System/Info/Public 2>/dev/null | python3 -c \
         'import sys,json;print(json.load(sys.stdin).get("StartupWizardCompleted"))' 2>/dev/null)
@@ -1108,7 +1258,7 @@ print(json.dumps(d))' 2>/dev/null)
 
 cfg_bazarr() {
     local clave="$1" kr salida code tmpf
-    esperar_http bazarr 6767 || { aviso "Bazarr no contesta"; return 1; }
+    esperar_http bazarr 6767 || { aviso "Bazarr no contesta"; pendiente "Configurar Bazarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
     kr=$(api_key_arr radarr)
 
     # Bazarr no se configura por API: su configuracion vive en un YAML. Y su
@@ -1218,7 +1368,7 @@ PY
 # ── Servicios de fuera del stack multimedia ───────────────────────────────────
 
 cfg_grafana() {
-    esperar_http grafana 3000 /api/health || { aviso "Grafana no contesta"; return 1; }
+    esperar_http grafana 3000 /api/health || { aviso "Grafana no contesta"; pendiente "Ponerle contrasena a Grafana: no contestaba al instalar"; return 1; }
     if $DOCKER exec grafana grafana cli --homepath /usr/share/grafana \
          admin reset-admin-password "$1" >/dev/null 2>&1; then
         ok "Grafana: contrasena de ${B}admin${N} puesta"
@@ -1227,6 +1377,20 @@ cfg_grafana() {
         aviso "Grafana: no pude cambiarle la contrasena"
         pendiente "Entrar a http://grafana.pi con admin/admin y cambiarla"
     fi
+}
+
+# Pi-hole guarda el hash en su propia configuracion: si esta vacio, no hay
+# contrasena y ponerla no pisa nada de nadie.
+pihole_tiene_clave() {
+    [ -n "$(sudo pihole-FTL --config webserver.api.pwhash 2>/dev/null | tr -d '"')" ]
+}
+
+# Grafana recien instalado entra con admin/admin. Un solo intento, que ademas
+# es la contrasena publica de fabrica, no una que estemos adivinando.
+grafana_de_fabrica() {
+    esta_arriba grafana || return 1
+    [ "$($DOCKER exec grafana curl -s -o /dev/null -w '%{http_code}' \
+        -u "admin:admin" http://localhost:3000/api/org 2>/dev/null)" = "200" ]
 }
 
 cfg_pihole() {
@@ -1251,21 +1415,43 @@ configurar_servicios() {
     info "Lo que ya este configurado no lo toco."
     echo ""
 
-    pedir_clave_maestra
+    # Si no se pidio contrasena en esta corrida es porque no faltaba ningun
+    # dato, o sea que ya hay una puesta en todos lados. Pedirla igual, como
+    # hacia antes, te obligaba a inventar una nueva y con eso reseteaba las de
+    # Pi-hole y Grafana sin preguntarte. Ahora se pregunta primero.
+    TOCAR_CLAVES=1
+    if [ -z "$CLAVE_MAESTRA" ]; then
+        info "Los servicios ya tienen contrasena puesta."
+        echo ""
+        if preguntar "¿Queres cambiarlas?" "n"; then
+            pedir_clave_maestra
+        else
+            TOCAR_CLAVES=0
+            info "Las dejo como estan. Configuro solo lo que no son credenciales."
+            echo ""
+        fi
+    fi
 
     local elegidos_media; elegidos_media=$(servicios_elegidos media)
 
-    if [[ " ${SELECCION[*]} " == *" pihole "* ]]; then
-        cfg_pihole "$(clave_para 'Pi-hole')"
-    fi
-
-    if [[ " ${SELECCION[*]} " == *" monitoring "* ]] && esta_arriba grafana; then
-        cfg_grafana "$(clave_para 'Grafana')"
-    fi
-
-    if [[ " ${SELECCION[*]} " == *" media "* ]]; then
-        # Antes de tocar nada: sin disco externo, todo esto baja a la tarjeta
-        decidir_das
+    # Pi-hole y Grafana se cambian sin saber la vieja, asi que pasan por la
+    # misma pregunta que protege a Radarr, Prowlarr y Bazarr. Antes eran los
+    # dos unicos que pisaban una credencial existente sin avisar.
+    if [ "$TOCAR_CLAVES" = "1" ]; then
+        if [[ " ${SELECCION[*]} " == *" pihole "* ]]; then
+            if pihole_tiene_clave && ! unificar_claves; then
+                gris "     Pi-hole queda con la contrasena que ya tenia"
+            else
+                cfg_pihole "$(clave_para 'Pi-hole')"
+            fi
+        fi
+        if [[ " ${SELECCION[*]} " == *" monitoring "* ]] && esta_arriba grafana; then
+            if ! grafana_de_fabrica && ! unificar_claves; then
+                gris "     Grafana queda con la contrasena que ya tenia"
+            else
+                cfg_grafana "$(clave_para 'Grafana')"
+            fi
+        fi
     fi
 
     if [[ " ${SELECCION[*]} " == *" media "* ]] && [ "$MEDIA_MODO" != "no" ]; then

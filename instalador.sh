@@ -211,7 +211,7 @@ avisar_dependencias() {
         faltan=""
         for d in $deps; do
             # Si no lo elegiste y tampoco esta corriendo, falta
-            if [[ " $elegidos " != *" $d "* ]] && ! $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$d"; then
+            if [[ " $elegidos " != *" $d "* ]] && ! esta_arriba "$d"; then
                 faltan="$faltan $d"
             fi
         done
@@ -252,7 +252,7 @@ elegir_servicios() {
         for s in $todos; do
             lista+=("$s")
             local marca="${G}○${N}"
-            $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$s" && marca="${V}●${N}"
+            esta_arriba "$s" && marca="${V}●${N}"
             printf "     ${B}%d${N}) %s %-22s ${G}%s${N}\n" "$i" "$marca" "$s" "${QUE_HACE[$s]:-}"
             i=$((i+1))
         done
@@ -616,13 +616,43 @@ EOF
 
 # Baja las imagenes de a una. En paralelo satura la SD y se cuelga sin dar
 # error, dejando capas escritas a medias que despues rompen contenedores.
+# Solo las imagenes de los servicios que elegiste.
+#
+# Antes miraba el compose entero y se bajaba las 14 imagenes del repo, o sea
+# 6,27 GB, aunque hubieras elegido un solo modulo. En una tarjeta de 29 GB eso
+# es media tarjeta en cosas que nadie pidio, y llenarla es lo que la corrompe.
 bajar_imagenes() {
-    local img imgs
-    imgs=$($DOCKER compose config 2>/dev/null | grep -oE '^\s+image: .*' | awk '{print $2}' | sort -u)
+    local mod="$1" img imgs faltan=0 libre
+    local svcs; svcs=$(servicios_elegidos "$mod")
+    [ -n "$svcs" ] || return 0
+
+    imgs=$(SVC="$svcs" $DOCKER compose config --format json 2>/dev/null | python3 -c '
+import sys, json, os
+elegidos = set(os.environ.get("SVC", "").split())
+d = json.load(sys.stdin)
+imgs = {v["image"] for k, v in d.get("services", {}).items()
+        if k in elegidos and "image" in v}
+print("\n".join(sorted(imgs)))' 2>/dev/null)
+
+    # Si el filtro no anduvo, mejor no bajar nada: el up las trae solas.
+    [ -n "$imgs" ] || return 0
+
+    for img in $imgs; do
+        $DOCKER image inspect "$img" >/dev/null 2>&1 || faltan=$((faltan+1))
+    done
+    [ "$faltan" -eq 0 ] && return 0
+
+    # Un aviso antes de ocupar disco, no despues
+    libre=$(df -h --output=avail / | tail -1 | tr -d ' ')
+    info "Faltan $faltan imagenes. Quedan $libre libres en la tarjeta."
+
     for img in $imgs; do
         if ! $DOCKER image inspect "$img" >/dev/null 2>&1; then
             info "bajando $img"
-            $DOCKER pull "$img" >/dev/null 2>&1 || aviso "fallo la descarga de $img"
+            $DOCKER pull "$img" >/dev/null 2>&1 || {
+                aviso "fallo la descarga de $img"
+                pendiente "Bajar la imagen $img (fallo la descarga, revisa la conexion)"
+            }
         fi
     done
 }
@@ -646,7 +676,7 @@ levantar_modulo() {
     # Los que ya estan corriendo no se tocan
     local pendientes="" s
     for s in $servicios; do
-        if $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$s"; then
+        if esta_arriba "$s"; then
             gris "     $s ya estaba arriba, no lo toco"
         else
             pendientes="$pendientes $s"
@@ -667,14 +697,14 @@ levantar_modulo() {
     local arriba=0 total=0
     for s in $servicios; do
         total=$((total+1))
-        $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$s" && arriba=$((arriba+1))
+        esta_arriba "$s" && arriba=$((arriba+1))
     done
     if [ "$arriba" -eq "$total" ]; then
         ok "$arriba de $total contenedores arriba"
     else
         aviso "$arriba de $total arriba"
         for s in $servicios; do
-            $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$s" || \
+            esta_arriba "$s" || \
                 gris "     no levanto: $s   ·   ver con: docker compose logs $s"
         done
         pendiente "Revisar los contenedores de ${NOMBRE[$mod]} que no levantaron"
@@ -779,7 +809,7 @@ ejecutar() {
                 # levantar_modulo respeta los servicios elegidos y saltea
                 # los que ya estan corriendo, asi que es seguro llamarlo
                 # siempre: no reinicia nada que ya funcione.
-                bajar_imagenes
+                bajar_imagenes "$mod"
                 levantar_modulo "$mod"
                 ;;
         esac
@@ -872,7 +902,7 @@ guia_cuentas() {
         IFS='|' read -r m srv url que <<< "$linea"
         [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
         [[ " $(servicios_elegidos "$m") " == *" $srv "* ]] || continue
-        $DOCKER ps --format '{{.Names}}' 2>/dev/null | grep -qx "$srv" || continue
+        esta_arriba "$srv" || continue
         pendientes+=("$linea")
     done
 
@@ -1081,6 +1111,7 @@ faltantes_detallado
 menu
 elegir_servicios
 recolectar
+decidir_das_temprano
 ejecutar
 configurar_servicios
 guia_cuentas
