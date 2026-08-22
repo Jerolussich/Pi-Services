@@ -412,9 +412,27 @@ das_libre() {
 # Un contenedor esta arriba si esta RUNNING. Sin el filtro, `docker ps` lista
 # tambien los que estan en bucle de reinicio, y un servicio que arranca y se
 # cae cada diez segundos se contaba como funcionando.
+#
+# La lista se pide UNA vez y se guarda unos segundos. Antes salia un `docker ps`
+# por cada servicio y por cada variable: 44 invocaciones antes de mostrar la
+# primera pantalla, casi cinco segundos mirando una terminal vacia. Los tres
+# segundos de vida del cache son mas que suficientes para una tanda de
+# comprobaciones, y cortos para no dar una respuesta vieja despues de levantar
+# algo.
+CACHE_CORRIENDO=""
+CACHE_MOMENTO=0
+
 esta_arriba() {
-    $DOCKER ps --filter status=running --format '{{.Names}}' 2>/dev/null | grep -qx "$1"
+    local ahora; ahora=$(date +%s)
+    if [ $((ahora - CACHE_MOMENTO)) -ge 3 ]; then
+        CACHE_CORRIENDO=" $($DOCKER ps --filter status=running --format '{{.Names}}' 2>/dev/null | tr '\n' ' ')"
+        CACHE_MOMENTO=$ahora
+    fi
+    [[ "$CACHE_CORRIENDO" == *" $1 "* ]]
 }
+
+# Para llamar despues de levantar o parar algo, y no esperar los tres segundos
+olvidar_estado() { CACHE_MOMENTO=0; }
 
 # Cuenta contenedores de un modulo que estan corriendo
 corriendo() {

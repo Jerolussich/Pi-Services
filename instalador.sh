@@ -472,6 +472,15 @@ instalar_sistema() {
     if ! command -v docker >/dev/null 2>&1; then
         info "Instalando Docker..."
         curl -fsSL https://get.docker.com | sudo sh >/dev/null 2>&1
+        # Se comprueba que quedo, no que el comando no dio error. Sin internet
+        # el instalador remoto falla y con toda la salida a /dev/null el visto
+        # verde salia igual, que es la peor forma de mentir: convincente.
+        if ! command -v docker >/dev/null 2>&1; then
+            falla "No se pudo instalar Docker"
+            info "Suele ser falta de internet. Probá:  ping -c1 get.docker.com"
+            pendiente "Instalar Docker y volver a correr el instalador"
+            return 1
+        fi
         sudo usermod -aG docker "$USER"
         sudo systemctl enable --now docker >/dev/null 2>&1
         ok "Docker instalado"
@@ -486,9 +495,15 @@ instalar_sistema() {
             | sudo tee /etc/apt/sources.list.d/azlux.list >/dev/null
         sudo apt-get update -qq 2>/dev/null
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y log2ram >/dev/null 2>&1
-        sudo sed -i 's|^SIZE=.*|SIZE=512M|' /etc/log2ram.conf 2>/dev/null
-        ok "log2ram instalado"
-        pendiente "Reiniciar para que log2ram tome efecto"
+        if [ ! -f /etc/log2ram.conf ]; then
+            aviso "No se pudo instalar log2ram"
+            gris "     sin el, los logs escriben directo a la tarjeta y la desgastan"
+            pendiente "Instalar log2ram: fallo la descarga, revisá la conexion"
+        else
+            sudo sed -i 's|^SIZE=.*|SIZE=512M|' /etc/log2ram.conf 2>/dev/null
+            ok "log2ram instalado"
+            pendiente "Reiniciar para que log2ram tome efecto"
+        fi
     fi
 }
 
@@ -614,6 +629,12 @@ BLOCKING_ENABLED=true
 WEBPASSWORD=
 EOF
         curl -sSL https://install.pi-hole.net | sudo bash /dev/stdin --unattended
+        if ! command -v pihole >/dev/null 2>&1; then
+            falla "No se pudo instalar Pi-hole"
+            pendiente "Instalar Pi-hole: fallo el instalador remoto, revisá la conexion"
+            return 1
+        fi
+        ok "Pi-hole instalado"| sudo bash /dev/stdin --unattended
         ok "Pi-hole instalado"
     fi
 
@@ -720,6 +741,7 @@ levantar_modulo() {
     info "Levantando: $pendientes"
     # shellcheck disable=SC2086
     $DOCKER compose up -d $pendientes 2>&1 | grep -viE "^\s*$" | tail -6 | sed 's/^/      /'
+    olvidar_estado
 
     sleep 4
     local arriba=0 total=0
@@ -764,6 +786,12 @@ instalar_calibre() {
 instalar_tailscale() {
     if [ "${ESTADO[tailscale]}" = "activo" ]; then ok "Ya estaba conectado"; return; fi
     command -v tailscale >/dev/null 2>&1 || { info "Instalando..."; curl -fsSL https://tailscale.com/install.sh | sudo sh >/dev/null 2>&1; }
+    if ! command -v tailscale >/dev/null 2>&1; then
+        falla "No se pudo instalar Tailscale"
+        info "Suele ser falta de internet. Probá:  ping -c1 tailscale.com"
+        pendiente "Instalar Tailscale: fallo el instalador remoto"
+        return 1
+    fi
     echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-tailscale.conf >/dev/null
     echo "net.ipv6.conf.all.forwarding = 1" | sudo tee -a /etc/sysctl.d/99-tailscale.conf >/dev/null
     sudo sysctl -p /etc/sysctl.d/99-tailscale.conf >/dev/null 2>&1

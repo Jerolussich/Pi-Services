@@ -603,8 +603,8 @@ rev_nativos() {
 #  peor que no tenerlo.
 # ══════════════════════════════════════════════════════════════════════════════
 
-rep_levantar() { $DOCKER compose up -d "$1" >/dev/null 2>&1; sleep 4; esta_arriba "$1"; }
-rep_recrear()  { $DOCKER compose up -d --force-recreate "$1" >/dev/null 2>&1; sleep 6; esta_arriba "$1"; }
+rep_levantar() { $DOCKER compose up -d "$1" >/dev/null 2>&1; sleep 4; olvidar_estado; esta_arriba "$1"; }
+rep_recrear()  { $DOCKER compose up -d --force-recreate "$1" >/dev/null 2>&1; sleep 6; olvidar_estado; esta_arriba "$1"; }
 
 rep_reiniciar_servicio() {
     sudo systemctl restart "$1" >/dev/null 2>&1
