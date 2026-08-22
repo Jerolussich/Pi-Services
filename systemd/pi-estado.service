@@ -1,0 +1,22 @@
+[Unit]
+# Corre el diagnostico cada hora y deja el resultado listo para mostrarlo al
+# entrar por SSH. La Pi no tiene correo configurado, asi que este es el unico
+# canal por el que un aviso llega de verdad: el lugar por donde ya entras.
+Description=Estado de Pi-Services para el mensaje de bienvenida
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=jlussich
+WorkingDirectory=/home/jlussich/pi-services
+# RuntimeDirectory crea /run/pi-services con el dueno correcto. Escribir
+# directo en /run no se puede: es de root. Y va en /run y no en el disco
+# porque es tmpfs: escribirlo cada hora en la microSD seria desgastar la
+# tarjeta justamente con la herramienta que vigila que no se desgaste.
+RuntimeDirectory=pi-services
+RuntimeDirectoryPreserve=yes
+ExecStart=/bin/bash -c '/home/jlussich/pi-services/diagnostico.sh --breve > /run/pi-services/estado 2>&1; exit 0'
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=180

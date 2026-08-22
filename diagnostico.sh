@@ -161,6 +161,27 @@ rev_equipo() {
         bien "sistema de archivos" "sin errores"
     fi
 
+    # ── Que hace ext4 cuando encuentra un error ──
+    #
+    # De fabrica viene en "continue": sigue escribiendo sobre un sistema de
+    # archivos que ya sabe que esta danado. Es el modo que convierte una
+    # corrupcion chica en una tarjeta que no arranca.
+    local comportamiento
+    comportamiento=$(sudo dumpe2fs -h "$dev" 2>/dev/null | grep -i "^Errors behavior" | awk '{print $3}')
+    if [ "$comportamiento" = "Continue" ]; then
+        ojo "ante un error de disco" "sigue escribiendo"
+        implica "una corrupcion chica se agranda sola en vez de frenar"
+        if [ "${errores:-0}" != "0" ] && [ -n "$errores" ]; then
+            limite "cambiarlo ahora" \
+                "con errores sin reparar, pasarlo a solo-lectura dejaria la Pi inservible al primer tropiezo" \
+                "primero el fsck, y despues: sudo tune2fs -e remount-ro $dev"
+        else
+            arreglo "que se proteja solo: pasar a solo-lectura ante un error" "rep_errores_remount_ro"
+        fi
+    elif [ -n "$comportamiento" ]; then
+        bien "ante un error de disco" "se protege (${comportamiento})"
+    fi
+
     # ── Chequeo periodico ──
     local montajes
     montajes=$(sudo tune2fs -l "$dev" 2>/dev/null | grep -i "Maximum mount count" | tr -dc '0-9-')
@@ -631,6 +652,14 @@ rep_liberar_docker() {
 }
 
 rep_activar_fsck() { sudo tune2fs -c 30 "$(findmnt -no SOURCE /)" >/dev/null 2>&1; }
+
+# Que ext4 se remonte de solo lectura ante un error en vez de seguir
+# escribiendo. Se guarda en el superbloque, asi que aplica tambien al montaje
+# que hace el initramfs, antes de que se lean las opciones de fstab.
+rep_errores_remount_ro() {
+    sudo tune2fs -e remount-ro "$(findmnt -no SOURCE /)" >/dev/null 2>&1
+    [ "$(sudo dumpe2fs -h "$(findmnt -no SOURCE /)" 2>/dev/null | grep -i "^Errors behavior" | awk "{print \}")" = "Remount" ]
+}
 
 rep_recargar_caddy() {
     if $DOCKER exec caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
