@@ -203,6 +203,17 @@ servicios_elegidos() {
     echo "${ELEGIDOS[$mod]:-${SERVICIOS[$mod]:-}}"
 }
 
+# ¿Este dato solo existe despues de crear una cuenta? Si es asi no tiene
+# sentido pedirlo antes de que el servicio exista.
+sale_de_una_cuenta() {
+    local arch="$1" var="$2" t ta tv
+    for t in "${TOKENS_DE_CUENTA[@]}"; do
+        IFS='|' read -r _ _ ta tv _ _ <<< "$t"
+        [ "$ta" = "$arch" ] && [ "$tv" = "$var" ] && return 0
+    done
+    return 1
+}
+
 avisar_dependencias() {
     local elegidos="$1" linea srv deps motivo faltan d
     for linea in "${DEPENDENCIAS[@]}"; do
@@ -349,18 +360,35 @@ recolectar() {
     done
     [ "$auto" -gt 0 ] && ok "Complete $auto valores automaticos (rutas, IP, usuario, zona horaria, claves de sesion)"
 
-    # Ahora los que necesitan al usuario
-    local faltantes=()
+    # Ahora los que necesitan al usuario.
+    #
+    # Salvo los que salen de una cuenta que todavia no existe: en una maquina
+    # limpia, cuatro de las siete preguntas eran imposibles de contestar,
+    # porque el dato vive en el panel de un servicio que ni siquiera esta
+    # levantado. La unica respuesta posible era Enter, cuatro veces, cada una
+    # con su aviso amarillo de "salteado". Esos se piden al final, en la guia
+    # de cuentas, que es el momento en que existen.
+    local faltantes=() para_despues=0
     for linea in "${VARIABLES[@]}"; do
         IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
         [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
         [ "$tipo" = "auto" ] && continue
         completa "$arch" "$v" && continue
+        if [ "$tipo" = "token" ] && sale_de_una_cuenta "$arch" "$v"; then
+            para_despues=$((para_despues+1))
+            continue
+        fi
         faltantes+=("$linea")
     done
 
+    if [ "$para_despues" -gt 0 ]; then
+        echo ""
+        info "$para_despues $(plural "$para_despues" "dato sale" "datos salen") de cuentas que todavia no existen."
+        gris "     Te $(plural "$para_despues" "lo pido" "los pido") al final, cuando las hayas creado."
+    fi
+
     if [ ${#faltantes[@]} -eq 0 ]; then
-        echo ""; ok "No falta ningun dato. Todo lo necesario ya estaba cargado."
+        echo ""; ok "No falta ningun dato mas. Todo lo necesario ya estaba cargado."
         return
     fi
 
@@ -781,8 +809,14 @@ instalar_seguridad() {
     ok "Reglas aplicadas"
 
     echo ""
-    aviso "Proba AHORA desde otra maquina que seguis entrando por SSH."
-    if preguntar "¿Podes entrar?" "s"; then
+    aviso "Abri OTRA terminal y proba AHORA que seguis entrando por SSH."
+    gris "     Sin cerrar esta. Si algo salio mal, esta sesion es tu unica via."
+    echo ""
+    # La respuesta por defecto es NO a proposito. Antes era que si, o sea que
+    # apretar Enter sin haber probado nada dejaba el firewall activo, que es
+    # justo el caso en que te quedas afuera. Con el default en no, distraerse
+    # sale barato: el firewall se apaga y lo volves a intentar.
+    if preguntar "¿Entraste bien desde la otra terminal?" "n"; then
         sudo touch /tmp/ufw_ok
         ok "Confirmado, el firewall queda activo"
     else
@@ -833,6 +867,7 @@ ejecutar() {
 #
 # modulo|servicio|url|de que se trata
 CUENTAS=(
+"monitoring|pihole|http://pihole.pi|Generar la clave de API para las metricas"
 "news|freshrss|http://freshrss.pi|Crear tu cuenta y habilitar la API"
 "news|wallabag|http://wallabag.pi|Cambiar la contrasena y crear el cliente de API"
 "media|prowlarr|http://prowlarr.pi|Cargar los indexers que uses"
@@ -842,6 +877,14 @@ CUENTAS=(
 
 # El paso a paso de cada uno, una linea por paso.
 declare -A PASOS=(
+[pihole]="Entra con tu contrasena de Pi-hole.
+${B}Settings${N}, arriba a la derecha pasa el modo a ${B}Expert${N}.
+Despues ${B}Settings, API / Web interface${N}.
+Boton ${B}Configure app password${N}, y despues ${B}Generate new password${N}.
+Copiala: te la pido en cuanto termines este paso.
+Sin ella, pihole-exporter corre pero no puede leer nada, y el tablero
+   de Pi-hole en Grafana queda vacio para siempre."
+
 [freshrss]="El asistente te pide el idioma: elegi Espanol y Continuar.
 En 'Verificaciones' tiene que estar todo en verde. Continuar.
 Base de datos: dejala en ${B}SQLite${N}, no toques nada. Continuar.
@@ -901,8 +944,15 @@ guia_cuentas() {
     for linea in "${CUENTAS[@]}"; do
         IFS='|' read -r m srv url que <<< "$linea"
         [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
-        [[ " $(servicios_elegidos "$m") " == *" $srv "* ]] || continue
-        esta_arriba "$srv" || continue
+        # Pi-hole es nativo, no un contenedor: filtrarlo por docker ps lo
+        # descartaba siempre, y con el se perdia el unico camino para cargar
+        # PIHOLE_API_KEY, que quedaba imposible de completar para siempre.
+        if [ "$srv" = "pihole" ]; then
+            command -v pihole >/dev/null 2>&1 || continue
+        else
+            [[ " $(servicios_elegidos "$m") " == *" $srv "* ]] || continue
+            esta_arriba "$srv" || continue
+        fi
         pendientes+=("$linea")
     done
 
@@ -1103,16 +1153,66 @@ if ! sudo -n true 2>/dev/null; then
     exit 1
 fi
 
-portada
+# ── Un solo instalador a la vez ───────────────────────────────────────────────
+#
+# Dos corriendo en paralelo se pisan los .env, levantan los mismos contenedores
+# y se contestan preguntas entre ellos. El lock es un directorio porque crearlo
+# es atomico, a diferencia de comprobar y despues crear un archivo.
+
+LOCK="/tmp/instalador-pi-services.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    duenio=$(cat "$LOCK/pid" 2>/dev/null)
+    if [ -n "$duenio" ] && kill -0 "$duenio" 2>/dev/null; then
+        falla "Ya hay otro instalador corriendo (proceso $duenio)."
+        info "Esperá a que termine, o cerralo con:  kill $duenio"
+        exit 1
+    fi
+    # El anterior murio sin limpiar
+    aviso "Habia un lock viejo de un instalador que no termino. Lo saco."
+    rm -rf "$LOCK" && mkdir "$LOCK"
+fi
+echo $$ > "$LOCK/pid"
+
+# ── Salir a mitad de camino ───────────────────────────────────────────────────
+#
+# Un Ctrl-C en el momento equivocado deja un contenedor parado o un servicio a
+# medio configurar. No se puede evitar, pero si decir en que se estaba.
+
+PASO_ACTUAL=""
+paso() { PASO_ACTUAL="$1"; }
+
+al_salir() {
+    local code=$?
+    rm -rf "$LOCK" 2>/dev/null
+    [ "$code" -eq 0 ] && return 0
+    echo ""
+    echo ""
+    aviso "Se corto la instalacion."
+    [ -n "$PASO_ACTUAL" ] && info "Iba por: ${B}$PASO_ACTUAL${N}"
+    echo ""
+    info "Nada de lo hecho se deshace, y no queda a medias de forma peligrosa."
+    info "Volve a correrlo y sigue donde quedo: detecta lo que ya esta hecho."
+    if [ ${#PENDIENTES[@]} -gt 0 ]; then
+        echo ""
+        info "Lo que ya quedaba anotado antes de cortar:"
+        for p in "${PENDIENTES[@]}"; do gris "     · $p"; done
+    fi
+    echo ""
+}
+trap al_salir EXIT
+trap 'exit 130' INT TERM
+
+paso "revisando el equipo";        portada
 info "Revisando el estado del equipo..."
 detectar
 diagnostico
 faltantes_detallado
-menu
-elegir_servicios
-recolectar
-decidir_das_temprano
-ejecutar
-configurar_servicios
-guia_cuentas
+paso "eligiendo modulos";          menu
+paso "eligiendo servicios";        elegir_servicios
+paso "pidiendo los datos";         recolectar
+paso "decidiendo lo del disco";    decidir_das_temprano
+paso "levantando los servicios";   ejecutar
+paso "configurando los servicios"; configurar_servicios
+paso "guiando las cuentas";        guia_cuentas
+paso ""
 resumen

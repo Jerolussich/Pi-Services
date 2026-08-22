@@ -275,6 +275,11 @@ completa() {
     [ -n "$valor" ] || return 1
     case "$valor" in
         your_*|change*|CHANGE*|generate_with_*|*_here|tu_*) return 1 ;;
+        # Las rutas de ejemplo del repo no empiezan con your_ sino con /home/
+        # youruser, asi que se colaban. Y como FITBIT_EXPORTS_PATH y
+        # FINANCE_DATA_PATH son de tipo auto, el instalador solo las escribe
+        # si estan incompletas: dadas por buenas una vez, quedaban para siempre.
+        *youruser*|"<"*) return 1 ;;
     esac
     return 0
 }
@@ -372,7 +377,32 @@ das_montado() {
     [ -d "$raiz" ] || return 1
     dev_das=$(df --output=source "$raiz" 2>/dev/null | tail -1)
     dev_raiz=$(df --output=source / 2>/dev/null | tail -1)
-    [ -n "$dev_das" ] && [ "$dev_das" != "$dev_raiz" ]
+    [ -n "$dev_das" ] && [ "$dev_das" != "$dev_raiz" ] || return 1
+
+    # Estar en otro disco no alcanza. Un DAS remontado de solo lectura, que es
+    # lo que hace ext4 cuando encuentra errores, pasaria la prueba de arriba y
+    # despues nada podria escribir una sola pelicula.
+    local prueba="$raiz/.instalador-prueba-escritura"
+    if ! touch "$prueba" 2>/dev/null; then
+        return 1
+    fi
+    rm -f "$prueba" 2>/dev/null
+    return 0
+}
+
+# Por que no esta usable, para poder decirlo en vez de solo negarlo
+das_por_que_no() {
+    local raiz; raiz=$(das_ruta)
+    if [ ! -d "$raiz" ]; then
+        echo "la carpeta $raiz no existe"
+    elif [ "$(df --output=source "$raiz" 2>/dev/null | tail -1)" = "$(df --output=source / 2>/dev/null | tail -1)" ]; then
+        echo "es una carpeta en la misma tarjeta del sistema, no un disco aparte"
+    elif ! touch "$raiz/.instalador-prueba-escritura" 2>/dev/null; then
+        echo "esta montado pero es de solo lectura"
+    else
+        rm -f "$raiz/.instalador-prueba-escritura" 2>/dev/null
+        echo ""
+    fi
 }
 
 das_libre() {
@@ -467,7 +497,8 @@ config_pendiente() {
             caidos=$($DOCKER exec prometheus sh -c \
                 'wget -qO- http://localhost:9090/api/v1/targets 2>/dev/null' 2>/dev/null \
                 | grep -o '"health":"down"' | wc -l)
-            [ "${caidos:-0}" -gt 0 ] && faltas+=("$caidos objetivo(s) de Prometheus sin responder")
+            [ "${caidos:-0}" -gt 0 ] && \
+                faltas+=("$caidos $(plural "$caidos" "objetivo" "objetivos") de Prometheus sin responder")
             ;;
     esac
 
@@ -804,11 +835,13 @@ decidir_das() {
         return 0
     fi
 
-    local raiz; raiz=$(das_ruta)
+    local raiz motivo
+    raiz=$(das_ruta)
+    motivo=$(das_por_que_no)
     echo ""
-    aviso "${B}El disco externo no esta montado.${N}"
-    info "DAS_ROOT apunta a ${B}$raiz${N}, que hoy es una carpeta comun en la"
-    info "MISMA tarjeta donde corre el sistema. Quedan ${B}$(das_libre)${N} libres."
+    aviso "${B}El disco externo no esta usable.${N}"
+    info "DAS_ROOT apunta a ${B}$raiz${N}, y ${motivo:-no se puede escribir ahi}."
+    info "Quedan ${B}$(das_libre)${N} libres donde iria todo."
     echo ""
     info "Eso significa que si cargas un indexer y agregas una pelicula, la"
     info "cadena entera funciona y el archivo termina en la tarjeta. Dos o tres"
