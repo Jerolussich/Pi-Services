@@ -1448,13 +1448,29 @@ cfg_jellyfin() {
         return 1
     fi
 
-    if jf_api GET /Library/VirtualFolders 2>/dev/null | grep -q '/media/movies'; then
-        gris "     la biblioteca de peliculas ya existia"
-    else
-        jf_api POST '/Library/VirtualFolders?name=Peliculas&collectionType=movies&refreshLibrary=true' \
-            '{"LibraryOptions":{"PathInfos":[{"Path":"/media/movies"}],"EnableRealtimeMonitor":true}}' >/dev/null 2>&1
-        ok "Jellyfin: biblioteca ${B}Peliculas${N} en /media/movies"
-    fi
+    # Dos bibliotecas, y las dos importan.
+    #
+    # La de series no es un extra: Seerr mira JELLYFIN para saber que ya tenes.
+    # Sin ella, pedis una serie, Sonarr la baja, y Seerr nunca la marca como
+    # disponible porque no la ve en ningun lado. El sintoma es que todo parece
+    # andar salvo que la lista de pedidos no se vacia nunca.
+    #
+    # Y el tipo de coleccion tiene que ser el correcto: Jellyfin busca los
+    # metadatos de forma distinta para peliculas y para series.
+    local bibliotecas; bibliotecas=$(jf_api GET /Library/VirtualFolders 2>/dev/null)
+    local par nombre ruta tipo
+    for par in "Peliculas|/media/movies|movies" "Series|/media/tv|tvshows"; do
+        IFS='|' read -r nombre ruta tipo <<< "$par"
+        if echo "$bibliotecas" | grep -q "\"$ruta\""; then
+            gris "     la biblioteca de $nombre ya existia"
+            continue
+        fi
+        # Tiene que existir del lado del disco o Jellyfin la crea vacia y muda
+        mkdir -p "$(das_ruta)/media/$(basename "$ruta")" 2>/dev/null
+        jf_api POST "/Library/VirtualFolders?name=$nombre&collectionType=$tipo&refreshLibrary=true" \
+            "{\"LibraryOptions\":{\"PathInfos\":[{\"Path\":\"$ruta\"}],\"EnableRealtimeMonitor\":true}}" >/dev/null 2>&1
+        ok "Jellyfin: biblioteca ${B}$nombre${N} en $ruta"
+    done
 
     # La Pi 5 decodifica por hardware pero NO codifica: activamos VAAPI solo
     # para decodificar. Dejar la codificacion por hardware prendida la haria
@@ -1802,6 +1818,46 @@ PY
     rm -f "$tmpf" "$tmpf.previo"
 }
 
+# ── Los widgets de la homepage ────────────────────────────────────────────────
+#
+#  La homepage puede mostrar datos en vivo de cada servicio: cuantas peliculas
+#  hay, cuantas se estan bajando, cuantos pedidos quedan pendientes. Para eso
+#  necesita la clave de API de cada uno.
+#
+#  Esas claves YA EXISTEN: Radarr y Sonarr las tienen en su config.xml, Seerr en
+#  su settings.json. Pedirtelas seria hacerte copiar y pegar algo que la Pi ya
+#  sabe. Se leen y se escriben en homepage/.env, que no va a git, y en
+#  services.yaml quedan como {{HOMEPAGE_VAR_*}}, que si va.
+#
+#  Asi el archivo versionado nunca tiene un secreto adentro, y vos no tocas nada.
+cfg_homepage_widgets() {
+    esta_arriba homepage || return 0
+
+    local escritas=0 k
+
+    k=$(api_key_arr radarr)
+    [ -n "$k" ] && { escribir_var homepage/.env HOMEPAGE_VAR_RADARR_KEY "$k"; escritas=$((escritas+1)); }
+
+    k=$(api_key_arr sonarr)
+    [ -n "$k" ] && { escribir_var homepage/.env HOMEPAGE_VAR_SONARR_KEY "$k"; escritas=$((escritas+1)); }
+
+    k=$(api_key_arr prowlarr)
+    [ -n "$k" ] && { escribir_var homepage/.env HOMEPAGE_VAR_PROWLARR_KEY "$k"; escritas=$((escritas+1)); }
+
+    if esta_arriba seerr; then
+        k=$(api_key_seerr)
+        [ -n "$k" ] && { escribir_var homepage/.env HOMEPAGE_VAR_SEERR_KEY "$k"; escritas=$((escritas+1)); }
+    fi
+
+    [ "$escritas" -eq 0 ] && return 0
+
+    # El contenedor tiene las variables cargadas en memoria: hay que recrearlo
+    $DOCKER compose up -d --force-recreate homepage >/dev/null 2>&1
+    olvidar_estado
+    ok "Homepage: $escritas $(plural "$escritas" "clave leida" "claves leidas") sola, sin copiar nada"
+    gris "     los recuadros ahora muestran datos en vivo, no solo el enlace"
+}
+
 # ── Servicios de fuera del stack multimedia ───────────────────────────────────
 
 cfg_grafana() {
@@ -1935,6 +1991,10 @@ configurar_servicios() {
         # calidad ya creado, y Jellyfin con su usuario andando.
         esta_arriba seerr && [[ " $elegidos_media " == *" seerr "* ]] && \
             cfg_seerr "$(clave_para 'Seerr')"
+
+        # Con las claves ya disponibles, los recuadros de la homepage pasan
+        # de ser un enlace a mostrar datos en vivo.
+        cfg_homepage_widgets
 
         if [ "$MEDIA_MODO" = "pausa" ]; then
             echo ""
