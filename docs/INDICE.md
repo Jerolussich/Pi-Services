@@ -27,10 +27,12 @@ Si preferís entender antes de ejecutar, o hacerlo a mano:
 | Configurar cada servicio | el README de cada uno, abajo |
 | Acceso remoto | [../TAILSCALE.md](../TAILSCALE.md) |
 | Que no se vuelva a romper | [MANTENIMIENTO.md](MANTENIMIENTO.md) |
+| Diagnosticar un problema | `./diagnostico.sh`, ver abajo |
+| Respaldos y logs | la sección de acá abajo |
 
 ## Uso diario
 
-Después de un reinicio **no hay nada que hacer**: Pi-hole, Tailscale y Calibre son servicios del sistema y arrancan solos, y los contenedores tienen `restart: unless-stopped`.
+Después de un reinicio **no hay nada que hacer**: Pi-hole y Tailscale son servicios del sistema y arrancan solos, y los contenedores tienen `restart: unless-stopped`.
 
 Si igual querés levantar todo a mano, es un solo comando:
 
@@ -67,7 +69,6 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 | FreshRSS | `freshrss.pi` | Lector de RSS | [../news/README.md](../news/README.md) |
 | Wallabag | `wallabag.pi` | Guardar artículos para leer después | [../news/wallabag/README.md](../news/wallabag/README.md) |
 | News Filter | `news.pi` | Filtra noticias por palabras clave | [../news/README.md](../news/README.md) |
-| Calibre | `calibre.pi` | Biblioteca de libros. **Nativo, no Docker** | [../calibre/README.md](../calibre/README.md) |
 
 ### Datos personales
 
@@ -94,6 +95,55 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 | Ofelia | Programador de tareas de todos los contenedores | [../ofelia/README.md](../ofelia/README.md) |
 | Node Exporter | Métricas del sistema para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
 | Pi-hole Exporter | Métricas de Pi-hole para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
+
+---
+
+## Lo que corre solo
+
+Tres cosas pasan sin que las pidas. Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
+
+### Respaldo diario
+
+| | |
+|---|---|
+| Qué corre | [`respaldo.sh`](../respaldo.sh) |
+| Cuándo | todos los días a las **04:00** |
+| Quién lo dispara | el timer `pi-respaldo` ([`systemd/`](../systemd/)) |
+| Dónde deja el archivo | **`~/respaldos`** en la Pi, guarda los últimos 7 |
+| Cuánto pesa | poco más de 1 MB cada uno |
+
+Guarda lo irrecuperable y nada más: los `.env` con contraseñas y claves, los tokens de OAuth, y las bases de datos de cada servicio, incluidas las que viven dentro de los volúmenes de Docker.
+
+```bash
+systemctl list-timers pi-respaldo        # cuándo corre la próxima
+cd ~/pi-services && ./respaldo.sh        # uno ahora mismo
+cd ~/pi-services && ./respaldo.sh --listar   # qué capturaría
+```
+
+**Falta un paso que es tuyo:** bajarte una copia. Mientras viva en la misma tarjeta, no es un respaldo.
+
+```bash
+scp jlussich@192.168.68.66:~/respaldos/pi-respaldo-*.tar.gz .
+```
+
+Adentro de cada `.tar.gz` hay un `MANIFIESTO.txt` con los pasos de restauración. El detalle completo está en [OPERACION.md](OPERACION.md).
+
+### Aviso al entrar por SSH
+
+Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuando entrás por SSH, si hay algo mal te lo muestra; si está todo bien, no molesta. Lo dispara el timer `pi-estado`.
+
+### Límite a los logs
+
+Docker guarda los logs de cada contenedor **sin ningún límite de fábrica**. Un contenedor en bucle de reinicio puede escribir toda la noche y llenar la tarjeta, y una tarjeta llena corrompe bases de datos al escribir.
+
+Está acotado en [`docker/daemon.json`](../docker/daemon.json): 5 MB por archivo, 3 archivos, o sea 15 MB por contenedor y unos 315 MB de techo entre todos. El journal de systemd tiene su propio tope de 100 MB.
+
+El porqué y los detalles, en [../docker/README.md](../docker/README.md).
+
+```bash
+du -sh /var/lib/docker/containers    # cuánto ocupan hoy
+journalctl --disk-usage              # y el journal
+```
 
 ---
 
@@ -127,6 +177,12 @@ pi-services/
 ├── setup-security.sh          ← UFW y fail2ban
 ├── TAILSCALE.md
 │
+├── respaldo.sh                ← respaldo diario de lo irrecuperable
+├── diagnostico.sh             ← que anda, que no, y por que
+├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
+├── systemd/                   ← los timers de respaldo y de estado
+├── docker/                    ← daemon.json, el limite a los logs
+│
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio
 ├── monitoring/                ← Prometheus, Grafana y exporters
@@ -135,7 +191,6 @@ pi-services/
 ├── finance/                   ← lector de mails del banco
 ├── fitbit-exporter/           ← datos de salud
 ├── ofelia/                    ← programador de tareas
-└── calibre/                   ← biblioteca de libros (nativo, no Docker)
 ```
 
 Cada carpeta de servicio sigue el mismo patrón:

@@ -9,6 +9,11 @@
         href: http://radarr.pi
         description: Agregar y automatizar peliculas
         siteMonitor: http://radarr:7878
+    - Sonarr:
+        icon: sonarr.png
+        href: http://sonarr.pi
+        description: Agregar y automatizar series
+        siteMonitor: http://sonarr:8989
     - qBittorrent:
         icon: qbittorrent.png
         href: http://qbit.pi
@@ -79,13 +84,6 @@
         href: http://news.pi
         description: Manage keywords & view runs
         siteMonitor: http://news-filter-ui:8084
-
-- Library:
-    - Calibre:
-        icon: calibre.png
-        href: http://calibre.pi
-        description: Biblioteca de libros (OPDS + web)
-        siteMonitor: http://172.17.0.1:8083
 
 - Finance:
     - Finance Tracker:

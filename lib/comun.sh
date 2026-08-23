@@ -78,7 +78,7 @@ CLAVE_POR_SERVICIO=0
 #  y si es nativo (fuera de Docker).
 # ══════════════════════════════════════════════════════════════════════════════
 
-MODULOS=(sistema pihole core monitoring news finance fitbit media ofelia calibre tailscale seguridad)
+MODULOS=(sistema pihole core monitoring news finance fitbit media ofelia tailscale seguridad)
 
 declare -A NOMBRE=(
   [sistema]="Base del sistema"
@@ -90,7 +90,6 @@ declare -A NOMBRE=(
   [fitbit]="Fitbit  ·  datos de salud"
   [media]="Multimedia  ·  Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr"
   [ofelia]="Ofelia  ·  programador de tareas"
-  [calibre]="Calibre  ·  biblioteca de libros"
   [tailscale]="Tailscale  ·  acceso remoto"
   [seguridad]="UFW y fail2ban  ·  firewall"
 )
@@ -105,7 +104,6 @@ declare -A DESCRIPCION=(
   [fitbit]="Baja tu actividad, sueno y ejercicios. Necesita una app registrada en Fitbit."
   [media]="Descarga, organiza, subtitula y reproduce. Necesita un disco externo montado."
   [ofelia]="Dispara las tareas programadas del resto de los contenedores."
-  [calibre]="Servidor de libros con ingesta automatica. Va nativo, no en Docker."
   [tailscale]="Entras a tus servicios desde afuera de casa sin abrir puertos. Tambien te da SSH de emergencia si Docker se rompe."
   [seguridad]="Cierra todo salvo lo necesario y banea intentos de fuerza bruta."
 )
@@ -120,7 +118,7 @@ declare -A SERVICIOS=(
   [ofelia]="ofelia"
 )
 
-declare -A NATIVO=( [sistema]=1 [pihole]=1 [calibre]=1 [tailscale]=1 [seguridad]=1 )
+declare -A NATIVO=( [sistema]=1 [pihole]=1 [tailscale]=1 [seguridad]=1 )
 
 # Que hace cada servicio suelto, para poder elegirlos de a uno
 declare -A QUE_HACE=(
@@ -177,7 +175,7 @@ REQUERIDOS="core"
 # formato:  modulo|archivo|VARIABLE|tipo|descripcion|como conseguirlo
 VARIABLES=(
 "core|caddy/.env|CADDY_USER|auto|Usuario de la autenticacion|"
-"core|caddy/.env|CADDY_PASSWORD_HASH|hash|Contrasena de homepage, prometheus y calibre|La eligis vos ahora"
+"core|caddy/.env|CADDY_PASSWORD_HASH|hash|Contrasena de homepage y prometheus|La eligis vos ahora"
 "core|homepage/.env|PI_IP|auto|IP de la Pi|"
 "monitoring|monitoring/.env|FITBIT_EXPORTS_PATH|auto|Ruta de los datos de Fitbit|"
 "monitoring|monitoring/.env|FINANCE_DATA_PATH|auto|Ruta de los datos de finanzas|"
@@ -590,22 +588,6 @@ detectar() {
         ESTADO[pihole]=inactivo; DETALLE[pihole]="no instalado"
     fi
 
-    if systemctl --user is-active calibre-server >/dev/null 2>&1; then
-        # Corriendo con la biblioteca vacia es un servidor de libros que no
-        # sirve ni un libro. Mismo caso que Prowlarr sin indexers.
-        local libros
-        libros=$(find "$HOME/calibre-library" -maxdepth 2 -name "*.epub" -o -maxdepth 2 -name "*.mobi" \
-                 -o -maxdepth 2 -name "*.pdf" 2>/dev/null | head -1)
-        if [ -z "$libros" ]; then
-            ESTADO[calibre]=parcial; DETALLE[calibre]="corriendo, pero la biblioteca esta vacia"
-        else
-            ESTADO[calibre]=activo; DETALLE[calibre]="servidor corriendo en el 8083"
-        fi
-    elif command -v calibre-server >/dev/null 2>&1; then
-        ESTADO[calibre]=parcial; DETALLE[calibre]="instalado pero el servicio no arranca"
-    else
-        ESTADO[calibre]=inactivo; DETALLE[calibre]="no instalado"
-    fi
 
     if command -v tailscale >/dev/null 2>&1 && sudo tailscale status >/dev/null 2>&1; then
         ESTADO[tailscale]=activo; DETALLE[tailscale]="conectado como $(sudo tailscale ip -4 2>/dev/null | head -1)"
