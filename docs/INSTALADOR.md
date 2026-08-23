@@ -58,7 +58,7 @@ Y los crea vacíos antes de levantar los contenedores, por una razón concreta: 
 
 ### 2. Elegís módulos
 
-Un menú numerado con los once módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
+Un menú numerado con los doce módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
 
 - **`todo`** para todos
 - **`faltantes`** para solo lo incompleto o sin instalar
@@ -134,17 +134,34 @@ Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alg
 
 Levantar un contenedor no alcanza. Jellyfin recién levantado te recibe con un asistente de cinco pantallas, Radarr no sabe dónde guardar las películas, y qBittorrent viene apuntando a una carpeta que en este stack no existe. Todo eso lo hace el instalador antes de que abras el navegador.
 
-Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`, porque ninguno publica su puerto al host. Todos traen `curl`.
+Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`, porque ninguno publica su puerto al host. Casi todos traen `curl`; a los que no, el instalador los consulta desde el host por su IP de Docker.
 
 | Servicio | Qué deja hecho |
 |---|---|
-| **Jellyfin** | Completa el asistente entero, crea tu usuario, arma la biblioteca de Películas apuntando a `/media/movies`, y activa la decodificación por hardware con VAAPI |
+| **Jellyfin** | Completa el asistente entero, crea tu usuario, arma las bibliotecas de Películas (`/media/movies`) y Series (`/media/tv`), y activa la decodificación por hardware con VAAPI |
 | **qBittorrent** | Lee la contraseña temporal del log, la reemplaza por la tuya, y corrige las rutas de descarga a `/data/downloads` |
-| **Radarr** y **Sonarr** | Carpeta raíz (`/data/media/movies` y `/data/media/tv`), hardlinks activados, y qBittorrent conectado con sus credenciales |
+| **Radarr** y **Sonarr** | Carpeta raíz (`/data/media/movies` y `/data/media/tv`), hardlinks activados, qBittorrent conectado, y el perfil de calidad **Perfeccionista** |
 | **Prowlarr** | Lo enlaza con Radarr y Sonarr, así los indexers que cargues se sincronizan solos a los dos |
 | **Bazarr** | Lo conecta a Radarr y a Sonarr con sus API keys |
+| **Seerr** | Crea tu usuario contra Jellyfin, habilita las dos bibliotecas, y conecta Radarr y Sonarr pidiendo con el perfil Perfeccionista |
+| **Homepage** | Lee las API keys de Radarr, Sonarr, Prowlarr y Seerr y las escribe en su `.env`, así los recuadros muestran datos en vivo |
 | **Grafana** | Le pone la contraseña de admin, así no te pide cambiarla en el primer login |
 | **Pi-hole** | Le pone la contraseña del panel |
+| **Home Assistant** | Deja `configuration.yaml` listo para vivir detrás de Caddy y con el historial acotado, antes del primer arranque |
+
+#### El perfil de calidad
+
+Radarr y Sonarr quedan con un perfil llamado **Perfeccionista**, que acepta todas las calidades y tiene el corte arriba de todo con la mejora automática activada. Traducido: agarra lo que haya, y cuando aparece una versión mejor la reemplaza sola.
+
+Quedan afuera **BR-DISK** y **Raw-HD**, que son el disco entero sin comprimir: pesan decenas de gigas y en un Pi 5 obligan a transcodificar.
+
+No lo escribe a mano. Le pide a cada servicio su propio esquema de calidades con `GET /qualityprofile/schema`, lo marca entero y devuelve el resultado. Así el perfil sale correcto aunque Radarr y Sonarr tengan listas distintas, que es el caso, y sigue saliendo correcto cuando una versión nueva agregue calidades.
+
+#### Las claves de la homepage
+
+Los recuadros de la homepage muestran datos en vivo (cuántas películas tenés, qué se está bajando) solo si tienen la API key del servicio. Copiarlas a mano son cuatro viajes de ida y vuelta entre paneles.
+
+El instalador las lee de la configuración de cada servicio y las escribe en `homepage/.env`. **Vos nunca ves ni copiás una clave**, y si alguna vez regenerás una, volvés a correr el instalador y se actualiza sola.
 
 Y a Radarr, Sonarr, Prowlarr y Bazarr **les pone contraseña**, que es más importante de lo que parece: los tres vienen de fábrica con `authenticationMethod: none`, y Caddy tampoco les pide nada porque se asume que traen la suya. Sin este paso quedan abiertos a cualquiera en tu red.
 
@@ -251,7 +268,8 @@ Es la forma normal de usarlo, no una excepción.
 | Noticias | `freshrss`, `wallabag`, `news-filter`, `news-filter-ui` |
 | Finanzas | `itau-email-tracker`, `finance-tracker-ui` |
 | Fitbit | `fitbit-exporter`, `fitbit-exporter-ui` |
-| Multimedia | `jellyfin`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` |
+| Multimedia | `jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` |
+| Casa | `homeassistant` |
 | Ofelia | `ofelia` |
 | Tailscale | nativo, acceso remoto |
 | UFW y fail2ban | firewall |
@@ -291,6 +309,20 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 **Jellyfin se configura entero por sus endpoints `/Startup`**, que no piden autenticación mientras el asistente esté sin terminar. Después de cerrarlo hay que autenticarse para todo lo demás.
 
 **La Pi 5 decodifica por hardware pero no codifica.** Al activar VAAPI hay que dejar la codificación por hardware apagada, o cada transcodificación falla.
+
+**Jellyfin necesita las dos bibliotecas, no una.** Con solo la de Películas, Seerr no puede marcar las series como disponibles y te las ofrece para pedir aunque ya las tengas bajadas.
+
+**El primer arranque de Seerr no se puede repetir.** El POST a `/api/v1/auth/jellyfin` crea el usuario dueño, y correrlo dos veces no es idempotente. El instalador comprueba antes si ya hay usuarios y, si los hay, no lo toca.
+
+**La imagen de Seerr no trae `curl`.** Es la única del stack que no lo tiene, así que el `docker exec curl` que se usa con todas las demás ahí falla. El instalador la consulta desde el host por su IP de Docker, que además es más honesto: prueba el mismo camino que va a usar Caddy.
+
+**Seerr va último.** No se puede configurar solo: necesita que Jellyfin ya tenga bibliotecas y que Radarr y Sonarr ya existan con su carpeta raíz. Si se hace antes, guarda conexiones vacías sin quejarse.
+
+**Home Assistant va en la red del host, y es el único.** Descubre los dispositivos de la casa por mDNS, SSDP y DHCP, que son protocolos de difusión y no atraviesan el puente de Docker. En el puente arranca igual y parece sano, pero no encuentra nada solo. No rompe la regla del repo, porque la regla nunca fue "todo en el puente" sino **"nada se expone salvo por Caddy en el 80"**: el 8123 queda cerrado por UFW igual que el 8181 de Pi-hole.
+
+**Y detrás de Caddy tira `400 Bad Request` si no se lo avisa.** Ve todas las visitas viniendo de la IP de Caddy y las rechaza. El síntoma es una pantalla en blanco que no menciona proxies por ningún lado. Por eso el instalador deja `trusted_proxies` escrito **antes** del primer arranque, no después.
+
+**Su historial es lo que más escribe en la tarjeta.** El `recorder` guarda cada cambio de cada entidad y de fábrica retiene 10 días. Queda en 3, con confirmación cada 30 segundos y sacando las entidades que cambian cada pocos segundos.
 
 **`pihole setpassword --help` no muestra ayuda: te cambia la contraseña a `--help`.**
 

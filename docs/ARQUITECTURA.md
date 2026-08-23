@@ -27,17 +27,17 @@ Qué hay adentro del Pi, cómo se conecta, y por qué está armado así.
 │  *.pi    │    │  todo       │    │  abrir puertos │
 └──────────┘    └──────┬──────┘    └────────────────┘
                        │
-        ┌──────────────┼──────────────┬──────────────┐
-        │              │              │              │
-   ┌────┴────┐   ┌─────┴─────┐  ┌─────┴────┐  ┌──────┴─────┐
-   │ Panel y │   │  Lectura  │  │  Datos   │  │ Multimedia │
-   │ métricas│   │           │  │personales│  │            │
-   └─────────┘   └───────────┘  └──────────┘  └──────┬─────┘
-                                                     │
-                                                ┌────┴────┐
-                                                │   DAS   │
-                                                │ 2 discos│
-                                                └─────────┘
+     ┌───────────┼──────────────┬──────────────┬────────────┐
+     │           │              │              │            │
+┌────┴────┐ ┌────┴──────┐  ┌────┴─────┐  ┌─────┴──────┐ ┌───┴────┐
+│ Panel y │ │  Lectura  │  │  Datos   │  │ Multimedia │ │  Casa  │
+│ métricas│ │           │  │personales│  │            │ │        │
+└─────────┘ └───────────┘  └──────────┘  └─────┬──────┘ └───┬────┘
+                                               │            │
+                                          ┌────┴────┐  ┌────┴─────┐
+                                          │   DAS   │  │ red del  │
+                                          │ 2 discos│  │   host   │
+                                          └─────────┘  └──────────┘
 ```
 
 ---
@@ -52,6 +52,10 @@ La única excepción es el puerto de torrenting de qBittorrent, que necesita rec
 
 La ventaja práctica: hay un solo lugar donde mirar quién entra, un solo lugar donde poner autenticación, y agregar un servicio nuevo no abre nada nuevo hacia afuera.
 
+**Ojo con cómo se enuncia esta regla.** No es "todo va en la red del puente de Docker", es **"nada se expone a tu red salvo por Caddy en el 80"**. La diferencia importa porque hay dos cosas que no están en el puente y no lo violan: el panel de Pi-hole, que corre en el host en el 8181, y Home Assistant, que corre en la red del host en el 8123. Los dos tienen su puerto cerrado por UFW y solo Caddy llega.
+
+Home Assistant está ahí porque descubre los dispositivos de la casa por mDNS, SSDP y DHCP, que son protocolos de difusión y no atraviesan el puente. En el puente arrancaría igual y parecería sano, pero habría que cargar cada dispositivo a mano por IP. El detalle está en [../home/README.md](../home/README.md).
+
 ### 2. Los nombres los resuelve Pi-hole
 
 Cada servicio tiene un nombre `*.pi` que Pi-hole resuelve a la IP del Pi. Caddy después mira ese nombre y te manda al contenedor correcto.
@@ -65,7 +69,7 @@ Los registros se cargan en Pi-hole, en `Local DNS → DNS Records`, todos apunta
 El `docker-compose.yml` de la raíz no define servicios: los **incluye** desde cada carpeta. Eso permite dos cosas a la vez:
 
 ```bash
-docker compose up -d          # desde la raiz: levanta los 20 servicios
+docker compose up -d          # desde la raiz: levanta los 22 servicios
 ```
 
 ```bash
@@ -80,7 +84,9 @@ Todos comparten la red `pi-services`, así que se ven entre ellos por nombre de 
 
 No todos los servicios se protegen igual, y la regla es simple:
 
-**Si el servicio trae login propio, Caddy solo hace de proxy.** Es el caso de Grafana, Wallabag, FreshRSS, Jellyfin, Radarr, Prowlarr, Bazarr y qBittorrent.
+**Si el servicio trae login propio, Caddy solo hace de proxy.** Es el caso de Grafana, Wallabag, FreshRSS, Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent y Home Assistant.
+
+Seerr es un caso lindo: no tiene contraseña propia porque **entra con la de Jellyfin**. Un usuario menos que recordar, y si cambiás la de Jellyfin, Seerr la sigue sin que hagas nada.
 
 **Si no trae login, Caddy le pone autenticación básica adelante.** Es el caso de Homepage y Prometheus.
 
@@ -162,6 +168,16 @@ Las funciones son `hosts_del_caddyfile` y `puerto_de`, las dos en [../lib/comun.
 
 **Consecuencia práctica:** agregar un servicio es agregar su bloque al Caddyfile. Los registros DNS se cargan solos la próxima vez que corras el instalador, incluso si Pi-hole ya estaba andando.
 
+Ya se cobró sola: al sumar Seerr y Home Assistant, los registros pasaron de 16 a 19 sin que nadie tocara una lista de nombres. Los tres nuevos son `seerr.pi`, `homeassistant.pi` y `casa.pi`, que es un alias del anterior.
+
+### Las API keys se leen, no se copian
+
+Los recuadros de la homepage muestran datos en vivo solo si tienen la API key de cada servicio. Eso son cuatro claves que antes había que buscar en cuatro paneles y pegar a mano en `homepage/.env`.
+
+Ahora el instalador las lee de la configuración de cada servicio, con `api_key_arr` y `api_key_seerr`, y las escribe solo. **Nunca pasan por tus manos ni por la pantalla**, y si regenerás una, volvés a correr el instalador y se actualiza.
+
+Es el mismo principio que el Caddyfile: la clave ya existe en un lugar, así que ese lugar es la fuente.
+
 ### El instalador y el diagnóstico comparten lo que saben
 
 `instalador.sh` sabe **configurar** cada servicio. `diagnostico.sh` sabe **comprobarlo**. Son la misma pregunta desde dos lados, así que si cada uno tuviera su propia idea de qué significa "Radarr está bien", en tres meses dirían cosas distintas.
@@ -183,7 +199,7 @@ Con dos copias, cualquier arreglo hay que acordarse de hacerlo dos veces, y el d
 
 ### El nombre de proyecto está fijado
 
-Los once compose empiezan con `name: pi-services`. Sin eso, Compose usa el nombre de la carpeta, y ese nombre prefija todos los volúmenes: levantar un módulo desde su carpeta, o clonar el repo con otro nombre, creaba un juego de volúmenes paralelo y todo aparecía vacío. Está explicado en [OPERACION.md](OPERACION.md).
+Los doce compose empiezan con `name: pi-services`. Sin eso, Compose usa el nombre de la carpeta, y ese nombre prefija todos los volúmenes: levantar un módulo desde su carpeta, o clonar el repo con otro nombre, creaba un juego de volúmenes paralelo y todo aparecía vacío. Está explicado en [OPERACION.md](OPERACION.md).
 
 ### Qué sigue sin derivarse
 

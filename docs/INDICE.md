@@ -82,11 +82,18 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 | Servicio | URL | Qué hace | Documentación |
 |---|---|---|---|
 | Jellyfin | `jellyfin.pi` | Servidor multimedia | [../media/README.md](../media/README.md) |
+| Seerr | `seerr.pi` | Pedir películas y series: buscás, apretás un botón y aparece | [../media/README.md](../media/README.md) |
 | Radarr | `radarr.pi` | Automatiza películas | [../media/README.md](../media/README.md) |
 | Sonarr | `sonarr.pi` | Automatiza series, con temporadas y calendario | [../media/README.md](../media/README.md) |
 | Prowlarr | `prowlarr.pi` | Gestor de indexers | [../media/README.md](../media/README.md) |
 | Bazarr | `bazarr.pi` | Subtítulos automáticos | [../media/README.md](../media/README.md) |
 | qBittorrent | `qbit.pi` | Cliente de descargas | [../media/README.md](../media/README.md) |
+
+### Casa
+
+| Servicio | URL | Qué hace | Documentación |
+|---|---|---|---|
+| Home Assistant | `casa.pi` | Automatizar luces, sensores y enchufes de la casa | [../home/README.md](../home/README.md) |
 
 ### Infraestructura interna
 
@@ -161,6 +168,10 @@ journalctl --disk-usage              # y el journal
 - [../media/JELLYFIN-PLUGINS.md](../media/JELLYFIN-PLUGINS.md): plugins, cuáles son nativos y cuáles no
 - [PLAN-MEDIA.md](PLAN-MEDIA.md): plan de implementación, con el orden y las dependencias
 
+### Casa
+
+- [../home/README.md](../home/README.md): Home Assistant, por qué es el único en la red del host y qué deja hecho el instalador
+
 ### Mantenimiento
 
 - [MANTENIMIENTO.md](MANTENIMIENTO.md): salud del Pi, corrupción de la SD, backups y endurecimiento
@@ -186,7 +197,8 @@ pi-services/
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio
 ├── monitoring/                ← Prometheus, Grafana y exporters
-├── media/                     ← Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent
+├── media/                     ← Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent
+├── home/                      ← Home Assistant, la automatizacion de la casa
 ├── news/                      ← FreshRSS, Wallabag, news-filter
 ├── finance/                   ← lector de mails del banco
 ├── fitbit-exporter/           ← datos de salud
