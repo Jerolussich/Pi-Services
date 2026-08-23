@@ -852,6 +852,101 @@ print(json.dumps({
 cfg_radarr() { cfg_arr radarr 7878 Radarr /data/media/movies movie "$1"; }
 cfg_sonarr() { cfg_arr sonarr 8989 Sonarr /data/media/tv     tv    "$1"; }
 
+# ── El perfil de calidad ──────────────────────────────────────────────────────
+#
+#  Un perfil que acepta TODAS las calidades y sigue mejorando: si baja una
+#  pelicula en 1080p y manana el indexer encuentra el remux en 2160p, la
+#  reemplaza sola. Eso son dos cosas juntas: todas las calidades habilitadas, y
+#  el corte puesto en la mas alta para que nunca se de por satisfecho.
+#
+#  La lista de calidades NO se escribe a mano. Se pide el schema, que ya viene
+#  con todas y en el orden correcto de peor a mejor, y se le da vuelta el
+#  "allowed". Asi el dia que Radarr agregue una calidad nueva, entra sola.
+PERFIL_CALIDAD="Perfeccionista"
+
+# Las dos ultimas de Radarr no son mejor calidad: son la imagen cruda del disco.
+# Pesan 50 GB o mas, no son un archivo de video sino un disco entero, y Jellyfin
+# las reproduce mal o directamente no puede. Quedan fuera aunque el perfil se
+# llame "todas las calidades", porque incluirlas empeora el resultado.
+CALIDADES_FUERA="BR-DISK|Raw-HD"
+
+cfg_perfil_calidad() {
+    local svc="$1" puerto="$2" nombre="$3" schema cuerpo resp
+
+    esta_arriba "$svc" || return 0
+
+    # Idempotente: si ya existe uno con ese nombre, no se toca
+    if arr_api "$svc" "$puerto" v3 GET /qualityprofile 2>/dev/null \
+        | grep -q "\"name\":\"$PERFIL_CALIDAD\""; then
+        gris "     $nombre ya tenia el perfil $PERFIL_CALIDAD"
+        return 0
+    fi
+
+    schema=$(arr_api "$svc" "$puerto" v3 GET /qualityprofile/schema 2>/dev/null)
+    if [ -z "$schema" ]; then
+        aviso "$nombre: no pude leer el schema de calidades"
+        pendiente "Crear el perfil $PERFIL_CALIDAD en http://$svc.pi, Settings, Profiles"
+        return 1
+    fi
+
+    cuerpo=$(echo "$schema" | NOMBRE="$PERFIL_CALIDAD" FUERA="$CALIDADES_FUERA" python3 -c '
+import sys, json, os, re
+
+d = json.load(sys.stdin)
+fuera = re.compile("^(" + os.environ["FUERA"] + ")$", re.I)
+d["name"] = os.environ["NOMBRE"]
+d["upgradeAllowed"] = True
+
+def etiqueta(it):
+    q = it.get("quality") or {}
+    return q.get("name") or it.get("name") or ""
+
+def identificador(it):
+    # Una calidad suelta se identifica por quality.id; un grupo, por su id
+    q = it.get("quality") or {}
+    return q.get("id") if q else it.get("id")
+
+corte = None
+for it in d.get("items", []):
+    nom = etiqueta(it)
+    permitida = not fuera.match(nom)
+    it["allowed"] = permitida
+    # Los grupos traen calidades adentro: se habilitan igual que el grupo
+    for sub in it.get("items", []) or []:
+        sub["allowed"] = permitida
+    if permitida:
+        corte = identificador(it)   # queda el ultimo permitido, o sea el mejor
+
+if corte is not None:
+    d["cutoff"] = corte
+
+print(json.dumps(d))' 2>/dev/null)
+
+    if [ -z "$cuerpo" ]; then
+        aviso "$nombre: no pude armar el perfil"
+        return 1
+    fi
+
+    resp=$(arr_api "$svc" "$puerto" v3 POST /qualityprofile "$cuerpo" 2>/dev/null)
+    if echo "$resp" | grep -q '"errorMessage"'; then
+        aviso "$nombre: no se pudo crear el perfil"
+        gris "     $(echo "$resp" | python3 -c \
+            'import sys,json;print(json.load(sys.stdin)[0].get("errorMessage",""))' 2>/dev/null)"
+        pendiente "Crear el perfil $PERFIL_CALIDAD en http://$svc.pi, Settings, Profiles"
+        return 1
+    fi
+
+    local tope
+    tope=$(echo "$resp" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+mejor = [i for i in d.get("items", []) if i.get("allowed")]
+q = (mejor[-1].get("quality") or {}) if mejor else {}
+print(len(mejor), q.get("name") or mejor[-1].get("name", "?") if mejor else "?")' 2>/dev/null)
+    ok "$nombre: perfil ${B}$PERFIL_CALIDAD${N} creado ($tope como techo)"
+    gris "     mejora sola cuando aparece una version mejor"
+}
+
 cfg_prowlarr() {
     local clave="$1"
     esperar_http prowlarr 9696 /api/v1/system/status || {
@@ -1596,6 +1691,11 @@ configurar_servicios() {
             cfg_radarr "$(clave_para 'Radarr')"
         esta_arriba sonarr && [[ " $elegidos_media " == *" sonarr "* ]] && \
             cfg_sonarr "$(clave_para 'Sonarr')"
+
+        # El perfil de calidad va despues de que los dos existan y tengan
+        # carpeta: es lo que Seerr va a elegir al pedir algo.
+        cfg_perfil_calidad radarr 7878 Radarr
+        cfg_perfil_calidad sonarr 8989 Sonarr
         esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]] && \
             cfg_prowlarr "$(clave_para 'Prowlarr')"
         esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]] && \
