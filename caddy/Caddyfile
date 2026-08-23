@@ -103,6 +103,29 @@ http://sonarr.pi {
     reverse_proxy sonarr:8989
 }
 
+# Seerr trae su propio login, asi que Caddy solo hace de proxy.
+# Home Assistant corre en la red del host, asi que se proxea contra la IP y no
+# contra un nombre de contenedor. Mismo caso que el panel de Pi-hole.
+#
+# Van dos nombres a proposito. El largo coincide con el nombre del contenedor,
+# que es de donde el diagnostico deriva el puerto; el corto es el que vas a
+# tipear en el celular. Los dos salen como registro DNS solos, porque cada uno
+# es su propio bloque.
+http://homeassistant.pi {
+    import accesslog
+    reverse_proxy 192.168.68.66:8123
+}
+
+http://casa.pi {
+    import accesslog
+    reverse_proxy 192.168.68.66:8123
+}
+
+http://seerr.pi {
+    import accesslog
+    reverse_proxy seerr:5055
+}
+
 http://prowlarr.pi {
     import accesslog
     reverse_proxy prowlarr:9696

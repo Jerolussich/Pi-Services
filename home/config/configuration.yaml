@@ -1,0 +1,56 @@
+# Configuración de Home Assistant.
+#
+# Este archivo lo deja el instalador antes del primer arranque, porque hay dos
+# cosas que si no están desde el principio se pagan caro después.
+
+default_config:
+
+# ── Detrás de Caddy ───────────────────────────────────────────────────────────
+#
+# Sin esto, Home Assistant ve todas las visitas viniendo de la IP de Caddy y las
+# rechaza con "400 Bad Request". El síntoma es una pantalla en blanco que no
+# menciona proxies por ningún lado, así que es de los errores más difíciles de
+# atar a su causa si uno no lo sabe de antes.
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    # Las redes del puente de Docker, que es por donde llega Caddy
+    - 172.16.0.0/12
+    - 127.0.0.1
+    - ::1
+
+# ── El historial, con la tarjeta en mente ─────────────────────────────────────
+#
+# El "recorder" es, de lejos, lo que más escribe en disco de todo Home
+# Assistant: guarda cada cambio de cada entidad, y de fábrica retiene 10 días.
+# En una Raspberry con microSD eso es el componente que más la desgasta.
+#
+# Acá se reduce a 3 días y se sacan las entidades más ruidosas, que cambian de
+# valor cada pocos segundos y no sirven para mirar hacia atrás. Si algún día
+# tenés el disco externo y querés historial largo, subí `purge_keep_days`.
+recorder:
+  purge_keep_days: 3
+  commit_interval: 30
+  exclude:
+    domains:
+      - automation
+      - updater
+    entity_globs:
+      - sensor.*_uptime
+      - sensor.*_last_seen
+      - sensor.time*
+      - sensor.date*
+    entities:
+      - sun.sun
+      - sensor.sun_next_dawn
+      - sensor.sun_next_dusk
+      - sensor.sun_next_midnight
+      - sensor.sun_next_noon
+      - sensor.sun_next_rising
+      - sensor.sun_next_setting
+
+# Estos tres vienen incluidos en default_config, pero se declaran para dejar
+# claro dónde se tocan cuando hagan falta.
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml

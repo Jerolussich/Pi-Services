@@ -1,0 +1,36 @@
+name: pi-services
+# Home Assistant.
+#
+# Sube junto con el resto del stack, con el mismo `docker compose up -d`.
+#
+# POR QUE ESTE VA EN LA RED DEL HOST
+#
+# Es el unico contenedor del repo que no esta en la red pi-services, y no es un
+# descuido. Home Assistant descubre los dispositivos de la casa por mDNS, SSDP y
+# DHCP, que son protocolos de difusion: no atraviesan el puente de Docker. En la
+# red del puente arranca igual y anda, pero no encuentra nada solo y hay que
+# cargar cada dispositivo a mano por IP, que es justo el trabajo que uno quiere
+# evitar.
+#
+# Y no rompe la arquitectura, porque no es la primera vez: Caddy ya proxea un
+# servicio del host, el panel de Pi-hole en el 8181. La regla real de este repo
+# no es "todo en la red del puente", es "nada se expone a la red de casa salvo
+# por Caddy en el 80", y eso se sigue cumpliendo: el 8123 queda cerrado por UFW
+# igual que el 8181, y solo Caddy llega.
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      - ./config:/config
+      # Para que los horarios de las automatizaciones sean los tuyos
+      - /etc/localtime:/etc/localtime:ro
+      # Necesario para que descubra dispositivos por DBus, como el Bluetooth
+      - /run/dbus:/run/dbus:ro
+    # Se le da acceso al hardware de la Pi, que es para lo que sirve tenerlo
+    # en casa y no en la nube de otro.
+    privileged: true
+    restart: unless-stopped

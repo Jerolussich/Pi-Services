@@ -57,8 +57,22 @@ hosts_del_caddyfile() {
 # diagnostico era pedir que las dos se separaran, y cuando se separan el
 # sintoma es un servicio sano reportado como caido, que es peor que no
 # comprobarlo.
+#
+# Se busca por el BLOQUE, no por el nombre del contenedor. Los servicios que
+# corren en la red del host (Pi-hole, Home Assistant) se proxean contra una IP
+# y no contra un nombre, asi que buscar "reverse_proxy <servicio>:" no los
+# encuentra nunca. Buscando el bloque http://<servicio>.pi y sacando el puerto
+# de su linea, andan las dos formas.
 puerto_de() {
     [ "$1" = "caddy" ] && { echo 80; return; }
+    local p
+    p=$(awk -v svc="$1" '
+        $0 ~ "^http://" svc "\\.pi[ \t]*{" { dentro = 1; next }
+        dentro && /reverse_proxy/ { print; exit }
+        dentro && /^}/ { exit }
+    ' "$REPO/caddy/Caddyfile" 2>/dev/null | grep -oE ':[0-9]+' | tr -d ':' | head -1)
+    [ -n "$p" ] && { echo "$p"; return; }
+    # Por si el nombre del bloque no coincide con el del contenedor
     grep -oE "reverse_proxy +$1:[0-9]+" "$REPO/caddy/Caddyfile" 2>/dev/null \
         | head -1 | grep -oE '[0-9]+$'
 }
@@ -78,7 +92,7 @@ CLAVE_POR_SERVICIO=0
 #  y si es nativo (fuera de Docker).
 # ══════════════════════════════════════════════════════════════════════════════
 
-MODULOS=(sistema pihole core monitoring news finance fitbit media ofelia tailscale seguridad)
+MODULOS=(sistema pihole core monitoring news finance fitbit media home ofelia tailscale seguridad)
 
 declare -A NOMBRE=(
   [sistema]="Base del sistema"
@@ -88,7 +102,8 @@ declare -A NOMBRE=(
   [news]="Noticias  ·  FreshRSS, Wallabag y el filtro"
   [finance]="Finanzas  ·  lector de mails del banco"
   [fitbit]="Fitbit  ·  datos de salud"
-  [media]="Multimedia  ·  Jellyfin, Radarr, Sonarr, Prowlarr, Bazarr"
+  [media]="Multimedia  ·  Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr"
+  [home]="Casa  ·  Home Assistant, domotica"
   [ofelia]="Ofelia  ·  programador de tareas"
   [tailscale]="Tailscale  ·  acceso remoto"
   [seguridad]="UFW y fail2ban  ·  firewall"
@@ -103,6 +118,7 @@ declare -A DESCRIPCION=(
   [finance]="Lee los mails del banco y arma tus movimientos. Necesita autorizacion de Microsoft."
   [fitbit]="Baja tu actividad, sueno y ejercicios. Necesita una app registrada en Fitbit."
   [media]="Descarga, organiza, subtitula y reproduce. Necesita un disco externo montado."
+  [home]="Automatizar la casa: luces, sensores, enchufes. Descubre solo lo que hay en tu red."
   [ofelia]="Dispara las tareas programadas del resto de los contenedores."
   [tailscale]="Entras a tus servicios desde afuera de casa sin abrir puertos. Tambien te da SSH de emergencia si Docker se rompe."
   [seguridad]="Cierra todo salvo lo necesario y banea intentos de fuerza bruta."
@@ -114,7 +130,8 @@ declare -A SERVICIOS=(
   [news]="freshrss wallabag news-filter news-filter-ui"
   [finance]="itau-email-tracker finance-tracker-ui"
   [fitbit]="fitbit-exporter fitbit-exporter-ui"
-  [media]="jellyfin qbittorrent prowlarr radarr sonarr bazarr"
+  [media]="jellyfin qbittorrent prowlarr radarr sonarr bazarr seerr"
+  [home]="homeassistant"
   [ofelia]="ofelia"
 )
 
@@ -141,7 +158,9 @@ declare -A QUE_HACE=(
   [prowlarr]="Gestor central de indexers"
   [radarr]="Automatiza peliculas"
   [sonarr]="Automatiza series"
+  [seerr]="Pedir peliculas y series desde el celular"
   [bazarr]="Descarga subtitulos"
+  [homeassistant]="Domotica: automatiza luces, sensores y enchufes"
   [ofelia]="Programador de tareas"
 )
 
@@ -152,6 +171,7 @@ DEPENDENCIAS=(
   "radarr|prowlarr qbittorrent|Prowlarr le da los indexers y qBittorrent descarga"
   "sonarr|prowlarr qbittorrent|Prowlarr le da los indexers y qBittorrent descarga"
   "bazarr|radarr sonarr|toma de Radarr y Sonarr que subtitular"
+  "seerr|jellyfin radarr sonarr|pide a Radarr y Sonarr, y mira en Jellyfin lo que ya tenes"
   "finance-tracker-ui|itau-email-tracker|muestra lo que el tracker recolecta"
   "fitbit-exporter-ui|fitbit-exporter|es el panel del exporter"
   "grafana|prometheus|sin Prometheus no tiene de donde leer las metricas"
@@ -1458,6 +1478,214 @@ print(json.dumps(d))' 2>/dev/null)
     fi
 }
 
+# ── Seerr ─────────────────────────────────────────────────────────────────────
+#
+#  Seerr es la puerta de entrada del stack: pedis una pelicula o una serie desde
+#  el celular y el se la pasa a Radarr o a Sonarr, y mira en Jellyfin lo que ya
+#  tenes para no ofrecerte lo que ya esta.
+#
+#  Dos cosas lo hacen distinto de los demas:
+#
+#  Su imagen NO trae curl, asi que las llamadas salen desde el HOST contra la IP
+#  del contenedor. Usar esperar_http, que hace docker exec curl, lo daria por
+#  caido estando perfecto.
+#
+#  Y su arranque inicial NO es repetible: si Jellyfin ya esta configurado, el
+#  POST de bootstrap devuelve error. Como todo este repo se apoya en que volver
+#  a correr el instalador es seguro, hay que preguntar antes.
+
+ip_de() {
+    $DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1" 2>/dev/null | awk '{print $1}'
+}
+
+seerr_api() {
+    local metodo="$1" ruta="$2" cuerpo="${3:-}" key="${4:-}" ip
+    ip=$(ip_de seerr)
+    [ -n "$ip" ] || return 1
+    if [ -n "$cuerpo" ]; then
+        curl -s -X "$metodo" --max-time 40 -H "Content-Type: application/json" \
+            ${key:+-H "X-Api-Key: $key"} -d "$cuerpo" "http://$ip:5055/api/v1$ruta"
+    else
+        curl -s -X "$metodo" --max-time 40 ${key:+-H "X-Api-Key: $key"} \
+            "http://$ip:5055/api/v1$ruta"
+    fi
+}
+
+# Su configuracion vive en un JSON adentro del contenedor. De ahi sale la API
+# key, y tambien si el bootstrap ya se hizo.
+seerr_config() {
+    $DOCKER exec seerr cat /app/config/settings.json 2>/dev/null
+}
+
+seerr_ya_arrancado() {
+    seerr_config | python3 -c '
+import sys, json
+try:
+    print("si" if (json.load(sys.stdin).get("jellyfin", {}).get("ip") or "") else "no")
+except Exception:
+    print("no")' 2>/dev/null | grep -q si
+}
+
+api_key_seerr() {
+    seerr_config | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("main",{}).get("apiKey",""))' 2>/dev/null
+}
+
+# El id del perfil de calidad por su nombre, para decirle a Seerr con cual pedir
+id_perfil() {
+    arr_api "$1" "$2" v3 GET /qualityprofile 2>/dev/null | NOMBRE="$3" python3 -c '
+import sys, json, os
+n = os.environ["NOMBRE"]
+for p in json.load(sys.stdin):
+    if p.get("name") == n:
+        print(p["id"]); break' 2>/dev/null
+}
+
+esperar_seerr() {
+    local i ip code
+    for i in $(seq 1 45); do
+        esta_arriba seerr || return 1
+        ip=$(ip_de seerr)
+        if [ -n "$ip" ]; then
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$ip:5055/api/v1/status" 2>/dev/null)
+            case "$code" in ""|000|5*) ;; *) return 0 ;; esac
+        fi
+        sleep 3
+    done
+    return 1
+}
+
+# Conecta Radarr o Sonarr a Seerr, con el perfil de calidad ya elegido
+seerr_conectar_arr() {
+    local tipo="$1" svc="$2" puerto="$3" carpeta="$4" key="$5" kapi perfil resp
+
+    esta_arriba "$svc" || return 0
+    kapi=$(api_key_arr "$svc")
+    [ -n "$kapi" ] || return 0
+
+    if seerr_api GET "/settings/$tipo" "" "$key" 2>/dev/null | grep -q '"hostname"'; then
+        gris "     $svc ya estaba conectado a Seerr"
+        return 0
+    fi
+
+    perfil=$(id_perfil "$svc" "$puerto" "$PERFIL_CALIDAD")
+    [ -n "$perfil" ] || perfil=1
+
+    local cuerpo
+    cuerpo=$(SVC="$svc" PUERTO="$puerto" KAPI="$kapi" PERFIL="$perfil" \
+             NOMBRE_PERFIL="$PERFIL_CALIDAD" CARPETA="$carpeta" TIPO="$tipo" python3 -c '
+import json, os
+t = os.environ["TIPO"]
+d = {
+  "name": os.environ["SVC"].capitalize(),
+  "hostname": os.environ["SVC"],
+  "port": int(os.environ["PUERTO"]),
+  "apiKey": os.environ["KAPI"],
+  "useSsl": False,
+  "baseUrl": "",
+  "activeProfileId": int(os.environ["PERFIL"]),
+  "activeProfileName": os.environ["NOMBRE_PERFIL"],
+  "activeDirectory": os.environ["CARPETA"],
+  "is4k": False,
+  "isDefault": True,
+  "externalUrl": "http://" + os.environ["SVC"] + ".pi",
+  "syncEnabled": True,
+  "preventSearch": False,
+  "tagRequests": False,
+}
+if t == "radarr":
+    d["minimumAvailability"] = "released"
+else:
+    d["enableSeasonFolders"] = True
+print(json.dumps(d))' 2>/dev/null)
+
+    resp=$(seerr_api POST "/settings/$tipo" "$cuerpo" "$key" 2>/dev/null)
+    if echo "$resp" | grep -qiE '"message"|error'; then
+        aviso "Seerr: no pude conectar $svc"
+        gris "     $(echo "$resp" | head -c 120)"
+        pendiente "Conectar $svc en http://seerr.pi, Settings, Services"
+    else
+        ok "Seerr: ${B}$svc${N} conectado, pidiendo con el perfil $PERFIL_CALIDAD"
+    fi
+}
+
+cfg_seerr() {
+    local clave="$1" key resp
+
+    esperar_seerr || {
+        aviso "Seerr no contesta"
+        pendiente "Configurar Seerr: no contestaba al instalar. Volve a correr el instalador"
+        return 1
+    }
+
+    # ── El arranque: crea el usuario admin Y conecta Jellyfin de una vez ──
+    #
+    # Un solo POST hace todo: valida contra Jellyfin, exige que el usuario sea
+    # administrador, crea el admin de Seerr y se genera solo una API key en
+    # Jellyfin. No hay que darle ninguna clave de Jellyfin aparte.
+    if seerr_ya_arrancado; then
+        gris "     Seerr ya estaba enlazado con Jellyfin"
+    else
+        # urlBase y port van SIEMPRE, aunque urlBase quede vacio: Seerr arma la
+        # URL con un template y sin ellos queda "http://jellyfin:8096undefined",
+        # que falla con un error de conexion que no dice nada de esto.
+        local arranque
+        arranque=$(CLAVE="$clave" python3 -c '
+import json, os
+print(json.dumps({
+  "username": "admin",
+  "password": os.environ["CLAVE"],
+  "hostname": "jellyfin",
+  "port": 8096,
+  "urlBase": "",
+  "useSsl": False,
+  "serverType": 2}))' 2>/dev/null)
+
+        resp=$(seerr_api POST /auth/jellyfin "$arranque" 2>/dev/null)
+        if ! seerr_ya_arrancado; then
+            aviso "Seerr: no pude enlazarlo con Jellyfin"
+            gris "     $(echo "$resp" | head -c 140)"
+            pendiente "Terminar el arranque de Seerr en http://seerr.pi"
+            return 1
+        fi
+        ok "Seerr: usuario ${B}admin${N} creado y Jellyfin enlazado"
+    fi
+
+    key=$(api_key_seerr)
+    if [ -z "$key" ]; then
+        aviso "Seerr: no encontre su clave de API"
+        return 1
+    fi
+
+    # ── Las bibliotecas de Jellyfin ──
+    #
+    # Van DOS llamadas y en este orden. La primera con sync=true descubre las
+    # bibliotecas; la segunda las habilita. Llamar solo con sync=true las
+    # DESHABILITA todas, porque el codigo mapea "enabled" contra la lista que le
+    # pasaste, y si no pasaste ninguna, ninguna queda habilitada.
+    local libs
+    libs=$(seerr_api GET "/settings/jellyfin/library?sync=true" "" "$key" 2>/dev/null)
+    local ids
+    ids=$(echo "$libs" | python3 -c '
+import sys, json
+try:
+    print(",".join(x["id"] for x in json.load(sys.stdin)))
+except Exception:
+    print("")' 2>/dev/null)
+    if [ -n "$ids" ]; then
+        seerr_api GET "/settings/jellyfin/library?enable=$ids" "" "$key" >/dev/null 2>&1
+        ok "Seerr: $(echo "$ids" | tr ',' '\n' | wc -l) bibliotecas de Jellyfin habilitadas"
+    fi
+
+    # ── Radarr y Sonarr, con el perfil de calidad ya elegido ──
+    seerr_conectar_arr radarr radarr 7878 /data/media/movies "$key"
+    seerr_conectar_arr sonarr sonarr 8989 /data/media/tv     "$key"
+
+    # ── Cerrar el asistente ──
+    seerr_api POST /settings/initialize "" "$key" >/dev/null 2>&1
+    ok "Seerr listo en ${B}http://seerr.pi${N}"
+}
+
 # ── Bazarr ────────────────────────────────────────────────────────────────────
 
 cfg_bazarr() {
@@ -1702,6 +1930,11 @@ configurar_servicios() {
             cfg_bazarr "$(clave_para 'Bazarr')"
         esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]] && \
             cfg_jellyfin "$(clave_para 'Jellyfin')"
+
+        # Seerr va ULTIMO: necesita las API keys de los dos *arr, el perfil de
+        # calidad ya creado, y Jellyfin con su usuario andando.
+        esta_arriba seerr && [[ " $elegidos_media " == *" seerr "* ]] && \
+            cfg_seerr "$(clave_para 'Seerr')"
 
         if [ "$MEDIA_MODO" = "pausa" ]; then
             echo ""

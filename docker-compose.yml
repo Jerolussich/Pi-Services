@@ -10,6 +10,7 @@ include:
   - caddy/docker-compose.yml
   - ofelia/docker-compose.yml
   - media/docker-compose.yml
+  - home/docker-compose.yml
 networks:
   default:
     name: pi-services
