@@ -82,7 +82,7 @@ No todos los servicios se protegen igual, y la regla es simple:
 
 **Si el servicio trae login propio, Caddy solo hace de proxy.** Es el caso de Grafana, Wallabag, FreshRSS, Jellyfin, Radarr, Prowlarr, Bazarr y qBittorrent.
 
-**Si no trae login, Caddy le pone autenticación básica adelante.** Es el caso de Homepage, Prometheus y Calibre.
+**Si no trae login, Caddy le pone autenticación básica adelante.** Es el caso de Homepage y Prometheus.
 
 La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.env`, nunca en texto plano y nunca versionada.
 
@@ -123,7 +123,6 @@ Dos piezas corren directamente en el sistema, no en contenedores, y en los dos c
 
 **Tailscale**, por la misma razón llevada al extremo: si Docker se rompe, querés poder entrar a arreglarlo. Un Tailscale contenerizado se caería junto con el problema que venís a resolver.
 
-**Calibre** también es nativo, gestionado con servicios de usuario de systemd. Ver [../calibre/README.md](../calibre/README.md).
 
 ---
 

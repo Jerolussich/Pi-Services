@@ -850,28 +850,6 @@ levantar_modulo() {
     fi
 }
 
-instalar_calibre() {
-    if [ "${ESTADO[calibre]}" = "activo" ]; then ok "Ya estaba funcionando"; return; fi
-    if ! command -v calibre-server >/dev/null 2>&1; then
-        info "Instalando Calibre (baja bastantes dependencias)..."
-        (cd "$REPO/calibre" && ./install.sh) 2>&1 | tail -3 | sed 's/^/      /'
-    fi
-    # Su install.sh no puede terminar por SSH: le falta la sesion de usuario
-    # para hablar con systemd, y deja los servicios instalados pero apagados.
-    sudo loginctl enable-linger "$USER" 2>/dev/null
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-    systemctl --user daemon-reload 2>/dev/null
-    systemctl --user enable --now calibre-server 2>/dev/null
-    systemctl --user enable --now calibre-ingest.timer 2>/dev/null
-    sleep 4
-    if systemctl --user is-active calibre-server >/dev/null 2>&1; then
-        ok "Calibre corriendo en el 8083"
-    else
-        aviso "No arranco"
-        pendiente "Revisar Calibre:  systemctl --user status calibre-server"
-    fi
-}
-
 instalar_tailscale() {
     if [ "${ESTADO[tailscale]}" = "activo" ]; then ok "Ya estaba conectado"; return; fi
     command -v tailscale >/dev/null 2>&1 || { info "Instalando..."; curl -fsSL https://tailscale.com/install.sh | sudo sh >/dev/null 2>&1; }
@@ -912,15 +890,13 @@ instalar_seguridad() {
 
     (cd "$REPO" && yes y | sudo ./setup-security.sh) >/dev/null 2>&1
 
-    # Calibre y el panel de Pi-hole, solo desde las redes de Docker.
+    # El panel de Pi-hole, solo desde las redes de Docker.
     # El orden importa: UFW aplica la primera regla que coincide, asi que
     # los ALLOW tienen que ir antes que los DENY.
     local red
     for red in 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16; do
-        sudo ufw allow from $red to any port 8083 proto tcp >/dev/null 2>&1
         sudo ufw allow from $red to any port 8181 proto tcp >/dev/null 2>&1
     done
-    sudo ufw deny 8083/tcp >/dev/null 2>&1
     sudo ufw --force delete deny 8181 >/dev/null 2>&1
     sudo ufw deny 8181/tcp >/dev/null 2>&1
     ok "Reglas aplicadas"
@@ -953,7 +929,6 @@ ejecutar() {
         case "$mod" in
             sistema)    instalar_sistema ;;
             pihole)     instalar_pihole ;;
-            calibre)    instalar_calibre ;;
             tailscale)  instalar_tailscale ;;
             seguridad)  instalar_seguridad ;;
             *)
@@ -1222,8 +1197,7 @@ resumen() {
             gris "     http://prowlarr.pi     indexers"
             gris "     http://bazarr.pi       subtitulos"
         }
-        [[ " ${SELECCION[*]} " == *" calibre "* ]]    && gris "     http://calibre.pi      libros"
-        [[ " ${SELECCION[*]} " == *" news "* ]]       && {
+            [[ " ${SELECCION[*]} " == *" news "* ]]       && {
             echo ""
             info "Estos dos los creaste vos, con lo que hayas puesto:"
             gris "     http://freshrss.pi     lector de RSS"

@@ -593,15 +593,6 @@ rev_nativos() {
         fi
     fi
 
-    if command -v calibre-server >/dev/null 2>&1; then
-        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-        if systemctl --user is-active calibre-server >/dev/null 2>&1; then
-            bien "Calibre" "corriendo en el 8083"
-        else
-            ojo "Calibre" "instalado pero apagado"
-            arreglo "levantarlo" "rep_calibre"
-        fi
-    fi
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -619,14 +610,6 @@ rep_reiniciar_servicio() {
     sudo systemctl restart "$1" >/dev/null 2>&1
     sleep 3
     systemctl is-active "$1" >/dev/null 2>&1
-}
-
-rep_calibre() {
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-    sudo loginctl enable-linger "$USER" 2>/dev/null
-    systemctl --user enable --now calibre-server 2>/dev/null
-    sleep 3
-    systemctl --user is-active calibre-server >/dev/null 2>&1
 }
 
 rep_liberar_docker() {

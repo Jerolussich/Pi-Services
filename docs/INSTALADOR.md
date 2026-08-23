@@ -32,7 +32,7 @@ Antes de preguntarte nada, revisa el equipo y clasifica cada módulo en tres est
 
 La distinción entre "funcionando" e "incompleto" importa: un módulo puede tener todos sus contenedores corriendo y aun así no servir de nada porque le falta un token. El instalador mira las dos cosas.
 
-Para los módulos de Docker cuenta contenedores efectivamente corriendo. Para los nativos (Pi-hole, Calibre, Tailscale, firewall) consulta systemd y, en el caso de Pi-hole, hasta cuenta cuántos dominios tiene bloqueados para distinguir "instalado" de "instalado y con listas cargadas".
+Para los módulos de Docker cuenta contenedores efectivamente corriendo. Para los nativos (Pi-hole, Tailscale, firewall) consulta systemd y, en el caso de Pi-hole, hasta cuenta cuántos dominios tiene bloqueados para distinguir "instalado" de "instalado y con listas cargadas".
 
 Y después del resumen te dice **exactamente qué datos faltan**, no solo cuántos, separando dos casos que son muy distintos:
 
@@ -58,7 +58,7 @@ Y los crea vacíos antes de levantar los contenedores, por una razón concreta: 
 
 ### 2. Elegís módulos
 
-Un menú numerado con los doce módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
+Un menú numerado con los once módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
 
 - **`todo`** para todos
 - **`faltantes`** para solo lo incompleto o sin instalar
@@ -253,7 +253,6 @@ Es la forma normal de usarlo, no una excepción.
 | Fitbit | `fitbit-exporter`, `fitbit-exporter-ui` |
 | Multimedia | `jellyfin`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` |
 | Ofelia | `ofelia` |
-| Calibre | nativo, con su timer de ingesta |
 | Tailscale | nativo, acceso remoto |
 | UFW y fail2ban | firewall |
 
@@ -269,9 +268,7 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 
 **Pi-hole tiene que soltar el puerto 80.** Viene sirviendo su panel ahí, y Caddy lo necesita. El instalador lo mueve al 8181.
 
-**El instalador de Calibre no puede terminar por SSH.** Su último paso necesita una sesión de usuario para hablar con systemd, que no existe cuando corrés sin terminal gráfica. Deja los servicios instalados pero apagados. El instalador los habilita a mano y activa `linger` para que arranquen sin sesión abierta.
-
-**El orden de las reglas de UFW importa.** El firewall aplica la primera que coincide, así que los permisos desde las redes de Docker tienen que ir antes que las denegaciones. Si se invierte, Caddy no llega a Calibre ni al panel de Pi-hole.
+**El orden de las reglas de UFW importa.** El firewall aplica la primera que coincide, así que los permisos desde las redes de Docker tienen que ir antes que las denegaciones. Si se invierte, Caddy no llega al panel de Pi-hole.
 
 **Todos los `.env` tienen que existir**, aunque solo levantes un módulo. Docker Compose lee la configuración completa y falla si le falta uno. El instalador los crea todos, pero solo te pide datos de los módulos que elegiste.
 

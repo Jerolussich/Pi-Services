@@ -97,13 +97,22 @@ PY
 # ── Que hay para respaldar ────────────────────────────────────────────────────
 listar_envs()   { find "$REPO" -name ".env" -not -path "*/node_modules/*" 2>/dev/null | sort; }
 listar_tokens() { find "$REPO" -name "token*.json" -not -path "*/node_modules/*" 2>/dev/null | sort; }
-listar_bases_repo() { find "$REPO" -name "*.db" -not -path "*/node_modules/*" 2>/dev/null | sort; }
+# No alcanza con *.db. Wallabag llama a la suya wallabag.sqlite y FreshRSS usa
+# db.sqlite: buscando solo .db quedaban afuera, y eso se descubre el dia que
+# hacen falta. Un respaldo que se saltea archivos en silencio es peor que no
+# tenerlo, porque da la sensacion de estar cubierto.
+listar_bases_repo() {
+    find "$REPO" \( -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" -o -name "*.db3" \) \
+        -not -path "*/node_modules/*" 2>/dev/null | sort
+}
 
 listar_bases_volumenes() {
     # Solo las bases de configuracion. Se excluyen los logs, que son ruido, y
     # el historico de Prometheus, que pesa y se reconstruye solo.
-    sudo find /var/lib/docker/volumes -name "*.db" -size +0 2>/dev/null \
-        | grep -v "/logs.db$" | grep -v "prometheus" | sort
+    sudo find /var/lib/docker/volumes \
+        \( -name "*.db" -o -name "*.sqlite" -o -name "*.sqlite3" -o -name "*.db3" \) \
+        -size +0 2>/dev/null \
+        | grep -v "/logs.db$" | grep -v "prometheus" | grep -v "\.corrupta$" | sort
 }
 
 listar_config() {

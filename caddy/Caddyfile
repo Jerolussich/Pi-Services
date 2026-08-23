@@ -82,14 +82,6 @@ http://fitbit.pi {
     reverse_proxy fitbit-exporter-ui:8086
 }
 
-http://calibre.pi {
-    import accesslog
-    basic_auth {
-        {$CADDY_USER} {$CADDY_PASSWORD_HASH}
-    }
-    reverse_proxy 192.168.68.66:8083
-}
-
 # ── Stack multimedia (profile "media") ────────────────────────────────────
 # Estas entradas responden 502 mientras el stack no este levantado, que es
 # lo esperado si todavia no montaste el DAS.
