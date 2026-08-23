@@ -7,6 +7,12 @@ Stack multimedia del Pi. Descarga, organiza, subtitula y reproduce, con todo el 
 ## Arquitectura
 
 ```
+                          ┌──────────────┐
+                          │    Seerr     │  vos pedis aca
+                          └──────┬───────┘
+                                 │ lo manda al que corresponde
+                    ┌────────────┴────────────┐
+                    ▼                         ▼
                     ┌──────────┐   ┌──────────┐
    Prowlarr ───────▶│  Radarr  │   │  Sonarr  │◀─────── Prowlarr
   (indexers)        │peliculas │   │  series  │        (los mismos)
@@ -55,6 +61,7 @@ Dos cosas sostienen todo el diseño:
 | Contenedor | Imagen | Puerto interno | Hostname | Descripción |
 |---|---|---|---|---|
 | `jellyfin` | `jellyfin/jellyfin` | `8096` | `jellyfin.pi` | Servidor multimedia y reproducción |
+| `seerr` | `ghcr.io/seerr-team/seerr` | `5055` | `seerr.pi` | Pedir contenido: buscás y apretás un botón |
 | `radarr` | `lscr.io/linuxserver/radarr` | `7878` | `radarr.pi` | Gestión y automatización de películas |
 | `sonarr` | `lscr.io/linuxserver/sonarr` | `8989` | `sonarr.pi` | Lo mismo para series, con temporadas y calendario |
 | `prowlarr` | `lscr.io/linuxserver/prowlarr` | `9696` | `prowlarr.pi` | Gestor central de indexers |
@@ -182,9 +189,37 @@ En `http://jellyfin.pi`, creá dos bibliotecas: una de **Películas** apuntando 
 
 Una advertencia concreta sobre el Pi 5: **no tiene codificador de video por hardware**. Decodifica H.264 y HEVC por hardware, pero al codificar usa CPU. Por eso hay que dejar la codificación por hardware **apagada**: si la activás, cada transcodificación falla. En la práctica conviene reproducir en formato nativo y evitar transcodificar. Si tus clientes soportan el códec original, el Pi 5 alcanza de sobra.
 
+### 6. Seerr
+
+En `http://seerr.pi`, entrás con tu usuario de Jellyfin, habilitás las bibliotecas, y conectás Radarr y Sonarr. El instalador lo deja hecho entero.
+
+**Va último a propósito.** Seerr no hace nada por sí mismo: para configurarse necesita que Jellyfin ya tenga sus bibliotecas y que Radarr y Sonarr ya existan con su carpeta raíz. Si lo configurás antes, guarda conexiones vacías.
+
+Hay una parte de esto que **no es idempotente**, y conviene saberlo: el primer POST a `/api/v1/auth/jellyfin` crea el usuario dueño y no se puede repetir. Por eso el instalador comprueba antes si ya hay usuarios, y si los hay no lo toca.
+
+### El perfil de calidad que mejora solo
+
+Radarr y Sonarr quedan con un perfil llamado **Perfeccionista**, que es el que usan los pedidos de Seerr.
+
+Hace dos cosas. La primera es **aceptar todas las calidades**, así una película rara que solo existe en 480p igual se baja en vez de no bajarse nunca. La segunda es **poner el corte arriba de todo** con la mejora automática activada: cuando el indexer encuentra una versión mejor de algo que ya tenés, la baja y reemplaza la anterior sola.
+
+O sea que pedís una vez y la copia va mejorando con el tiempo, sin que vuelvas a mirarla.
+
+Quedan afuera dos calidades a propósito: **BR-DISK** y **Raw-HD**, que son la imagen del disco entera sin comprimir. Pesan decenas de gigas, muchos reproductores no las abren, y en un Pi 5 obligan a transcodificar, que es justo lo que conviene evitar.
+
+| | Radarr | Sonarr |
+|---|---|---|
+| Calidades aceptadas | 24 de 26 | 17 de 18 |
+| Corte | Remux-2160p | Bluray-2160p Remux |
+| Mejora automática | sí | sí |
+
+**Ojo con el espacio.** Este perfil pide lo mejor que exista, y lo mejor que existe pesa: un remux 2160p son entre 40 y 80 GB. Con la mejora automática además baja de nuevo lo que ya tenías. Si estás corto de disco, en `Settings → Profiles` bajá el corte a `Bluray-1080p` y la cosa se vuelve mucho más razonable.
+
 ### Contraseñas
 
 Los cuatro `*arr` salen de fábrica **sin contraseña ninguna**, con `authenticationMethod: none`. Y Caddy tampoco les pone la suya, porque se asume que traen login propio. O sea que hasta que les pongas una, `radarr.pi`, `sonarr.pi`, `prowlarr.pi` y `bazarr.pi` están abiertos a cualquiera en tu red. El instalador se las configura; si lo hacés a mano, es en `Settings → General → Security`.
+
+Seerr es la excepción: no tiene contraseña propia porque **entra con la de Jellyfin**. Un usuario menos que recordar, y si algún día cambiás la de Jellyfin, Seerr la sigue sin que hagas nada.
 
 ---
 
@@ -203,7 +238,9 @@ Si alguna app de TV no resuelve los nombres `.pi`, la alternativa es publicar el
 
 ## Uso diario
 
-Agregás una película en Radarr o una serie en Sonarr. El que corresponda le pide a Prowlarr dónde encontrarla, manda la descarga a qBittorrent, y al terminar la importa por hardlink a su carpeta: `movies` o `tv`. Bazarr le engancha los subtítulos y Jellyfin la muestra.
+**Lo normal es no abrir Radarr ni Sonarr nunca.** Entrás a `http://seerr.pi`, buscás lo que querés, apretás el botón, y listo. Seerr se da cuenta solo de si es película o serie y se lo manda al que corresponde. Además te muestra lo que ya tenés en Jellyfin, así no pedís dos veces lo mismo.
+
+Por dentro pasa esto: el que recibe el pedido le pregunta a Prowlarr dónde encontrarlo, manda la descarga a qBittorrent, y al terminar la importa por hardlink a su carpeta, `movies` o `tv`. Bazarr le engancha los subtítulos y Jellyfin la muestra.
 
 Con las series hay una diferencia que conviene saber: Sonarr sigue emitiendo. Una vez que agregás una serie en curso, se queda esperando los episodios nuevos y los baja al salir, sin que le pidas nada.
 
@@ -211,14 +248,14 @@ Con las series hay una diferencia que conviene saber: Sonarr sigue emitiendo. Un
 
 ## Bajar y levantar todo
 
-Los cinco de una, sin tocar el resto del Pi:
+Los siete de una, sin tocar el resto del Pi:
 
 ```bash
-cd ~/pi-services && docker compose stop jellyfin qbittorrent prowlarr radarr sonarr bazarr
+cd ~/pi-services && docker compose stop jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr
 ```
 
 ```bash
-cd ~/pi-services && docker compose up -d jellyfin qbittorrent prowlarr radarr sonarr bazarr
+cd ~/pi-services && docker compose up -d jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr
 ```
 
 Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra nada. Para borrar también la configuración hay que agregar `-v` a un `down` explícitamente, y eso te deja empezando de cero.
