@@ -81,6 +81,36 @@ services:
       - qbittorrent
     restart: unless-stopped
 
+  # Pedir peliculas y series desde el celular, en una sola pantalla, y que se
+  # las pase a Radarr o a Sonarr segun corresponda.
+  #
+  # Ojo con el nombre: el proyecto se llamaba Jellyseerr y se renombro a Seerr.
+  # La imagen vieja fallenbagel/jellyseerr sigue existiendo en Docker Hub y baja
+  # sin error, pero quedo congelada en agosto de 2025: no falla, simplemente te
+  # deja un ano atras. La vigente es esta.
+  seerr:
+    image: ghcr.io/seerr-team/seerr:v3.4.1
+    container_name: seerr
+    env_file:
+      - .env
+    environment:
+      - PORT=5055
+      # De fabrica arranca en debug y escribe DOS archivos de log rotativos a la
+      # vez, con un trabajo que corre cada 60 segundos. Sobre una microSD eso es
+      # un chorro constante de escritura para nada.
+      - LOG_LEVEL=info
+    volumes:
+      # Volumen nombrado y no bind mount a proposito: la imagen corre como el
+      # usuario node y el volumen hereda ese dueno solo. Con un bind mount hay
+      # que acordarse del chown, y si te olvidas Seerr arranca igual y despues
+      # falla al guardar, sin decir que es un permiso.
+      - seerr-config:/app/config
+    depends_on:
+      - jellyfin
+      - radarr
+      - sonarr
+    restart: unless-stopped
+
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
     container_name: bazarr
@@ -101,4 +131,5 @@ volumes:
   prowlarr-config:
   radarr-config:
   sonarr-config:
+  seerr-config:
   bazarr-config:
