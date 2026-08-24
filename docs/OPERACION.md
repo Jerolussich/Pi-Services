@@ -10,7 +10,7 @@ Cómo levantar, bajar, configurar y diagnosticar. Todo lo del día a día.
 cd ~/pi-services && docker compose up -d
 ```
 
-Eso levanta los 20 servicios, incluido el stack multimedia. Un solo comando, una sola mecánica.
+Eso levanta los 23 servicios, incluidos el stack multimedia y Home Assistant. Un solo comando, una sola mecánica.
 
 **En una instalación desde cero, antes hay que crear la red una vez:**
 

@@ -63,18 +63,15 @@ Pi-hole admin is now at `http://192.168.68.66:8181/admin`.
 
 ### 2. Add Pi-hole local DNS records
 
-In Pi-hole admin → **Local DNS → DNS Records**, add all entries pointing to your Pi's IP:
+**The installer does this, and you should let it.** Run `./instalador.sh` and it loads one record per hostname, reading them straight out of this Caddyfile. Today that's 19 records, and it re-runs safely if Pi-hole is already up.
 
-| Domain | IP |
-|---|---|
-| `homepage.pi` | `your_pi_ip` |
-| `grafana.pi` | `your_pi_ip` |
-| `wallabag.pi` | `your_pi_ip` |
-| `freshrss.pi` | `your_pi_ip` |
-| `news.pi` | `your_pi_ip` |
-| `finance.pi` | `your_pi_ip` |
-| `prometheus.pi` | `your_pi_ip` |
-| `pihole.pi` | `your_pi_ip` |
+The reason it's derived and not a list: this file already says which names it serves. Keeping a parallel list in Pi-hole means that the day you add a service and forget the list, you get a network error that looks nothing like its cause. The function is `hosts_del_caddyfile` in [`../lib/comun.sh`](../lib/comun.sh).
+
+By hand, it's Pi-hole admin → **Local DNS → DNS Records**, one entry per `http://<name>.pi` block in this file, all pointing at your Pi's IP.
+
+```bash
+grep -oE '^http://[a-z0-9.-]+' caddy/Caddyfile | sed 's|http://||' | sort -u
+```
 
 ### 3. Generate password hash
 

@@ -14,7 +14,7 @@ Un script de instalación común te obliga a decidir todo de entrada y correrlo 
 
 Tampoco te hace copiar y pegar comandos. Si necesita una contraseña o un token, te lo pide en el momento y te explica de dónde sacarlo. Y si no lo tenés a mano, apretás Enter, el módulo se instala igual, y al final te dice con precisión qué quedó sin completar.
 
-Y no se queda en levantar contenedores: **también los configura**. Deja a Jellyfin con tu usuario y la biblioteca creada, a Radarr y Sonarr apuntando a sus carpetas y hablando con qBittorrent, y a Prowlarr enlazado con los dos. Todo eso antes de que abras el navegador por primera vez.
+Y no se queda en levantar contenedores: **también los configura**. Deja a Jellyfin con tu usuario y sus dos bibliotecas, a Radarr y Sonarr apuntando a sus carpetas y hablando con qBittorrent, a Prowlarr enlazado con los dos, y a Seerr listo para que pidas una película con un botón. Hasta te crea las cuentas de FreshRSS y Wallabag. Todo eso antes de que abras el navegador por primera vez.
 
 ---
 
@@ -42,10 +42,10 @@ Y después del resumen te dice **exactamente qué datos faltan**, no solo cuánt
 ! Estos servicios estan corriendo pero no pueden hacer su trabajo
   hasta que cargues estos datos.
 
-  Noticias · FreshRSS, Wallabag y el filtro
-     · Clave de API de FreshRSS
-           va en:  news/news-filter/.env  ->  FRESHRSS_API_PASSWORD=
-           donde:  Solo existe DESPUES de crear tu cuenta en freshrss.pi, en Perfil, API
+  Datos personales · Fitbit y el lector del banco
+     · Token de OAuth de Fitbit
+           va en:  fitbit-exporter/tokens.json
+           donde:  Se genera autorizando la app con tu cuenta de Fitbit
 ```
 
 Lo que ya está corriendo y le falta un dato es **lo urgente**: el contenedor está ahí ocupando memoria y sin poder trabajar. Lo que todavía no levantaste es informativo, para que sepas qué te va a pedir si lo elegís.
@@ -99,10 +99,10 @@ Primero completa solo todo lo que puede deducir: rutas del repo, IP, tu usuario 
 Después te pide lo que sí necesita de vos, **de a uno**, y para cada dato te dice tres cosas: qué es, a qué archivo y variable va, y de dónde sacarlo.
 
 ```
-  [3/5] Clave de API de FreshRSS
-        modulo: Noticias · FreshRSS, Wallabag y el filtro
-        archivo: news/news-filter/.env  ·  variable: FRESHRSS_API_PASSWORD
-        Solo existe DESPUES de crear tu cuenta en freshrss.pi, en Perfil, API
+  [2/3] Ruta de los exports de Fitbit
+        modulo: Datos personales · Fitbit y el lector del banco
+        archivo: monitoring/.env  ·  variable: FITBIT_EXPORTS_PATH
+        La carpeta donde el exporter deja el SQLite que lee Grafana
         valor (Enter para saltear):
 ```
 
@@ -310,7 +310,7 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 
 **Radarr, Prowlarr y Bazarr salen de fábrica sin contraseña.** Vienen con `authenticationMethod: none`, y Caddy tampoco les pone la suya porque se asume que traen login propio. El resultado es que quedan abiertos en la red. El instalador les configura autenticación por formulario.
 
-**qBittorrent viene apuntando a `/downloads`, que en este stack no existe.** El DAS se monta en `/data`, en los cinco contenedores. Si no se corrige, las descargas caen adentro del contenedor y encima se pierde el hardlink con la biblioteca, así que cada película termina ocupando el doble.
+**qBittorrent viene apuntando a `/downloads`, que en este stack no existe.** El DAS se monta en `/data`, en los siete contenedores del stack. Si no se corrige, las descargas caen adentro del contenedor y encima se pierde el hardlink con la biblioteca, así que cada película termina ocupando el doble.
 
 **qBittorrent no acepta contraseñas de menos de 6 caracteres.** Contesta `400` con el motivo en el cuerpo, y si no se lee ese cuerpo el fallo parece un éxito. Peor: la contraseña queda sin cambiar y después Radarr no se puede conectar, así que un error silencioso se convierte en dos.
 

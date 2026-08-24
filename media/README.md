@@ -50,7 +50,7 @@ Comparten indexers (los de Prowlarr), cliente de descargas (qBittorrent) y subti
 
 Dos cosas sostienen todo el diseño:
 
-**Una única raíz de almacenamiento.** Los seis contenedores montan el DAS en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca.
+**Una única raíz de almacenamiento.** Los siete contenedores montan el DAS en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca.
 
 **Los dos discos se ven como uno.** `mergerfs` los une en `/mnt/das`, así Jellyfin escanea una sola biblioteca y no te importa en qué disco cayó cada archivo. Está todo en [DAS.md](DAS.md).
 
@@ -140,7 +140,7 @@ Quien te protege de eso es el instalador, que comprueba si `/mnt/das` está en o
 
 ## Configuración inicial
 
-**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de multimedia, y deja los seis servicios configurados y hablando entre ellos. Lo que sigue está para que sepas qué quedó hecho, y para hacerlo a mano si alguna vez lo necesitás.
+**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de multimedia, y deja los siete servicios configurados y hablando entre ellos. Lo que sigue está para que sepas qué quedó hecho, y para hacerlo a mano si alguna vez lo necesitás.
 
 El orden importa, porque cada pieza se registra contra la anterior.
 
@@ -154,7 +154,7 @@ docker logs qbittorrent | grep -i password
 
 Entrá a `http://qbit.pi`, cambiala, y configurá las rutas como `/data/downloads/incomplete` y `/data/downloads/complete`.
 
-Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los seis contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
+Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los siete contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
 
 ### 2. Prowlarr
 

@@ -57,7 +57,7 @@ docker compose up -d
 docker logs homepage
 ```
 
-Acceder en: `http://<pi_ip>:3001`
+Acceder en: `http://homepage.pi`, con el usuario y la contraseña que le pusiste a Caddy.
 
 ---
 
@@ -70,10 +70,13 @@ Define los links a los servicios organizados por grupo. Estructura actual:
 
 | Grupo | Servicios |
 |---|---|
+| Media | Jellyfin, Seerr, Radarr, Sonarr, qBittorrent, Bazarr, Prowlarr |
+| Casa | Home Assistant |
 | Network | Pi-hole, Grafana |
-| Reading | Wallabag |
-| FitbitDashboard | Fitbit Main, Fitbit Insights |
-| Tools | System Stats |
+| FitbitDashboard | Fitbit, Fitbit Insights, Fitbit Ingest |
+| Tools | System Stats, Prometheus |
+| News | FreshRSS, Wallabag, News Filter |
+| Finance | Finance Tracker, Finance Dashboard |
 
 Para agregar un servicio nuevo:
 
@@ -105,11 +108,45 @@ Links externos agrupados por categoría. Actualmente: GitHub, Reddit, YouTube.
 
 ---
 
+## Los recuadros con datos en vivo
+
+Algunos servicios no muestran solo un enlace sino **datos reales**: cuántas películas tenés en Radarr, qué se está bajando, cuántos pedidos hay en Seerr. Para eso el widget necesita la API key de ese servicio.
+
+**El instalador las lee y las escribe solo.** Nunca las copiás ni las ves. Si alguna vez regenerás una, volvés a correr `./instalador.sh` y se actualiza.
+
+| Variable | De dónde sale |
+|---|---|
+| `HOMEPAGE_VAR_RADARR_KEY` | la config de Radarr |
+| `HOMEPAGE_VAR_SONARR_KEY` | la config de Sonarr |
+| `HOMEPAGE_VAR_PROWLARR_KEY` | la config de Prowlarr |
+| `HOMEPAGE_VAR_SEERR_KEY` | `settings.json` de Seerr |
+
+### El detalle que hace fallar todo esto
+
+El `docker-compose.yml` **tiene que tener `env_file: - .env`**. Sin eso las claves quedan escritas en el `.env` sin entrar nunca al contenedor.
+
+Es una confusión fácil: Compose lee el `.env` de al lado para sustituir variables **en el propio YAML**, como el `${PI_IP}`, pero eso no las mete adentro del contenedor. Y el síntoma no ayuda nada: los recuadros mandan la clave vacía, cada servicio contesta 401 o 403, y la homepage muestra **"API Error"** sin decir que el problema es que la clave nunca llegó.
+
+Para comprobarlo:
+
+```bash
+docker exec homepage sh -c 'env | grep HOMEPAGE_VAR'
+```
+
+Si no lista nada, el problema es ese. El instalador ahora lo verifica ahí adentro y avisa si no llegaron.
+
+### Home Assistant es la excepción
+
+Su recuadro necesita un token que **solo existe después de que crees tu usuario**, así que el instalador no puede leerlo como los otros. Queda comentado en `services.yaml` con las instrucciones al lado; si lo querés, generás el token en tu perfil de Home Assistant y lo ponés como `HOMEPAGE_VAR_HA_TOKEN`.
+
+---
+
 ## Variables de entorno
 
 | Variable | Descripción | Ejemplo |
 |---|---|---|
 | `PI_IP` | IP del Pi en la red local | `192.168.68.66` |
+| `HOMEPAGE_VAR_*_KEY` | API keys de los recuadros, las escribe el instalador | — |
 
 `PI_IP` se usa para setear `HOMEPAGE_ALLOWED_HOSTS` — sin esto Homepage rechaza las conexiones con un error de host validation.
 
@@ -117,7 +154,9 @@ Links externos agrupados por categoría. Actualmente: GitHub, Reddit, YouTube.
 
 ## Notas
 
-- El contenedor expone el puerto `3001` (Homepage corre internamente en `3000`)
+- **No expone ningún puerto al host**: se entra por `http://homepage.pi`, que pasa por Caddy con su autenticación básica. Es el mismo trato que el resto del repo.
 - Los archivos de config se editan directamente en el host, no hace falta entrar al contenedor
 - Si agregás un servicio en `services.yaml`, el dashboard se actualiza al recargar el browser
+- **Los cambios en el `.env` sí necesitan recrear el contenedor**, no alcanza con `restart`: `docker compose up -d --force-recreate homepage`
+- `siteMonitor` es el puntito de arriba a la derecha de cada tarjeta. Ojo con las URLs que redirigen: la raíz de FreshRSS manda a `/i/?rid=<sesión>` y sin sesión corta la conexión, así que apunta al favicon. Pi-hole necesita la barra final en `/admin/` o su 308 rompe el parser HTTP.
 - `docker.yaml` y `kubernetes.yaml` están incluidos pero vacíos — se pueden completar para mostrar el estado de los contenedores directamente en el dashboard
