@@ -970,6 +970,7 @@ ejecutar() {
 # solos ahora. Eran los que peor caian, porque no eran una eleccion tuya sino
 # tramites: crear una cuenta para poder copiar un token de vuelta al .env.
 CUENTAS=(
+"home|homeassistant|http://casa.pi|Crear tu usuario, que ademas destraba el proxy"
 "media|prowlarr|http://prowlarr.pi|Cargar los indexers que uses"
 "media|bazarr|http://bazarr.pi|Elegir de donde bajar los subtitulos"
 "media|jellyfin|http://jellyfin.pi|Instalar los complementos"
@@ -977,6 +978,17 @@ CUENTAS=(
 
 # El paso a paso de cada uno, una linea por paso.
 declare -A PASOS=(
+[homeassistant]="${B}Entra por http://casa.pi${N}, no por la IP con :8123. Importa.
+El asistente te pide nombre, usuario, contrasena y ubicacion.
+Eso no se puede automatizar: Home Assistant genera claves propias
+   de esta instalacion durante ese paso.
+Ese primer login es ademas lo unico que ${B}confirma el proxy${N}. Home
+   Assistant no se cree la config nueva hasta que le llega un pedido
+   con sesion por el proxy, y si en 5 minutos no pasa, la revierte.
+Por eso si entras por la IP, casa.pi te va a seguir dando 400.
+Despues, en Ajustes, Dispositivos y servicios, vas a ver que ya
+   descubrio solo lo que hay en tu red."
+
 [prowlarr]="Entra con ${B}admin${N} y tu contrasena. Ya se la configure.
 Anda a ${B}Indexers${N}, boton ${B}Add Indexer${N}, y busca los que uses.
 Cada uno te pide sus datos: los publicos no piden nada, los privados
