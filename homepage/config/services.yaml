@@ -68,7 +68,10 @@
         icon: pi-hole.png
         href: http://pihole.pi/admin
         description: Network-wide ad blocking
-        siteMonitor: http://172.17.0.1:8181/admin
+        # La barra final importa: sin ella Pi-hole contesta un 308 que el
+        # parser HTTP de la homepage rechaza con "Data after Connection: close",
+        # y el servicio figura caido estando perfecto.
+        siteMonitor: http://172.17.0.1:8181/admin/
     - Grafana:
         icon: grafana.png
         href: http://grafana.pi
@@ -106,7 +109,10 @@
         icon: freshrss.png
         href: http://freshrss.pi
         description: RSS feeds
-        siteMonitor: http://freshrss:80
+        # Su raiz redirige a /i/?rid=<sesion>, que sin sesion corta la conexion
+        # y se ve como "socket hang up". El favicon contesta 200 limpio y sirve
+        # igual para saber si esta vivo.
+        siteMonitor: http://freshrss:80/favicon.ico
     - Wallabag:
         icon: wallabag.png
         href: http://wallabag.pi

@@ -3,6 +3,16 @@ services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
+    # Sin esto, las HOMEPAGE_VAR_* del .env no entran al contenedor.
+    #
+    # Es una confusion facil de tener: Compose lee el .env de al lado para
+    # sustituir variables en ESTE archivo, como el ${PI_IP} de aca abajo, pero
+    # eso no las mete adentro del contenedor. Y el sintoma no ayuda: los
+    # recuadros de Radarr, Sonarr y Seerr mandaban la clave vacia, cada
+    # servicio contestaba 401 o 403, y la homepage mostraba "API Error" sin
+    # decir que el problema era que la clave nunca habia llegado.
+    env_file:
+      - .env
     environment:
       - HOMEPAGE_ALLOWED_HOSTS=homepage.pi,${PI_IP}:3001
     volumes:

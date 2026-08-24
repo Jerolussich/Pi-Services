@@ -1951,8 +1951,26 @@ cfg_homepage_widgets() {
     # El contenedor tiene las variables cargadas en memoria: hay que recrearlo
     $DOCKER compose up -d --force-recreate homepage >/dev/null 2>&1
     olvidar_estado
+    sleep 5
+
+    # Escribirlas no alcanza, y esto costo caro: el compose de la homepage no
+    # tenia env_file, asi que las claves quedaban en el .env sin entrar nunca al
+    # contenedor. Los recuadros mandaban la clave vacia, cada servicio contestaba
+    # 401 o 403, y la homepage decia "API Error" sin decir por que. Se comprueba
+    # adentro, que es el unico lugar donde la respuesta es la verdadera.
+    local llegaron
+    llegaron=$($DOCKER exec homepage sh -c 'env | grep -c "^HOMEPAGE_VAR_[A-Z_]*_KEY="' 2>/dev/null | tr -d '[:space:]')
+    [ -n "$llegaron" ] || llegaron=0
+
+    if [ "$llegaron" -lt "$escritas" ]; then
+        aviso "Homepage: escribi $escritas $(plural "$escritas" "clave" "claves") pero al contenedor $(plural "$llegaron" "llego $llegaron" "llegaron $llegaron")"
+        gris "     revisa que homepage/docker-compose.yml tenga env_file: - .env"
+        pendiente "Los recuadros de la homepage van a decir 'API Error' hasta que las claves entren al contenedor"
+        return 1
+    fi
+
     ok "Homepage: $escritas $(plural "$escritas" "clave leida" "claves leidas") sola, sin copiar nada"
-    gris "     los recuadros ahora muestran datos en vivo, no solo el enlace"
+    gris "     comprobado adentro del contenedor, no solo escrito en el .env"
 }
 
 # ── Servicios de fuera del stack multimedia ───────────────────────────────────
