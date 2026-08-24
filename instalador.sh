@@ -890,16 +890,23 @@ instalar_seguridad() {
 
     (cd "$REPO" && yes y | sudo ./setup-security.sh) >/dev/null 2>&1
 
-    # El panel de Pi-hole, solo desde las redes de Docker.
-    # El orden importa: UFW aplica la primera regla que coincide, asi que
-    # los ALLOW tienen que ir antes que los DENY.
-    local red
-    for red in 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16; do
-        sudo ufw allow from $red to any port 8181 proto tcp >/dev/null 2>&1
+    # Los servicios que Caddy alcanza en el host, solo desde las redes de
+    # Docker. El orden importa: UFW aplica la primera regla que coincide, asi
+    # que los ALLOW tienen que ir antes que los DENY.
+    #
+    # Cuales son sale del Caddyfile, no de una lista: cuando se sumo Home
+    # Assistant, la lista escrita a mano seguia teniendo solo el 8181 y Caddy
+    # contestaba 502 sin que nada dijera que era el firewall.
+    local red puerto n=0
+    for puerto in $(puertos_del_host); do
+        for red in 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16; do
+            sudo ufw allow from $red to any port "$puerto" proto tcp >/dev/null 2>&1
+        done
+        sudo ufw --force delete deny "$puerto" >/dev/null 2>&1
+        sudo ufw deny "$puerto"/tcp >/dev/null 2>&1
+        n=$((n+1))
     done
-    sudo ufw --force delete deny 8181 >/dev/null 2>&1
-    sudo ufw deny 8181/tcp >/dev/null 2>&1
-    ok "Reglas aplicadas"
+    ok "Reglas aplicadas: $n $(plural "$n" "puerto del host cerrado" "puertos del host cerrados") salvo para Caddy"
 
     echo ""
     aviso "Abri OTRA terminal y proba AHORA que seguis entrando por SSH."

@@ -77,6 +77,20 @@ puerto_de() {
         | head -1 | grep -oE '[0-9]+$'
 }
 
+# Los puertos que Caddy alcanza en el HOST, no en un contenedor.
+#
+# Son los que necesitan un trato especial en el firewall: abiertos para las
+# redes de Docker, para que Caddy llegue, y cerrados para todo lo demas. El
+# panel de Pi-hole en el 8181 fue el primero; Home Assistant en el 8123 el
+# segundo, y ahi se noto que la lista estaba escrita a mano y solo tenia uno.
+#
+# Se reconocen porque su destino empieza con un numero: un contenedor se
+# nombra (grafana:3000), el host se direcciona (192.168.68.66:8123).
+puertos_del_host() {
+    grep -oE 'reverse_proxy +[0-9][0-9.]*:[0-9]+' "$REPO/caddy/Caddyfile" 2>/dev/null \
+        | grep -oE ':[0-9]+$' | tr -d ':' | sort -un
+}
+
 DOCKER="sudo docker"
 
 # Una sola contrasena para todo. Se pregunta una vez y se usa en todos lados:
@@ -1912,9 +1926,301 @@ cfg_pihole() {
     fi
 }
 
+# ── Las tres cuentas que ya no tenes que crear a mano ─────────────────────────
+#
+#  FreshRSS, Wallabag y la clave de API de Pi-hole eran tres de los cinco datos
+#  que el instalador te terminaba pidiendo, y los tres con el mismo problema:
+#  solo existen DESPUES de crear una cuenta en el navegador. Eso obligaba a
+#  cortar la instalacion, abrir tres paneles, y volver a pegar valores.
+#
+#  Los tres se pueden hacer sin navegador. Cada uno por un camino distinto:
+#  FreshRSS trae comandos propios, Wallabag necesita una fila en su base, y
+#  Pi-hole tiene un endpoint que genera la clave.
+
+# FreshRSS se instala entero por linea de comandos, incluida la clave de API.
+# Es lo mejor que le puede pasar a un instalador: el asistente de cuatro
+# pantallas y la clave de API son el mismo comando.
+freshrss_con_cuenta() {
+    esta_arriba freshrss || return 1
+    [ -n "$($DOCKER exec freshrss php /var/www/FreshRSS/cli/list-users.php 2>/dev/null | tr -d '[:space:]')" ]
+}
+
+cfg_freshrss() {
+    local clave="$1" env_filtro="$REPO/news/news-filter/.env"
+    esta_arriba freshrss || return 0
+
+    if freshrss_con_cuenta; then
+        gris "     FreshRSS ya tenia su cuenta, no la toco"
+        # La clave de API no se puede releer ni cambiar para un usuario que ya
+        # existe: FreshRSS la guarda hasheada y actualize-user solo toma --user.
+        # Asi que si falta, sigue siendo tuya.
+        completa "$env_filtro" FRESHRSS_API_PASSWORD || \
+            pendiente "Poner la clave de API de FreshRSS en news/news-filter/.env (Perfil, API)"
+        return 0
+    fi
+
+    if ! $DOCKER exec freshrss php /var/www/FreshRSS/cli/do-install.php \
+            --default-user admin --auth-type form --language es \
+            --db-type sqlite --api-enabled >/dev/null 2>&1; then
+        aviso "FreshRSS: no pude completar la instalacion"
+        pendiente "Entrar a http://freshrss.pi y hacer el asistente a mano"
+        return 1
+    fi
+
+    if ! $DOCKER exec freshrss php /var/www/FreshRSS/cli/create-user.php \
+            --user admin --password "$clave" --api-password "$clave" \
+            --language es >/dev/null 2>&1; then
+        aviso "FreshRSS: quedo instalado pero no pude crear el usuario"
+        pendiente "Entrar a http://freshrss.pi y crear el usuario admin"
+        return 1
+    fi
+
+    escribir_var "$env_filtro" FRESHRSS_API_PASSWORD "$clave"
+    ok "FreshRSS: cuenta ${B}admin${N} creada y API habilitada"
+    gris "     la clave de API quedo escrita sola, no hace falta que la copies"
+}
+
+# Wallabag no tiene comando para crear un cliente de API: es la unica pieza que
+# su consola no cubre. La fila se escribe a mano en su base y despues se
+# COMPRUEBA pidiendo un token de verdad. Si el token no sale, se borra la fila
+# y queda el paso manual, en vez de dejar credenciales que no sirven.
+cfg_wallabag() {
+    local clave="$1" env_filtro="$REPO/news/news-filter/.env"
+    esta_arriba wallabag || return 0
+
+    # La contrasena si tiene comando propio, y es idempotente.
+    if $DOCKER exec wallabag /var/www/wallabag/bin/console --env=prod \
+            fos:user:change-password wallabag "$clave" >/dev/null 2>&1; then
+        escribir_var "$env_filtro" WALLABAG_PASSWORD "$clave"
+    else
+        aviso "Wallabag: no pude cambiarle la contrasena"
+        pendiente "Entrar a http://wallabag.pi con wallabag/wallabag y cambiarla"
+        return 1
+    fi
+
+    if completa "$env_filtro" WALLABAG_CLIENT_ID && \
+       completa "$env_filtro" WALLABAG_CLIENT_SECRET; then
+        ok "Wallabag: contrasena puesta, el cliente de API ya existia"
+        return 0
+    fi
+
+    local vol; vol=$($DOCKER volume inspect pi-services_wallabag-data -f '{{.Mountpoint}}' 2>/dev/null)
+    local base="$vol/db/wallabag.sqlite"
+    if [ -z "$vol" ] || ! sudo test -f "$base"; then
+        aviso "Wallabag: no encontre su base para crear el cliente de API"
+        pendiente "Crear el cliente de API en http://wallabag.pi, Configuracion, Clientes API"
+        return 1
+    fi
+
+    # Con el contenedor andando, escribir su SQLite desde afuera es pedir un
+    # "database is locked" en el peor momento.
+    $DOCKER stop wallabag >/dev/null 2>&1
+    olvidar_estado
+
+    local datos
+    datos=$(sudo BASE="$base" python3 - <<'PYEOF' 2>/dev/null
+import os, sqlite3, secrets
+# redirect_uris y allowed_grant_types son arrays serializados de PHP: Doctrine
+# los lee asi y no acepta JSON.
+VACIO = "a:0:{}"
+TIPOS = 'a:2:{i:0;s:8:"password";i:1;s:13:"refresh_token";}'
+try:
+    c = sqlite3.connect(os.environ["BASE"])
+    rid, sec = secrets.token_hex(16), secrets.token_hex(32)
+    cur = c.execute(
+        "insert into wallabag_oauth2_clients "
+        "(user_id, random_id, secret, name, redirect_uris, allowed_grant_types) "
+        "values (?,?,?,?,?,?)",
+        (None, rid, sec, "news-filter", VACIO, TIPOS))
+    c.commit()
+    # El client_id que espera la API es el id de la fila y el random_id juntos.
+    print(f"{cur.lastrowid}_{rid} {sec} {cur.lastrowid}")
+    c.close()
+except Exception:
+    pass
+PYEOF
+)
+
+    $DOCKER start wallabag >/dev/null 2>&1
+    olvidar_estado
+
+    local cid csecret fila
+    read -r cid csecret fila <<< "$datos"
+    if [ -z "$cid" ] || [ -z "$csecret" ]; then
+        aviso "Wallabag: no pude crear el cliente de API en su base"
+        pendiente "Crear el cliente de API en http://wallabag.pi, Configuracion, Clientes API"
+        return 1
+    fi
+
+    # La comprobacion real: pedir un token con lo que acabo de escribir.
+    esperar_http wallabag 80 / >/dev/null 2>&1
+    local ip token
+    ip=$(ip_de wallabag)
+    token=$(curl -s --max-time 25 -X POST "http://$ip:80/oauth/v2/token" \
+        -H "Content-Type: application/json" \
+        -d "{\"grant_type\":\"password\",\"client_id\":\"$cid\",\"client_secret\":\"$csecret\",\"username\":\"wallabag\",\"password\":\"$clave\"}" \
+        2>/dev/null | grep -o '"access_token"')
+
+    if [ -z "$token" ]; then
+        # No dejar credenciales que no sirven: se borra la fila y queda el paso
+        # manual, que es peor pero es honesto.
+        $DOCKER stop wallabag >/dev/null 2>&1
+        sudo BASE="$base" FILA="$fila" python3 -c '
+import os, sqlite3
+c = sqlite3.connect(os.environ["BASE"])
+c.execute("delete from wallabag_oauth2_clients where id=?", (int(os.environ["FILA"]),))
+c.commit(); c.close()' >/dev/null 2>&1
+        $DOCKER start wallabag >/dev/null 2>&1
+        olvidar_estado
+        aviso "Wallabag: el cliente que cree no daba token, lo deshice"
+        pendiente "Crear el cliente de API en http://wallabag.pi, Configuracion, Clientes API"
+        return 1
+    fi
+
+    escribir_var "$env_filtro" WALLABAG_CLIENT_ID "$cid"
+    escribir_var "$env_filtro" WALLABAG_CLIENT_SECRET "$csecret"
+    ok "Wallabag: contrasena puesta y cliente de API creado"
+    gris "     comprobado pidiendo un token de verdad, no solo escrito"
+}
+
+# La clave de API de Pi-hole no es la del panel: es una "app password" aparte,
+# que se genera con el panel abierto y se guarda hasheada. El endpoint que la
+# genera devuelve las dos mitades, asi que se puede hacer sin navegador.
+cfg_pihole_api() {
+    local clave="$1" env_mon="$REPO/monitoring/.env"
+    command -v pihole-FTL >/dev/null 2>&1 || return 0
+
+    if completa "$env_mon" PIHOLE_API_KEY && \
+       [ -n "$(sudo pihole-FTL --config webserver.api.app_pwhash 2>/dev/null | tr -d '"')" ]; then
+        gris "     Pi-hole ya tenia su clave de API"
+        return 0
+    fi
+
+    local sid
+    sid=$(curl -s --max-time 20 -X POST -H "Content-Type: application/json" \
+          -d "{\"password\":\"$clave\"}" http://127.0.0.1:8181/api/auth 2>/dev/null \
+          | python3 -c 'import sys,json; print(json.load(sys.stdin).get("session",{}).get("sid",""))' 2>/dev/null)
+    if [ -z "$sid" ]; then
+        aviso "Pi-hole: no pude entrar a su API con la contrasena del panel"
+        pendiente "Generar la clave de API en pihole.pi, Settings, API, y ponerla en monitoring/.env"
+        return 1
+    fi
+
+    local par app_pass app_hash
+    par=$(curl -s --max-time 20 -H "X-FTL-SID: $sid" http://127.0.0.1:8181/api/auth/app 2>/dev/null \
+          | python3 -c '
+import sys, json
+d = json.load(sys.stdin); a = d.get("app", d)
+print(a.get("password", ""), a.get("hash", ""))' 2>/dev/null)
+    read -r app_pass app_hash <<< "$par"
+    curl -s --max-time 10 -X DELETE -H "X-FTL-SID: $sid" http://127.0.0.1:8181/api/auth >/dev/null 2>&1
+
+    if [ -z "$app_pass" ] || [ -z "$app_hash" ]; then
+        aviso "Pi-hole: su API no me devolvio una clave"
+        pendiente "Generar la clave de API en pihole.pi, Settings, API, y ponerla en monitoring/.env"
+        return 1
+    fi
+
+    # El hash va en la configuracion; la contrasena es la clave que usa el
+    # exporter. Guardar solo una de las dos deja el par roto.
+    if ! sudo pihole-FTL --config webserver.api.app_pwhash "$app_hash" >/dev/null 2>&1; then
+        aviso "Pi-hole: no pude guardarle el hash de la clave de API"
+        return 1
+    fi
+
+    escribir_var "$env_mon" PIHOLE_API_KEY "$app_pass"
+    ok "Pi-hole: clave de API generada y guardada sola"
+    gris "     sin ella el tablero de Pi-hole en Grafana queda vacio para siempre"
+
+    if esta_arriba pihole-exporter; then
+        $DOCKER compose up -d --force-recreate pihole-exporter >/dev/null 2>&1
+        olvidar_estado
+    fi
+}
+
+# ── Home Assistant detras de Caddy ────────────────────────────────────────────
+#
+#  Home Assistant no confia en un proxy porque se lo pidas: aplica la config
+#  nueva como "pending", y si nadie la CONFIRMA pasando por el proxy en cinco
+#  minutos, la revierte, la marca not_promoted y no la reintenta nunca mas.
+#
+#  El resultado es de los peores que hay: configuration.yaml dice exactamente
+#  lo correcto, el contenedor esta sano, y casa.pi contesta 400 para siempre.
+#  Nada en el sintoma apunta a la causa.
+#
+#  Asi que el instalador hace la confirmacion el mismo, que es un pedido por
+#  Caddy en el momento justo. Y si encuentra un pending ya quemado, lo destraba.
+ha_config_quemada() {
+    local st="$REPO/home/config/.storage/http"
+    sudo test -f "$st" || return 1
+    sudo grep -q 'not_promoted' "$st" 2>/dev/null
+}
+
+ha_escucha() {
+    local i c
+    for i in $(seq 1 24); do
+        c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:8123/ 2>/dev/null)
+        case "$c" in 200|302) return 0 ;; esac
+        sleep 15
+    done
+    return 1
+}
+
+cfg_homeassistant() {
+    esta_arriba homeassistant || return 0
+
+    # Sin el puerto abierto para las redes de Docker, Caddy no llega y la
+    # confirmacion no puede pasar: se hace antes de intentar nada.
+    local red
+    for red in 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16; do
+        sudo ufw allow from $red to any port 8123 proto tcp >/dev/null 2>&1
+    done
+    sudo ufw deny 8123/tcp >/dev/null 2>&1
+
+    if ha_config_quemada; then
+        # El archivo se regenera solo desde configuration.yaml, pero igual se
+        # guarda una copia antes de tocarlo.
+        sudo cp -a "$REPO/home/config/.storage/http" \
+                   "$REPO/home/config/.storage/http.anterior" 2>/dev/null
+        sudo rm -f "$REPO/home/config/.storage/http"
+        $DOCKER restart homeassistant >/dev/null 2>&1
+        olvidar_estado
+        gris "     Home Assistant: destrabe la config del proxy que habia quedado revertida"
+    fi
+
+    ha_escucha || { aviso "Home Assistant no contesta todavia"; \
+        pendiente "Entrar a http://casa.pi y revisar que levante"; return 1; }
+
+    local i c
+    for i in 1 2 3 4 5 6; do
+        c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            -H "Host: casa.pi" "http://$IP_FIJA/" 2>/dev/null)
+        case "$c" in
+            200|302)
+                ok "Home Assistant: listo en ${B}http://casa.pi${N}"
+                gris "     confirmada la config del proxy, que si no se revierte sola a los 5 minutos"
+                return 0 ;;
+        esac
+        sleep 15
+    done
+
+    aviso "Home Assistant: Caddy llega pero contesta $c"
+    pendiente "Revisar trusted_proxies en home/config/configuration.yaml"
+    return 1
+}
+
+# El filtro de noticias lee las credenciales al arrancar. Si se las escribimos
+# con el contenedor ya andando, no se entera hasta que alguien lo reinicie.
+recrear_filtro_noticias() {
+    esta_arriba news-filter || return 0
+    $DOCKER compose up -d --force-recreate news-filter >/dev/null 2>&1
+    olvidar_estado
+    gris "     news-filter reiniciado para que tome las credenciales"
+}
+
 configurar_servicios() {
     local hay=0 mod
-    for mod in media monitoring pihole; do
+    for mod in media monitoring pihole news home; do
         [[ " ${SELECCION[*]} " == *" $mod "* ]] && hay=1
     done
     [ "$hay" = "1" ] || return 0
@@ -1962,6 +2268,31 @@ configurar_servicios() {
                 cfg_grafana "$(clave_para 'Grafana')"
             fi
         fi
+    fi
+
+    # La clave de API de Pi-hole la necesita el exporter de monitoreo, pero
+    # quien la genera es Pi-hole. Va despues de ponerle la contrasena del
+    # panel, porque para generarla hay que entrar con ella.
+    if [[ " ${SELECCION[*]} " == *" monitoring "* ]]; then
+        cfg_pihole_api "$(clave_para 'Pi-hole')"
+    fi
+
+    # Va antes que los de multimedia porque no depende de ninguno, y porque su
+    # ventana de confirmacion son cinco minutos desde que arranco.
+    if [[ " ${SELECCION[*]} " == *" home "* ]]; then
+        cfg_homeassistant
+    fi
+
+    if [[ " ${SELECCION[*]} " == *" news "* ]]; then
+        local elegidos_news; elegidos_news=$(servicios_elegidos news)
+        local toco_noticias=0
+        if esta_arriba freshrss && [[ " $elegidos_news " == *" freshrss "* ]]; then
+            cfg_freshrss "$(clave_para 'FreshRSS')"; toco_noticias=1
+        fi
+        if esta_arriba wallabag && [[ " $elegidos_news " == *" wallabag "* ]]; then
+            cfg_wallabag "$(clave_para 'Wallabag')"; toco_noticias=1
+        fi
+        [ "$toco_noticias" = "1" ] && recrear_filtro_noticias
     fi
 
     if [[ " ${SELECCION[*]} " == *" media "* ]] && [ "$MEDIA_MODO" != "no" ]; then
