@@ -185,7 +185,17 @@ backend = systemd
 # de la casa se cuenta contra 172.18.0.1, y a los cinco intentos el jail deja
 # afuera a la propia infraestructura en vez de a un atacante. Verificado: la
 # IP baneada en esta Pi era 172.18.0.1.
-ignoreip = 127.0.0.1/8 ::1 172.16.0.0/12 192.168.68.0/22
+#
+# 100.64.0.0/10 es el rango de Tailscale, y esta por la misma razon con un caso
+# real: entrando por Tailscale desde la notebook, cinco intentos con la
+# contrasena equivocada dejaron a la maquina del dueno baneada una hora. Desde
+# afuera de la casa Tailscale es el unico camino, asi que el efecto es quedarse
+# sin acceso remoto justo cuando es lo unico que tenes.
+#
+# No afloja la seguridad: para tener una IP de ese rango hay que estar
+# autenticado adentro de TU tailnet, que es el mismo nivel de confianza que
+# estar fisicamente en tu red. Un atacante de internet no llega ahi.
+ignoreip = 127.0.0.1/8 ::1 172.16.0.0/12 192.168.68.0/22 100.64.0.0/10
 
 [sshd]
 enabled = true
