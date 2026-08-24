@@ -1718,6 +1718,77 @@ except Exception:
 
 # ── Bazarr ────────────────────────────────────────────────────────────────────
 
+api_key_bazarr() {
+    # ruta_config devuelve la raiz del volumen; el YAML cuelga de config/.
+    local raiz; raiz=$(ruta_config bazarr)
+    [ -n "$raiz" ] || return 1
+    sudo grep -A20 '^auth:' "$raiz/config/config.yaml" 2>/dev/null \
+        | grep apikey | head -1 | awk '{print $2}'
+}
+
+# El perfil de idiomas es el paso que mas se olvida de todo el stack: sin uno,
+# Bazarr corre, se ve sano, se conecta a Radarr y a Sonarr, y no baja un solo
+# subtitulo nunca. Nada avisa.
+#
+# Que idiomas queres es una eleccion tuya, asi que el instalador no adivina:
+# deja Espanol e Ingles, que es lo que sirve aca, y te dice donde cambiarlo.
+BAZARR_IDIOMAS="es en"
+BAZARR_PERFIL="Espanol e Ingles"
+
+cfg_bazarr_idiomas() {
+    esta_arriba bazarr || return 0
+    local ip key; ip=$(ip_de bazarr); key=$(api_key_bazarr)
+    [ -n "$ip" ] && [ -n "$key" ] || return 0
+
+    local previos
+    previos=$(curl -s --max-time 25 -H "X-API-KEY: $key" \
+        "http://$ip:6767/api/system/languages/profiles" 2>/dev/null)
+    if [ -n "$previos" ] && [ "$previos" != "[]" ]; then
+        gris "     Bazarr ya tenia un perfil de idiomas"
+        return 0
+    fi
+
+    local cuerpo idioma args=()
+    cuerpo=$(IDIOMAS="$BAZARR_IDIOMAS" NOMBRE="$BAZARR_PERFIL" python3 -c '
+import os, json
+items = [{"id": i, "language": c, "audio_exclude": "False",
+          "hi": "False", "forced": "False"}
+         for i, c in enumerate(os.environ["IDIOMAS"].split())]
+print(json.dumps([{"profileId": 1, "name": os.environ["NOMBRE"], "items": items,
+                   "cutoff": None, "mustContain": [], "mustNotContain": [],
+                   "originalFormat": False, "tag": None}]))' 2>/dev/null)
+    [ -n "$cuerpo" ] || return 1
+
+    for idioma in $BAZARR_IDIOMAS; do
+        args+=(--data-urlencode "settings-general-enabled_languages=$idioma")
+    done
+
+    # Los perfiles no se guardan por su propio endpoint: ese contesta 405. Van
+    # por el de configuracion general, con el perfil serializado adentro.
+    local code
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -X POST \
+        -H "X-API-KEY: $key" --data-urlencode "languages-profiles=$cuerpo" \
+        "${args[@]}" "http://$ip:6767/api/system/settings" 2>/dev/null)
+
+    case "$code" in 200|204) ;; *)
+        aviso "Bazarr: no pude crear el perfil de idiomas (HTTP $code)"
+        pendiente "Crear el perfil de idiomas en http://bazarr.pi, Settings, Languages"
+        return 1 ;;
+    esac
+
+    sleep 8
+    previos=$(curl -s --max-time 25 -H "X-API-KEY: $key" \
+        "http://$ip:6767/api/system/languages/profiles" 2>/dev/null)
+    if [ -z "$previos" ] || [ "$previos" = "[]" ]; then
+        aviso "Bazarr: dijo que guardo el perfil pero despues no estaba"
+        pendiente "Crear el perfil de idiomas en http://bazarr.pi, Settings, Languages"
+        return 1
+    fi
+
+    ok "Bazarr: perfil de idiomas ${B}$BAZARR_PERFIL${N} creado"
+    gris "     sin perfil no baja ningun subtitulo; cambialo en Settings, Languages"
+}
+
 cfg_bazarr() {
     local clave="$1" kr ks salida code tmpf
     esperar_http bazarr 6767 || { aviso "Bazarr no contesta"; pendiente "Configurar Bazarr: no contestaba al instalar. Volve a correr el instalador"; return 1; }
@@ -2150,10 +2221,25 @@ print(a.get("password", ""), a.get("hash", ""))' 2>/dev/null)
 #
 #  Asi que el instalador hace la confirmacion el mismo, que es un pedido por
 #  Caddy en el momento justo. Y si encuentra un pending ya quemado, lo destraba.
+# La pregunta que importa no es que dice su archivo de estado, sino si entrar
+# por casa.pi funciona. Un 400 es el rechazo del proxy; 200 o 302 es que anda.
+ha_por_caddy() {
+    curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+        -H "Host: casa.pi" "http://$IP_FIJA/" 2>/dev/null
+}
+
 ha_config_quemada() {
     local st="$REPO/home/config/.storage/http"
     sudo test -f "$st" || return 1
-    sudo grep -q 'not_promoted' "$st" 2>/dev/null
+    # Solo cuenta si es el pending el que quedo quemado: la palabra suelta
+    # aparece tambien en configuraciones viejas que ya no molestan.
+    sudo cat "$st" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    p = json.load(sys.stdin)["data"].get("pending") or {}
+    sys.exit(0 if p.get("error") == "not_promoted" else 1)
+except Exception:
+    sys.exit(1)' 2>/dev/null
 }
 
 ha_escucha() {
@@ -2176,6 +2262,13 @@ cfg_homeassistant() {
         sudo ufw allow from $red to any port 8123 proto tcp >/dev/null 2>&1
     done
     sudo ufw deny 8123/tcp >/dev/null 2>&1
+
+    # Si ya entra por Caddy no hay nada que hacer, y sobre todo no hay que
+    # reiniciarlo: la version anterior de esto miraba su archivo de estado y
+    # lo reiniciaba en cada corrida aunque estuviera perfecto.
+    case "$(ha_por_caddy)" in
+        200|302) gris "     Home Assistant ya entraba bien por casa.pi"; return 0 ;;
+    esac
 
     if ha_config_quemada; then
         # El archivo se regenera solo desde configuration.yaml, pero igual se
@@ -2313,8 +2406,10 @@ configurar_servicios() {
         cfg_perfil_calidad sonarr 8989 Sonarr
         esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]] && \
             cfg_prowlarr "$(clave_para 'Prowlarr')"
-        esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]] && \
+        if esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]]; then
             cfg_bazarr "$(clave_para 'Bazarr')"
+            cfg_bazarr_idiomas
+        fi
         esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]] && \
             cfg_jellyfin "$(clave_para 'Jellyfin')"
 
