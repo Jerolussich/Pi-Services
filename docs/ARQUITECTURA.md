@@ -163,12 +163,17 @@ De ahí se derivan dos cosas que antes estaban escritas a mano:
 |---|---|---|
 | Los registros DNS `*.pi` de Pi-hole | el instalador, al configurar Pi-hole | una lista fija de 15 nombres |
 | El puerto interno de cada servicio | el diagnóstico, para preguntarle si responde | una tabla de 14 entradas |
+| Los puertos del host que hay que abrirle a Caddy | el instalador, al configurar UFW | un solo puerto escrito a mano |
 
-Las funciones son `hosts_del_caddyfile` y `puerto_de`, las dos en [../lib/comun.sh](../lib/comun.sh).
+Las funciones son `hosts_del_caddyfile`, `puerto_de` y `puertos_del_host`, las tres en [../lib/comun.sh](../lib/comun.sh).
+
+La tercera se distingue por una diferencia que ya estaba escrita en el Caddyfile sin que nadie la aprovechara: **un contenedor se nombra, el host se direcciona**. `reverse_proxy grafana:3000` contra `reverse_proxy 192.168.68.66:8123`. Los destinos que empiezan con un número son los que necesitan regla de firewall.
 
 **Consecuencia práctica:** agregar un servicio es agregar su bloque al Caddyfile. Los registros DNS se cargan solos la próxima vez que corras el instalador, incluso si Pi-hole ya estaba andando.
 
 Ya se cobró sola: al sumar Seerr y Home Assistant, los registros pasaron de 16 a 19 sin que nadie tocara una lista de nombres. Los tres nuevos son `seerr.pi`, `homeassistant.pi` y `casa.pi`, que es un alias del anterior.
+
+Y también se cobró lo contrario, que es la mejor evidencia de por qué conviene: la lista de puertos del firewall **no** estaba derivada, seguía teniendo solo el 8181, y Home Assistant contestó 502 sin que nada dijera que era el firewall. Ese fue el ejemplo que la convirtió en `puertos_del_host`.
 
 ### Las API keys se leen, no se copian
 

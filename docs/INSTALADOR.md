@@ -142,12 +142,36 @@ Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`
 | **qBittorrent** | Lee la contraseña temporal del log, la reemplaza por la tuya, y corrige las rutas de descarga a `/data/downloads` |
 | **Radarr** y **Sonarr** | Carpeta raíz (`/data/media/movies` y `/data/media/tv`), hardlinks activados, qBittorrent conectado, y el perfil de calidad **Perfeccionista** |
 | **Prowlarr** | Lo enlaza con Radarr y Sonarr, así los indexers que cargues se sincronizan solos a los dos |
-| **Bazarr** | Lo conecta a Radarr y a Sonarr con sus API keys |
+| **Bazarr** | Lo conecta a Radarr y a Sonarr, y le crea el **perfil de idiomas** con Español e Inglés |
 | **Seerr** | Crea tu usuario contra Jellyfin, habilita las dos bibliotecas, y conecta Radarr y Sonarr pidiendo con el perfil Perfeccionista |
 | **Homepage** | Lee las API keys de Radarr, Sonarr, Prowlarr y Seerr y las escribe en su `.env`, así los recuadros muestran datos en vivo |
 | **Grafana** | Le pone la contraseña de admin, así no te pide cambiarla en el primer login |
-| **Pi-hole** | Le pone la contraseña del panel |
-| **Home Assistant** | Deja `configuration.yaml` listo para vivir detrás de Caddy y con el historial acotado, antes del primer arranque |
+| **Pi-hole** | Le pone la contraseña del panel y **genera su clave de API** para las métricas |
+| **FreshRSS** | Hace el asistente entero, crea tu usuario y **habilita la API con su clave** |
+| **Wallabag** | Le cambia la contraseña de fábrica y **le crea el cliente de API** que usa el filtro |
+| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, y **confirma la configuración del proxy** |
+
+#### Las tres cuentas que ya no tenés que crear
+
+Este es el cambio que más se nota. Antes, tres servicios te cortaban la instalación a la mitad: para seguir había que abrir el navegador, crear una cuenta, y volver a pegar un token en un `.env`.
+
+No eran elecciones tuyas. Eran trámites.
+
+| | Antes | Ahora |
+|---|---|---|
+| **FreshRSS** | asistente de 4 pantallas + crear la clave de API | un comando: `do-install.php` y `create-user.php` con `--api-password` |
+| **Wallabag** | cambiar la contraseña + crear el cliente de API a mano | contraseña por su consola, cliente escrito en su base y **comprobado pidiendo un token** |
+| **Pi-hole** | pasar el panel a modo Expert y generar una app password | su propia API la genera, el instalador guarda el hash y se queda la clave |
+
+La lista de "datos que te pido después de crear una cuenta" **quedó vacía**. Eran cinco.
+
+Queda una excepción honesta: si FreshRSS **ya estaba instalado**, el instalador no lo toca. Su clave de API se guarda hasheada y no se puede releer ni cambiar desde afuera para un usuario que ya existe, así que en ese caso sigue siendo tuya y te lo dice.
+
+#### El perfil de idiomas de Bazarr
+
+Es el paso que más se olvida de todo el stack, y el que peor avisa: sin un perfil de idiomas, Bazarr corre, se ve sano, aparece conectado a Radarr y a Sonarr, y **no baja un solo subtítulo nunca**.
+
+Queda creado con Español e Inglés. Qué idiomas querés es tuyo, así que el instalador te dice dónde cambiarlo en vez de dar por sentado que acertó.
 
 #### El perfil de calidad
 
@@ -175,35 +199,27 @@ El orden importa y no es casual: qBittorrent antes que Radarr, porque Radarr nec
 
 ### 7. Te guía con lo que queda
 
-Después de todo eso, lo que queda es de dos tipos: **crear una cuenta desde cero**, que necesita un navegador, y **elecciones que son tuyas**, como qué indexers usás o en qué idioma querés los subtítulos.
+Después de todo eso, lo que queda son **elecciones que son tuyas**: qué trackers usás, de dónde bajar los subtítulos, qué complementos querés en Jellyfin.
 
-Son cinco pantallas, no ocho, y cada una viene con el paso a paso numerado:
+Son **tres pantallas**, y las tres son decisiones, no trámites. Antes eran seis, y la mitad eran cuentas que había que crear a mano solo para poder copiar un token de vuelta.
 
 ```
-  [1/5]  freshrss   Crear tu cuenta y habilitar la API
-        http://freshrss.pi
+  [1/3]  prowlarr   Cargar los indexers que uses
+        http://prowlarr.pi
 
-        1. El asistente te pide el idioma: elegi Espanol y Continuar.
-        2. En 'Verificaciones' tiene que estar todo en verde. Continuar.
-        3. Base de datos: dejala en SQLite, no toques nada. Continuar.
-        4. Crea tu usuario. Usa admin y la misma contrasena que el resto.
-        5. Ya adentro: Configuracion, Perfil, y abajo de todo esta
-           Contrasena de la API. Ponela y guarda.
+        1. Entra con admin y tu contrasena. Ya se la configure.
+        2. Anda a Indexers, boton Add Indexer, y busca los que uses.
+        3. Cada uno te pide sus datos: los publicos no piden nada, los
+           privados piden la cuenta que tengas en ese tracker.
+        4. No hace falta que los cargues tambien en Radarr. Ya enlace los
+           dos: lo que agregues aca se le sincroniza a Radarr solo.
 
         Enter cuando termines (o 's' para saltear):
 ```
 
-Y acá está lo que hace la diferencia: **apenas terminás, te pide los datos que salieron de esa cuenta**, en el momento en que los tenés en pantalla.
+Los pasos también te dicen **qué no tenés que hacer**, que es igual de útil: no cargues los indexers en Radarr, porque Prowlarr se los sincroniza; no toques la pestaña de Radarr en Bazarr, porque ya está conectada; y no armes el perfil de idiomas, porque ya está.
 
-```
-        Clave de API de FreshRSS
-        La que acabas de poner en Perfil, API de administracion
-        valor (Enter para saltear):
-```
-
-Eso resuelve el problema del huevo y la gallina del filtro de noticias: sus credenciales **solo existen después** de crear las cuentas de FreshRSS y Wallabag. El instalador las pide justo ahí y después recrea el contenedor solo para que las tome.
-
-En los de multimedia los pasos también te dicen **qué no tenés que hacer**, que es igual de útil: no hace falta que cargues los indexers en Radarr, porque Prowlarr ya está enlazado y se los sincroniza; y no toques la pestaña de Radarr en Bazarr, porque ya está conectada.
+Si algún dato quedara pendiente, el instalador te lo pide acá mismo, apenas terminás el paso del que sale, en el momento en que lo tenés en pantalla. Ese mecanismo sigue estando aunque hoy no lo use ninguno.
 
 Saltear siempre es válido: apretás `s` y queda anotado como pendiente.
 
@@ -321,6 +337,14 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 **Home Assistant va en la red del host, y es el único.** Descubre los dispositivos de la casa por mDNS, SSDP y DHCP, que son protocolos de difusión y no atraviesan el puente de Docker. En el puente arranca igual y parece sano, pero no encuentra nada solo. No rompe la regla del repo, porque la regla nunca fue "todo en el puente" sino **"nada se expone salvo por Caddy en el 80"**: el 8123 queda cerrado por UFW igual que el 8181 de Pi-hole.
 
 **Y detrás de Caddy tira `400 Bad Request` si no se lo avisa.** Ve todas las visitas viniendo de la IP de Caddy y las rechaza. El síntoma es una pantalla en blanco que no menciona proxies por ningún lado. Por eso el instalador deja `trusted_proxies` escrito **antes** del primer arranque, no después.
+
+**Pero escribirlo no alcanza: hay que confirmarlo, y por el proxy.** Home Assistant no se cree la configuración nueva porque se la pidas. La aplica como `pending` y espera que llegue un pedido **a través del proxy** dentro de los cinco minutos. Si no llega, la revierte, la marca `not_promoted` y no la reintenta nunca más.
+
+Ese es el peor error de toda la instalación: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, el log no dice nada útil, y `casa.pi` contesta 400 para siempre. Nada en el síntoma apunta a la causa.
+
+Así que el instalador hace la confirmación él mismo, y si encuentra un `pending` ya quemado, lo destraba. Antes de eso abre el puerto en el firewall, porque si Caddy no llega, la confirmación tampoco puede pasar y todo el mecanismo se cae en cadena. Es exactamente lo que pasó la primera vez.
+
+**Un servicio nuevo en la red del host necesita su regla de UFW, o Caddy contesta 502.** Y esa lista estaba escrita a mano con un solo puerto adentro, el 8181 de Pi-hole. Ahora sale del Caddyfile, igual que los registros DNS: los destinos que empiezan con un número son del host, los que empiezan con una letra son contenedores.
 
 **Su historial es lo que más escribe en la tarjeta.** El `recorder` guarda cada cambio de cada entidad y de fábrica retiene 10 días. Queda en 3, con confirmación cada 30 segundos y sacando las entidades que cambian cada pocos segundos.
 
