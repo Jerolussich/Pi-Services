@@ -35,7 +35,19 @@ Pero escribirlo no alcanza, y acá está la parte que no es obvia.
 
 Y lo que confirma no es cualquier pedido: tiene que ser **autenticado y llegar por el proxy**. Un `curl` sin sesión devuelve 302, parece que anda, y cinco minutos después vuelve el 400.
 
-O sea que **solo lo podés confirmar vos**, creando tu cuenta. Es la razón de fondo por la que este es el único servicio del repo que el instalador no puede terminar. Lo que sí hace: dejar el YAML escrito, abrir el puerto, y si encuentra un `pending` ya quemado borrar `.storage/http` (que se regenera solo desde el YAML, con copia previa) para que tengas la ventana abierta cuando entres.
+Leyendo el código de Home Assistant, la **única** vía de confirmación es el comando WebSocket autenticado `http/config/promote`, que manda el frontend. O sea: hace falta usuario, sesión, y que la página cargue por el proxy que todavía no anda. Un círculo cerrado.
+
+La salida es hacer lo mismo que hace ese comando pero con Home Assistant parado, escribiendo su store directamente. Eso es [`promover-proxy.py`](promover-proxy.py), y el instalador lo corre solo:
+
+```python
+stable = pending      # exactamente lo que hace async_promote_pending()
+pending = None
+yaml_migration_done = True
+```
+
+Ese `yaml_migration_done` es la mitad importante: sin él, el bloque `http:` del YAML se vuelve a escenificar como `pending` en **cada arranque**, y el problema vuelve al siguiente reinicio.
+
+Dos detalles se aprendieron a los golpes y están comentados en el script. El primero: `pending` se deja en `null`, no se borra la clave. El cargador de HA la lee por índice directo, así que si falta, el store no carga, el componente `http` no arranca, y con él se caen el frontend, la API y la autenticación. Lo probamos sin querer. El segundo: la configuración que se promueve es **la que generó HA tal cual**, no una armada a mano, así es válida contra su propio esquema por construcción.
 
 El resultado, si no se sabe, es el peor error posible de diagnosticar: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, y el log no menciona proxies hasta que ya es tarde.
 
@@ -59,13 +71,11 @@ Si algún día tenés el disco externo y querés historial largo, subí `purge_k
 
 ## Lo que sí tenés que hacer vos
 
-**Crear tu usuario, y hacerlo entrando por `http://casa.pi`.** No por la IP con `:8123`, y esto no es un detalle estético.
+**Crear tu usuario.** Entrás a `http://casa.pi` y te pide nombre, contraseña y ubicación. Eso no se puede automatizar: Home Assistant genera claves criptográficas por instalación durante ese paso, y sembrarlas de antemano sería peor que hacerlo a mano.
 
-Te pide nombre, contraseña y ubicación. Eso no se puede automatizar: Home Assistant genera claves criptográficas por instalación durante ese paso, y sembrarlas de antemano sería peor que hacerlo a mano.
+Poner la ubicación bien vale la pena, porque de ahí salen el amanecer y el atardecer, que es con lo que se disparan la mitad de las automatizaciones de una casa.
 
-Pero además, **ese primer login es lo único que confirma la configuración del proxy**. Si entrás por la IP, el pedido no pasa por Caddy, no confirma nada, y `casa.pi` te va a seguir dando 400 hasta que lo hagas bien.
-
-Son dos minutos y es una sola vez.
+Son dos minutos y es una sola vez. La configuración del proxy ya está confirmada, así que no importa por dónde entres.
 
 **Después, agregar tus dispositivos.** En `Ajustes → Dispositivos y servicios` vas a ver que ya descubrió solo lo que hay en tu red, justamente por estar en la red del host.
 
@@ -78,6 +88,7 @@ Son dos minutos y es una sola vez.
 ```
 home/
 ├── docker-compose.yml
+├── promover-proxy.py        ← confirma la config del proxy sin navegador
 ├── .env
 ├── .env.example
 └── config/

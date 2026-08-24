@@ -2241,51 +2241,30 @@ print(a.get("password", ""), a.get("hash", ""))' 2>/dev/null)
 
 # ── Home Assistant detras de Caddy ────────────────────────────────────────────
 #
-#  Este es el unico servicio del repo que el instalador NO puede terminar, y
-#  vale la pena explicar por que, porque es una limitacion real y no una que
-#  falte programar.
+#  Home Assistant no confia en un proxy porque se lo pidas. Toma el bloque http:
+#  de configuration.yaml, lo guarda como "pending", arranca con el, y si en
+#  cinco minutos nadie lo CONFIRMA lo revierte, lo marca not_promoted y no lo
+#  reintenta nunca mas. A partir de ahi casa.pi contesta 400 para siempre.
 #
-#  Home Assistant no confia en un proxy porque se lo pidas. Aplica la config
-#  nueva como "pending" y espera que la confirmen. Si en cinco minutos no pasa,
-#  la revierte, la marca not_promoted y a partir de ahi casa.pi contesta 400.
+#  Y confirmarlo no es cualquier cosa. Leyendo su codigo (components/http/), la
+#  unica via es el comando WebSocket autenticado `http/config/promote` que manda
+#  el frontend. O sea: hace falta usuario, sesion, y que la pagina cargue por el
+#  proxy que todavia no anda. Un circulo cerrado.
 #
-#  Lo que confirma no es cualquier pedido: tiene que ser un pedido AUTENTICADO
-#  que llegue por el proxy. Y para que exista un pedido autenticado tiene que
-#  existir un usuario, que se crea en el asistente de bienvenida.
+#  La salida es hacer lo mismo que hace ese comando, pero con HA parado y
+#  escribiendo su store: promover-proxy.py. Ademas deja yaml_migration_done en
+#  true, que es lo que evita que el YAML se vuelva a escenificar como pending en
+#  cada arranque. Sin eso el problema vuelve al siguiente reinicio.
 #
-#  O sea que la cadena se cierra recien cuando VOS entras a casa.pi y creas tu
-#  cuenta. Un curl sin sesion devuelve 302 y parece que anda, pero no confirma
-#  nada: cinco minutos despues vuelve el 400. Lo comprobamos.
-#
-#  Asi que aca se deja todo listo hasta donde se puede (el puerto abierto, la
-#  config escrita, el pending fresco si estaba quemado) y se dice claramente
-#  cual es el paso que falta y por que hay que hacerlo por casa.pi.
+#  Dos cosas se aprendieron a los golpes y estan en ese script: la clave
+#  `pending` se deja en null y no se borra, y la config que se promueve es la
+#  que genero HA tal cual, no una armada a mano.
 ha_por_caddy() {
     curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
         -H "Host: casa.pi" "http://$IP_FIJA/" 2>/dev/null
 }
 
-# Si ya hay usuarios, el asistente de bienvenida se hizo y la confirmacion ya
-# pudo pasar. Si no hay, el 400 es esperable y no es una falla.
-ha_tiene_cuenta() {
-    local auth="$REPO/home/config/.storage/auth"
-    sudo test -f "$auth" || return 1
-    sudo test -f "$REPO/home/config/.storage/onboarding"
-}
-
-ha_config_quemada() {
-    local st="$REPO/home/config/.storage/http"
-    sudo test -f "$st" || return 1
-    # Solo cuenta si es el pending el que quedo quemado: la palabra suelta
-    # aparece tambien en configuraciones viejas que ya no molestan.
-    sudo cat "$st" 2>/dev/null | python3 -c '
-import sys, json
-try:
-    p = json.load(sys.stdin)["data"].get("pending") or {}
-    sys.exit(0 if p.get("error") == "not_promoted" else 1)
-except Exception:
-    sys.exit(1)' 2>/dev/null
-}
+HA_STORE="config/.storage/http"
 
 ha_escucha() {
     local i c
@@ -2297,11 +2276,36 @@ ha_escucha() {
     return 1
 }
 
+# Promueve con HA parado y lo vuelve a levantar. Devuelve 0 si quedo promovida
+# o si ya lo estaba.
+ha_promover() {
+    $DOCKER stop homeassistant >/dev/null 2>&1
+    sudo python3 "$REPO/home/promover-proxy.py" "$REPO/home/$HA_STORE" >/dev/null 2>&1
+    local rc=$?
+    $DOCKER start homeassistant >/dev/null 2>&1
+    olvidar_estado
+    ha_escucha >/dev/null 2>&1
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
+}
+
+# Cuando no hay nada que promover (o lo que hay quedo quemado), se borra el
+# store para que HA lo regenere desde configuration.yaml en el proximo arranque.
+# El archivo se reconstruye solo, pero igual se guarda copia antes.
+ha_regenerar_store() {
+    $DOCKER stop homeassistant >/dev/null 2>&1
+    sudo cp -a "$REPO/home/$HA_STORE" "$REPO/home/$HA_STORE.anterior" 2>/dev/null
+    sudo rm -f "$REPO/home/$HA_STORE"
+    $DOCKER start homeassistant >/dev/null 2>&1
+    olvidar_estado
+    ha_escucha >/dev/null 2>&1
+}
+
 cfg_homeassistant() {
     esta_arriba homeassistant || return 0
 
-    # Sin el puerto abierto para las redes de Docker, Caddy contesta 502 y la
-    # confirmacion no puede pasar ni cuando crees tu cuenta.
+    # Sin el puerto abierto para las redes de Docker, Caddy contesta 502. Va
+    # primero porque si no, todo lo de abajo se cae en cadena y el sintoma que
+    # ves no se parece en nada a la causa.
     local red
     for red in 172.17.0.0/16 172.18.0.0/16 172.19.0.0/16 172.20.0.0/16; do
         sudo ufw allow from $red to any port 8123 proto tcp >/dev/null 2>&1
@@ -2311,32 +2315,35 @@ cfg_homeassistant() {
     ha_escucha || { aviso "Home Assistant no contesta todavia"; \
         pendiente "Entrar a http://casa.pi y revisar que levante"; return 1; }
 
-    # Un pending quemado no se recupera solo, y mientras siga asi tu primer
-    # login tampoco lo va a confirmar. Se destraba para que tengas la ventana.
-    if ha_config_quemada; then
-        sudo cp -a "$REPO/home/config/.storage/http" \
-                   "$REPO/home/config/.storage/http.anterior" 2>/dev/null
-        sudo rm -f "$REPO/home/config/.storage/http"
-        $DOCKER restart homeassistant >/dev/null 2>&1
-        olvidar_estado
-        ha_escucha >/dev/null 2>&1
-        gris "     Home Assistant: destrabe la config del proxy que habia quedado revertida"
-    fi
-
     case "$(ha_por_caddy)" in
-        200|302)
-            if ha_tiene_cuenta; then
-                ok "Home Assistant: listo en ${B}http://casa.pi${N}"
-            else
-                ok "Home Assistant: levantado y alcanzable en ${B}http://casa.pi${N}"
-                gris "     falta que crees tu cuenta, y tiene que ser entrando por casa.pi"
-            fi
-            return 0 ;;
+        200|302) gris "     Home Assistant ya entraba bien por casa.pi"; return 0 ;;
     esac
 
-    aviso "Home Assistant: Caddy llega pero contesta 400"
-    gris "     es el rechazo del proxy, y se arregla solo cuando entres por casa.pi"
-    pendiente "Crear tu usuario ENTRANDO POR http://casa.pi (no por la IP con :8123)"
+    # Intento 1: promover lo que HA haya dejado pendiente.
+    if ha_promover; then
+        case "$(ha_por_caddy)" in
+            200|302)
+                ok "Home Assistant: listo en ${B}http://casa.pi${N}"
+                gris "     confirme la config del proxy, que si no se revierte sola a los 5 minutos"
+                return 0 ;;
+        esac
+    fi
+
+    # Intento 2: no habia nada usable. Se regenera desde el YAML y se promueve
+    # el pendiente nuevo.
+    ha_regenerar_store
+    if ha_promover; then
+        case "$(ha_por_caddy)" in
+            200|302)
+                ok "Home Assistant: listo en ${B}http://casa.pi${N}"
+                gris "     tuve que regenerar su config del proxy, que habia quedado revertida"
+                return 0 ;;
+        esac
+    fi
+
+    aviso "Home Assistant: Caddy llega pero sigue contestando 400"
+    gris "     es el rechazo del proxy, y no pude confirmarle la config"
+    pendiente "Revisar el bloque http: de home/config/configuration.yaml y volver a correr el instalador"
     return 1
 }
 
