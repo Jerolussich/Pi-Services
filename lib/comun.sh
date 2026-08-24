@@ -306,6 +306,88 @@ preguntar() {
     r="${r:-$d}"; [[ "$r" =~ ^[SsYy] ]]
 }
 
+# ── Quien crea las cuentas ────────────────────────────────────────────────────
+#
+#  Cinco servicios traen asistente de bienvenida propio, y el instalador los
+#  puede saltear creando la cuenta por su API. Es mas rapido y te ahorra abrir
+#  cinco paneles, pero no siempre es lo que uno quiere: capaz preferis elegir
+#  tu propio usuario, o mirar cada pantalla para entender que estas instalando.
+#
+#  Asi que se pregunta, en vez de decidirlo por vos. Se pregunta una sola vez y
+#  se puede afinar servicio por servicio.
+#
+#  CUENTAS_AUTO:  si = las crea el instalador · no = las creas vos
+#                 (vacio = todavia no se pregunto)
+CUENTAS_AUTO=""
+declare -A CUENTAS_AUTO_POR_SERVICIO=()
+
+SERVICIOS_CON_CUENTA=(
+"jellyfin|Jellyfin|el asistente de 5 pantallas, tu usuario y las bibliotecas"
+"seerr|Seerr|el usuario, enlazado al de Jellyfin"
+"freshrss|FreshRSS|el asistente de 4 pantallas y la clave de API"
+"wallabag|Wallabag|la contrasena y el cliente de API"
+"homeassistant|Home Assistant|el usuario administrador"
+)
+
+# Devuelve 0 si el instalador tiene que crear la cuenta de ese servicio.
+cuenta_automatica() {
+    local svc="$1"
+    if [ -n "${CUENTAS_AUTO_POR_SERVICIO[$svc]:-}" ]; then
+        [ "${CUENTAS_AUTO_POR_SERVICIO[$svc]}" = "si" ]
+        return
+    fi
+    [ "$CUENTAS_AUTO" != "no" ]
+}
+
+preguntar_quien_configura() {
+    [ -n "$CUENTAS_AUTO" ] && return 0
+
+    # Solo tiene sentido preguntar por los que efectivamente vas a levantar.
+    local linea svc nombre que hay=()
+    for linea in "${SERVICIOS_CON_CUENTA[@]}"; do
+        IFS='|' read -r svc nombre que <<< "$linea"
+        esta_arriba "$svc" && hay+=("$linea")
+    done
+    [ ${#hay[@]} -eq 0 ] && { CUENTAS_AUTO=si; return 0; }
+
+    echo ""
+    echo "  ${B}${C}Las cuentas de los servicios${N}"
+    info "Estos traen su propio asistente de bienvenida, y los puedo saltear"
+    info "creando la cuenta por su API:"
+    echo ""
+    for linea in "${hay[@]}"; do
+        IFS='|' read -r svc nombre que <<< "$linea"
+        printf "    ${B}·${N} %-16s %s\n" "$nombre" "$que"
+    done
+    echo ""
+    info "Todas quedan con usuario ${B}admin${N} y la contrasena que elegiste."
+    gris "     Si preferis crearlas vos, las salteo y te las dejo anotadas al final."
+    echo ""
+    echo "    ${B}1${N}) Las crea el instalador"
+    echo "    ${B}2${N}) Las creo yo, desde el navegador"
+    echo "    ${B}3${N}) Elegir servicio por servicio"
+    echo ""
+
+    local r
+    read -r -p "  ${B}¿Cual?${N} [1] " r </dev/tty
+    case "${r:-1}" in
+        2) CUENTAS_AUTO=no
+           info "Listo, no toco ninguna. Al final te digo cuales quedaron pendientes." ;;
+        3) CUENTAS_AUTO=si
+           echo ""
+           for linea in "${hay[@]}"; do
+               IFS='|' read -r svc nombre que <<< "$linea"
+               if preguntar "  ¿$nombre lo configuro yo?" "s"; then
+                   CUENTAS_AUTO_POR_SERVICIO[$svc]=si
+               else
+                   CUENTAS_AUTO_POR_SERVICIO[$svc]=no
+               fi
+           done ;;
+        *) CUENTAS_AUTO=si ;;
+    esac
+    echo ""
+}
+
 # Lee el valor de una variable dentro de un archivo .env
 leer_var() {
     local archivo="$1" var="$2"
@@ -2347,6 +2429,65 @@ cfg_homeassistant() {
     return 1
 }
 
+# El asistente de bienvenida de Home Assistant, sin navegador.
+#
+# Home Assistant expone la API que usa su propio frontend para el onboarding, y
+# no pide autenticacion justamente porque todavia no hay con que autenticarse.
+# Son cuatro pasos y solo el primero lleva datos.
+#
+# El paso de usuario crea la cuenta de administrador, la enlaza a una persona, y
+# de paso crea las areas de la casa (Cocina, Living, Dormitorio...) en el idioma
+# que le pases. Con language=es salen en castellano.
+#
+# La ubicacion NO se toca: es tu casa y no la voy a inventar. La zona horaria ya
+# sale bien porque el compose le monta /etc/localtime del host.
+ha_onboarding_pendiente() {
+    curl -s --max-time 20 http://127.0.0.1:8123/api/onboarding 2>/dev/null \
+        | python3 -c '
+import sys, json
+try:
+    pasos = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+usuario = next((p for p in pasos if p.get("step") == "user"), None)
+sys.exit(1 if usuario is None or usuario.get("done") else 0)' 2>/dev/null
+}
+
+cfg_ha_cuenta() {
+    local clave="$1"
+    esta_arriba homeassistant || return 0
+    ha_escucha || return 1
+
+    if ! ha_onboarding_pendiente; then
+        gris "     Home Assistant ya tenia su cuenta creada"
+        return 0
+    fi
+
+    local resp
+    resp=$(curl -s --max-time 60 -X POST -H "Content-Type: application/json" \
+        -d "{\"name\":\"admin\",\"username\":\"admin\",\"password\":\"$clave\",\"client_id\":\"http://casa.pi/\",\"language\":\"es\"}" \
+        http://127.0.0.1:8123/api/onboarding/users 2>/dev/null)
+
+    if ! echo "$resp" | grep -q '"auth_code"'; then
+        aviso "Home Assistant: no pude crear el usuario"
+        gris "     ${resp:0:120}"
+        pendiente "Crear tu usuario entrando a http://casa.pi"
+        return 1
+    fi
+
+    # Los pasos que siguen quedan para vos, y es a proposito.
+    #
+    # El de ubicacion abre un mapa para que marques donde vivis. Es la
+    # herramienta correcta para eso y no es un dato que yo deba inventar: de ahi
+    # salen el amanecer y el atardecer, con los que se dispara media domotica.
+    #
+    # El de estadisticas de uso es una decision de privacidad. Anotarte en
+    # telemetria sin preguntarte estaria mal, asi que te lo deja preguntar a el.
+    ok "Home Assistant: usuario ${B}admin${N} creado, entra con tu contrasena de siempre"
+    gris "     al entrar te va a pedir la ubicacion en un mapa: eso queda para vos,"
+    gris "     es tu casa y de ahi salen el amanecer y el atardecer"
+}
+
 # El filtro de noticias lee las credenciales al arrancar. Si se las escribimos
 # con el contenedor ya andando, no se entera hasta que alguien lo reinicie.
 recrear_filtro_noticias() {
@@ -2415,20 +2556,36 @@ configurar_servicios() {
         cfg_pihole_api "$(clave_para 'Pi-hole')"
     fi
 
-    # Va antes que los de multimedia porque no depende de ninguno, y porque su
-    # ventana de confirmacion son cinco minutos desde que arranco.
+    # Antes de crear una sola cuenta, preguntar si las queres creadas.
+    preguntar_quien_configura
+
+    # Va antes que los de multimedia porque no depende de ninguno.
     if [[ " ${SELECCION[*]} " == *" home "* ]]; then
+        # El proxy se arregla siempre: no es una cuenta, es que casa.pi ande.
         cfg_homeassistant
+        if cuenta_automatica homeassistant; then
+            cfg_ha_cuenta "$(clave_para 'Home Assistant')"
+        else
+            pendiente "Crear tu usuario de Home Assistant en http://casa.pi"
+        fi
     fi
 
     if [[ " ${SELECCION[*]} " == *" news "* ]]; then
         local elegidos_news; elegidos_news=$(servicios_elegidos news)
         local toco_noticias=0
         if esta_arriba freshrss && [[ " $elegidos_news " == *" freshrss "* ]]; then
-            cfg_freshrss "$(clave_para 'FreshRSS')"; toco_noticias=1
+            if cuenta_automatica freshrss; then
+                cfg_freshrss "$(clave_para 'FreshRSS')"; toco_noticias=1
+            else
+                pendiente "Crear tu cuenta de FreshRSS en http://freshrss.pi y habilitar su API"
+            fi
         fi
         if esta_arriba wallabag && [[ " $elegidos_news " == *" wallabag "* ]]; then
-            cfg_wallabag "$(clave_para 'Wallabag')"; toco_noticias=1
+            if cuenta_automatica wallabag; then
+                cfg_wallabag "$(clave_para 'Wallabag')"; toco_noticias=1
+            else
+                pendiente "Cambiar la contrasena de Wallabag y crear su cliente de API en http://wallabag.pi"
+            fi
         fi
         [ "$toco_noticias" = "1" ] && recrear_filtro_noticias
     fi
@@ -2455,13 +2612,23 @@ configurar_servicios() {
             cfg_bazarr "$(clave_para 'Bazarr')"
             cfg_bazarr_idiomas
         fi
-        esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]] && \
-            cfg_jellyfin "$(clave_para 'Jellyfin')"
+        if esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]]; then
+            if cuenta_automatica jellyfin; then
+                cfg_jellyfin "$(clave_para 'Jellyfin')"
+            else
+                pendiente "Hacer el asistente de Jellyfin en http://jellyfin.pi y crear las dos bibliotecas"
+            fi
+        fi
 
         # Seerr va ULTIMO: necesita las API keys de los dos *arr, el perfil de
         # calidad ya creado, y Jellyfin con su usuario andando.
-        esta_arriba seerr && [[ " $elegidos_media " == *" seerr "* ]] && \
-            cfg_seerr "$(clave_para 'Seerr')"
+        if esta_arriba seerr && [[ " $elegidos_media " == *" seerr "* ]]; then
+            if cuenta_automatica seerr; then
+                cfg_seerr "$(clave_para 'Seerr')"
+            else
+                pendiente "Entrar a http://seerr.pi con tu usuario de Jellyfin y conectar Radarr y Sonarr"
+            fi
+        fi
 
         # Con las claves ya disponibles, los recuadros de la homepage pasan
         # de ser un enlace a mostrar datos en vivo.
