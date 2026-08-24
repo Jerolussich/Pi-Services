@@ -47,6 +47,22 @@
         description: Indexers (se configura una vez)
         siteMonitor: http://prowlarr:9696
 
+- Casa:
+    - Home Assistant:
+        icon: home-assistant.png
+        href: http://casa.pi
+        description: Luces, sensores y automatizaciones
+        siteMonitor: http://192.168.68.66:8123
+        # El recuadro con datos en vivo (cuantas luces prendidas, etc.) necesita
+        # un token de HA, y ese token solo existe DESPUES de crear tu usuario,
+        # asi que el instalador no puede leerlo como lee los de Radarr o Seerr.
+        # Si lo queres: en casa.pi, tu perfil, abajo de todo, "Crear token",
+        # pegalo en homepage/.env como HOMEPAGE_VAR_HA_TOKEN y descomenta esto.
+        # widget:
+        #   type: homeassistant
+        #   url: http://192.168.68.66:8123
+        #   key: "{{HOMEPAGE_VAR_HA_TOKEN}}"
+
 - Network:
     - Pi-hole:
         icon: pi-hole.png

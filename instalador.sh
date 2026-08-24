@@ -965,42 +965,18 @@ ejecutar() {
 # subtitulos). Todo lo demas lo dejo hecho antes de llegar aca.
 #
 # modulo|servicio|url|de que se trata
+#
+# Pi-hole, FreshRSS y Wallabag salieron de esta lista: los tres se configuran
+# solos ahora. Eran los que peor caian, porque no eran una eleccion tuya sino
+# tramites: crear una cuenta para poder copiar un token de vuelta al .env.
 CUENTAS=(
-"monitoring|pihole|http://pihole.pi|Generar la clave de API para las metricas"
-"news|freshrss|http://freshrss.pi|Crear tu cuenta y habilitar la API"
-"news|wallabag|http://wallabag.pi|Cambiar la contrasena y crear el cliente de API"
 "media|prowlarr|http://prowlarr.pi|Cargar los indexers que uses"
-"media|bazarr|http://bazarr.pi|Elegir idiomas y proveedores de subtitulos"
+"media|bazarr|http://bazarr.pi|Elegir de donde bajar los subtitulos"
 "media|jellyfin|http://jellyfin.pi|Instalar los complementos"
 )
 
 # El paso a paso de cada uno, una linea por paso.
 declare -A PASOS=(
-[pihole]="Entra con tu contrasena de Pi-hole.
-${B}Settings${N}, arriba a la derecha pasa el modo a ${B}Expert${N}.
-Despues ${B}Settings, API / Web interface${N}.
-Boton ${B}Configure app password${N}, y despues ${B}Generate new password${N}.
-Copiala: te la pido en cuanto termines este paso.
-Sin ella, pihole-exporter corre pero no puede leer nada, y el tablero
-   de Pi-hole en Grafana queda vacio para siempre."
-
-[freshrss]="El asistente te pide el idioma: elegi Espanol y Continuar.
-En 'Verificaciones' tiene que estar todo en verde. Continuar.
-Base de datos: dejala en ${B}SQLite${N}, no toques nada. Continuar.
-Crea tu usuario. Usa ${B}admin${N} y la misma contrasena que el resto.
-Ya adentro: Configuracion, Perfil, y abajo de todo esta
-   ${B}Contrasena de la API${N}. Ponela y guarda.
-Esa contrasena de API es la que te pido despues: sin ella el filtro
-   de noticias no puede leer tus feeds."
-
-[wallabag]="Entra con ${B}wallabag${N} / ${B}wallabag${N} (las de fabrica).
-Arriba a la derecha, Configuracion, pestana ${B}Cambiar contrasena${N}.
-Cambiala por la tuya y guarda.
-Volve a Configuracion, pestana ${B}Clientes API${N}.
-Toca ${B}Crear un nuevo cliente${N}, ponele cualquier nombre y crea.
-Te muestra un ${B}ID${N} y un ${B}Secreto${N}: no cierres esa pantalla,
-   te los pido en cuanto termines este paso."
-
 [prowlarr]="Entra con ${B}admin${N} y tu contrasena. Ya se la configure.
 Anda a ${B}Indexers${N}, boton ${B}Add Indexer${N}, y busca los que uses.
 Cada uno te pide sus datos: los publicos no piden nada, los privados
@@ -1010,11 +986,12 @@ ${B}No hace falta que los cargues tambien en Radarr.${N} Ya enlace los dos:
 En Settings, Apps, tiene que figurar Radarr. Si esta, quedo bien."
 
 [bazarr]="Entra con ${B}admin${N} y tu contrasena. Ya se la configure.
-${B}Settings, Languages${N}: agrega Espanol e Ingles, y despues crea un
-   perfil de idiomas con los dos. Sin perfil no baja ningun subtitulo.
-${B}Settings, Providers${N}: elegi de donde bajarlos. Los que andan bien sin
-   pagar son OpenSubtitles.com (pide crear cuenta propia) y Subdivx.
-${B}Settings, Radarr${N}: ya esta conectado, no toques nada ahi.
+${B}Settings, Providers${N}: elegi de donde bajar los subtitulos. Los que
+   andan bien sin pagar son OpenSubtitles.com (pide crear cuenta propia)
+   y Subdivx. Es lo unico que falta aca.
+${B}Settings, Languages${N}: ya deje un perfil con Espanol e Ingles. Si
+   queres otros idiomas se cambia ahi, pero no hace falta tocarlo.
+${B}Settings, Radarr${N} y ${B}Sonarr${N}: ya estan conectados, no toques nada.
 Si en Providers no elegis ninguno, Bazarr corre pero nunca baja nada."
 
 [jellyfin]="Entra con ${B}admin${N} y tu contrasena. Ya cree el usuario, la
@@ -1029,13 +1006,14 @@ La biblioteca va a estar vacia hasta que montes el DAS y le pongas
 
 # Tokens que salen de una cuenta recien creada.
 # modulo|servicio|archivo|VARIABLE|descripcion|donde encontrarlo
-TOKENS_DE_CUENTA=(
-"news|freshrss|news/news-filter/.env|FRESHRSS_API_PASSWORD|Clave de API de FreshRSS|La que acabas de poner en Perfil, API de administracion"
-"news|wallabag|news/news-filter/.env|WALLABAG_CLIENT_ID|ID de cliente de Wallabag|Aparece al crear el cliente API"
-"news|wallabag|news/news-filter/.env|WALLABAG_CLIENT_SECRET|Secreto de cliente de Wallabag|Al lado del ID"
-"news|wallabag|news/news-filter/.env|WALLABAG_PASSWORD|Contrasena de tu cuenta de Wallabag|La que pusiste recien"
-"monitoring|pihole|monitoring/.env|PIHOLE_API_KEY|Clave de API de Pi-hole|Panel de Pi-hole, Settings, API, Generate app password"
-)
+#
+# Esta lista quedo vacia, y es el mejor resultado posible: eran cinco datos que
+# solo existian DESPUES de crear una cuenta en el navegador, o sea que cortaban
+# la instalacion a la mitad. Los cinco los escribe ahora el instalador.
+#
+# Se deja declarada porque el resto del script la recorre, y porque el dia que
+# aparezca un servicio nuevo que si necesite este trato, el mecanismo ya esta.
+TOKENS_DE_CUENTA=()
 
 guia_cuentas() {
     # Solo las cuentas de los servicios que efectivamente levantaste
