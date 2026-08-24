@@ -151,6 +151,38 @@ Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`
 | **Wallabag** | Le cambia la contraseña de fábrica y **le crea el cliente de API** que usa el filtro |
 | **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, y **confirma la configuración del proxy** escribiendo su store, que es la única forma de hacerlo sin navegador |
 
+#### Antes de nada, te pregunta quién las crea
+
+Cinco servicios traen asistente de bienvenida propio, y el instalador los puede saltear creando la cuenta por su API. Pero eso no siempre es lo que uno quiere: capaz preferís elegir tu propio usuario, o mirar cada pantalla para entender qué estás instalando.
+
+Así que se pregunta, en vez de decidirlo por vos:
+
+```
+  Las cuentas de los servicios
+
+    Estos traen su propio asistente de bienvenida, y los puedo saltear
+    creando la cuenta por su API:
+
+    · Jellyfin         el asistente de 5 pantallas, tu usuario y las bibliotecas
+    · Seerr            el usuario, enlazado al de Jellyfin
+    · FreshRSS         el asistente de 4 pantallas y la clave de API
+    · Wallabag         la contrasena y el cliente de API
+    · Home Assistant   el usuario administrador
+
+    Todas quedan con usuario admin y la contrasena que elegiste.
+       Si preferis crearlas vos, las salteo y te las dejo anotadas al final.
+
+    1) Las crea el instalador
+    2) Las creo yo, desde el navegador
+    3) Elegir servicio por servicio
+
+  ¿Cual? [1]:
+```
+
+Solo lista los que efectivamente levantaste, y si elegís crearlas vos, cada una queda anotada como pendiente con su URL. La opción 3 te pregunta uno por uno.
+
+**Una aclaración importante:** esto es sobre *cuentas*, no sobre configuración. Aunque digas que las creás vos, el instalador igual deja andando lo que no es una decisión tuya: las rutas de descarga, los hardlinks, los enlaces entre servicios, el perfil de calidad, y que Home Assistant funcione detrás de Caddy.
+
 #### Las tres cuentas que ya no tenés que crear
 
 Este es el cambio que más se nota. Antes, tres servicios te cortaban la instalación a la mitad: para seguir había que abrir el navegador, crear una cuenta, y volver a pegar un token en un `.env`.
