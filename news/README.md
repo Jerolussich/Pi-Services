@@ -147,11 +147,32 @@ docker compose up -d freshrss wallabag news-filter news-filter-ui
 
 ### 5. Configurar FreshRSS (primera vez)
 
+**Esto lo hace el instalador.** Corré `./instalador.sh`, elegí el módulo de noticias, y deja la cuenta creada, la API habilitada y su clave escrita en `news/news-filter/.env`. Lo que sigue está para hacerlo a mano si alguna vez lo necesitás.
+
+FreshRSS se instala entero por línea de comandos, que es lo mejor que le puede pasar a un instalador: el asistente de cuatro pantallas y la clave de API son el mismo comando.
+
+```bash
+docker exec freshrss php /var/www/FreshRSS/cli/do-install.php \
+    --default-user admin --auth-type form --language es \
+    --db-type sqlite --api-enabled
+```
+
+```bash
+docker exec freshrss php /var/www/FreshRSS/cli/create-user.php \
+    --user admin --password TUCLAVE --api-password TUCLAVE --language es
+```
+
+Esa `--api-password` es la que va en `FRESHRSS_API_PASSWORD`. Sin ella el filtro no puede leer tus feeds.
+
+Y por el navegador, si preferís:
+
 1. Abrir `http://freshrss.pi`
 2. Completar el wizard de instalación con usuario y password admin
 3. Ir a **Settings → Authentication** → habilitar **Allow API access**
 4. Ir a **Settings → Profile** → setear **API password**
 5. Ir a **Settings → Archiving** → setear **Days to keep articles** a `30`
+
+**Ojo si FreshRSS ya estaba instalado:** el instalador no lo toca. La clave de API se guarda hasheada y no se puede releer ni cambiar desde afuera para un usuario que ya existe, así que en ese caso el paso 4 sigue siendo tuyo.
 
 ### 6. Agregar feeds RSS
 
@@ -168,6 +189,24 @@ https://techcrunch.com/feed/
 ```
 
 ### 7. Configurar Wallabag (primera vez)
+
+**Esto también lo hace el instalador**, y las tres variables quedan escritas solas.
+
+La contraseña tiene comando propio y es idempotente:
+
+```bash
+docker exec wallabag /var/www/wallabag/bin/console --env=prod \
+    fos:user:change-password wallabag TUCLAVE
+```
+
+El cliente de API es la única pieza que su consola **no** cubre: no hay comando, así que la fila se escribe directo en su base, en `wallabag_oauth2_clients`. Hay dos detalles que hacen fallar esto si se improvisa:
+
+- `redirect_uris` y `allowed_grant_types` son **arrays serializados de PHP**, no JSON. Doctrine no lee otra cosa.
+- El `client_id` que espera la API no es el `random_id` solo: es **`<id>_<random_id>`**, la fila y el aleatorio pegados con un guión bajo.
+
+Por eso el instalador no se conforma con escribir la fila: después **pide un token de verdad** con esas credenciales, y si no sale, borra la fila y te deja el paso manual. Credenciales escritas que no sirven son peor que ninguna.
+
+Y por el navegador:
 
 1. Abrir `http://wallabag.pi`
 2. Login con `wallabag / wallabag`

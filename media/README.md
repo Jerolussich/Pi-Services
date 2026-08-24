@@ -179,9 +179,17 @@ Y no hace falta cargar los indexers acá: Prowlarr se los sincroniza a los dos.
 
 ### 4. Bazarr
 
-En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y Sonarr con host `sonarr` y puerto `8989`. Después elegí proveedores e idiomas.
+En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y Sonarr con host `sonarr` y puerto `8989`.
 
-Sin un **perfil de idiomas** creado no baja ningún subtítulo, aunque tengas proveedores configurados. Es el paso que más se olvida.
+El **perfil de idiomas** lo deja creado el instalador con Español e Inglés, y es más importante de lo que suena: sin uno, Bazarr corre, se ve sano, aparece conectado a Radarr y a Sonarr, y no baja un solo subtítulo nunca. Es el paso que más se olvida de todo el stack y el que peor avisa. Si querés otros idiomas, se cambia en `Settings → Languages`.
+
+Lo que sí queda para vos es **de dónde bajarlos**, en `Settings → Providers`. Los que andan bien sin pagar son OpenSubtitles.com, que pide crear cuenta propia, y Subdivx. Si no elegís ninguno, Bazarr corre pero nunca baja nada.
+
+Un detalle por si lo hacés a mano: los perfiles **no se guardan por su propio endpoint**, que contesta `405`. Van por el de configuración general, con el perfil serializado adentro:
+
+```bash
+curl -X POST -H "X-API-KEY: $KEY" --data-urlencode "languages-profiles=$PERFIL" http://bazarr:6767/api/system/settings
+```
 
 ### 5. Jellyfin
 

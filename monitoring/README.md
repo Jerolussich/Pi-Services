@@ -69,9 +69,27 @@ FINANCE_DATA_PATH=/home/youruser/pi-services/finance/finance-tracker/data
 
 #### Cómo obtener la API Key de Pi-hole v6
 
+**Esto lo hace el instalador.** La genera él, la guarda, y recrea el exporter para que la tome. Nunca la ves ni la copiás.
+
+La clave del exporter **no es la del panel**: es una *app password* aparte, que Pi-hole genera en dos mitades. La contraseña es lo que usa el exporter; el hash es lo que Pi-hole guarda. Si se guarda solo una de las dos, el par queda roto y el exporter da `403` sin decir por qué.
+
+A mano, por su API:
+
+```bash
+curl -s -X POST -H "Content-Type: application/json" -d '{"password":"TUCLAVE"}' http://127.0.0.1:8181/api/auth
+```
+
+Con el `sid` que devuelve, `GET /api/auth/app` te da el par. El hash va a la configuración y la contraseña al `.env`:
+
+```bash
+sudo pihole-FTL --config webserver.api.app_pwhash '<el hash>'
+```
+
+O por el navegador:
+
 1. Entrar a `http://pihole.pi/admin`
-2. Settings → API
-3. Copiar el **App Password**
+2. Arriba a la derecha, pasar el modo a **Expert**
+3. Settings → API / Web interface → **Configure app password** → **Generate new password**
 
 ### 2. Levantar los contenedores
 

@@ -16,7 +16,7 @@ Home Assistant descubre los dispositivos de la casa por **mDNS, SSDP y DHCP**, q
 
 ---
 
-## Dos cosas que el instalador deja hechas, y por qué
+## Tres cosas que el instalador deja hechas, y por qué
 
 ### Que funcione detrás de Caddy
 
@@ -28,6 +28,22 @@ http:
   trusted_proxies:
     - 172.16.0.0/12
 ```
+
+Pero escribirlo no alcanza, y acá está la parte que no es obvia.
+
+**Home Assistant no se cree esa configuración porque se la pidas.** La aplica como `pending` y espera que llegue un pedido **a través del proxy** dentro de los cinco minutos. Si no llega, la revierte, la marca `not_promoted` y no la reintenta nunca más.
+
+El resultado es el peor error posible de diagnosticar: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, el log no dice nada útil, y `casa.pi` contesta 400 para siempre.
+
+Por eso el instalador hace la confirmación él mismo. Y si encuentra un `pending` ya quemado, borra `.storage/http` (que se regenera solo desde el YAML, con copia previa) y reinicia para que vuelva a intentarlo.
+
+### Que Caddy pueda llegarle
+
+En la red del host, Home Assistant escucha en el 8123, y ese puerto **no está abierto**: UFW lo deja pasar solo desde las redes de Docker, para que llegue Caddy, y lo deniega para todo el resto. Exactamente el mismo trato que el panel de Pi-hole en el 8181.
+
+Si falta esa regla, Caddy contesta **502** y la confirmación de arriba tampoco puede pasar, así que se cae todo en cadena. Es lo que pasó la primera vez que se instaló.
+
+Cuáles son esos puertos sale del Caddyfile, no de una lista: los destinos que empiezan con un número son del host, los que empiezan con una letra son contenedores.
 
 ### Que no se coma la tarjeta
 
@@ -46,6 +62,8 @@ Si algún día tenés el disco externo y querés historial largo, subí `purge_k
 Son dos minutos y es una sola vez.
 
 **Después, agregar tus dispositivos.** En `Ajustes → Dispositivos y servicios` vas a ver que ya descubrió solo lo que hay en tu red, justamente por estar en la red del host.
+
+**Y si querés el recuadro con datos en vivo en la homepage**, ahí sí hace falta un token. En `casa.pi`, tu perfil, abajo de todo, **Crear token**; lo pegás en `homepage/.env` como `HOMEPAGE_VAR_HA_TOKEN` y descomentás el bloque `widget` en `homepage/config/services.yaml`. El instalador no puede leerlo solo como hace con los de Radarr o Seerr, porque ese token no existe hasta que exista tu usuario.
 
 ---
 
