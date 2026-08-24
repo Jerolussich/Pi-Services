@@ -68,10 +68,20 @@
         icon: pi-hole.png
         href: http://pihole.pi/admin
         description: Network-wide ad blocking
-        # La barra final importa: sin ella Pi-hole contesta un 308 que el
-        # parser HTTP de la homepage rechaza con "Data after Connection: close",
-        # y el servicio figura caido estando perfecto.
-        siteMonitor: http://172.17.0.1:8181/admin/
+        # Sin siteMonitor a proposito, y no por vagancia.
+        #
+        # El servidor web de Pi-hole arma sus respuestas de una forma que el
+        # parser HTTP de la homepage rechaza: "Parse Error: Data after
+        # Connection: close". Pasa con /admin, con /admin/ y hasta con
+        # /admin/login, que devuelve un 200 perfectamente normal para curl.
+        # No es el redirect: es como cierra la conexion.
+        #
+        # El resultado seria un puntito rojo permanente sobre un servicio que
+        # anda perfecto. Un indicador que siempre miente es peor que ninguno:
+        # te acostumbras a ignorarlo y el dia que algo se cae de verdad, ya no
+        # lo estas mirando. Si queres saber si Pi-hole esta vivo, el
+        # diagnostico lo comprueba resolviendo un nombre, que es la pregunta
+        # que de verdad importa.
     - Grafana:
         icon: grafana.png
         href: http://grafana.pi
