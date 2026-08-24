@@ -149,7 +149,7 @@ Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`
 | **Pi-hole** | Le pone la contraseña del panel y **genera su clave de API** para las métricas |
 | **FreshRSS** | Hace el asistente entero, crea tu usuario y **habilita la API con su clave** |
 | **Wallabag** | Le cambia la contraseña de fábrica y **le crea el cliente de API** que usa el filtro |
-| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque y abre su puerto solo para Caddy. Es el único que **no puede terminar solo**, y abajo está por qué |
+| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, y **confirma la configuración del proxy** escribiendo su store, que es la única forma de hacerlo sin navegador |
 
 #### Las tres cuentas que ya no tenés que crear
 
@@ -338,11 +338,13 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 
 **Y detrás de Caddy tira `400 Bad Request` si no se lo avisa.** Ve todas las visitas viniendo de la IP de Caddy y las rechaza. El síntoma es una pantalla en blanco que no menciona proxies por ningún lado. Por eso el instalador deja `trusted_proxies` escrito **antes** del primer arranque, no después.
 
-**Pero escribirlo no alcanza: hay que confirmarlo, y solo lo podés confirmar vos.** Home Assistant no se cree la configuración nueva porque se la pidas. La aplica como `pending` y espera confirmación; si en cinco minutos no llega, la revierte, la marca `not_promoted` y `casa.pi` contesta 400 a partir de ahí.
+**Pero escribirlo no alcanza: hay que confirmarlo.** Home Assistant no se cree la configuración nueva porque se la pidas. La aplica como `pending` y espera confirmación; si en cinco minutos no llega, la revierte, la marca `not_promoted` y `casa.pi` contesta 400 a partir de ahí.
 
 Lo que confirma no es cualquier pedido: tiene que ser un pedido **autenticado que llegue por el proxy**. Y para que exista un pedido autenticado tiene que existir un usuario, que se crea en el asistente de bienvenida.
 
-O sea que la cadena se cierra recién cuando entrás a `casa.pi` y creás tu cuenta. **Es el único servicio del repo que el instalador no puede terminar**, y no por falta de código: un `curl` sin sesión devuelve 302 y parece que anda, pero no confirma nada y cinco minutos después vuelve el 400. Está comprobado.
+Y confirmarla no es cualquier pedido. Leyendo el código del componente `http`, la **única** vía es el comando WebSocket autenticado `http/config/promote` que manda el frontend: hace falta usuario, sesión, y que la página cargue por el proxy que todavía no funciona. Un círculo cerrado. Un `curl` sin sesión devuelve 302, parece que anda, y cinco minutos después vuelve el 400.
+
+La salida es hacer lo mismo que ese comando pero con Home Assistant parado: [`home/promover-proxy.py`](../home/promover-proxy.py) copia `pending` a `stable`, deja `pending` en `null` y marca `yaml_migration_done`. Esto último es la mitad importante, porque sin eso el YAML se vuelve a escenificar como `pending` en cada arranque y el problema vuelve al siguiente reinicio.
 
 Así que el instalador deja todo listo hasta donde se puede (el puerto abierto, la configuración escrita, y el `pending` fresco si estaba quemado) y te dice el paso que falta con la parte que importa: **entrá por `casa.pi`, no por la IP con `:8123`**, porque un login por la IP no pasa por el proxy y no confirma nada.
 
