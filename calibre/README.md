@@ -1,5 +1,17 @@
 # Calibre
 
+> ## ⚠️ Desinstalado
+>
+> **Calibre ya no corre en este Pi.** Se desinstaló el 20 de agosto de 2026, después de que la corrupción de la tarjeta le dejara la instalación rota y no valiera la pena repararla.
+>
+> Ya no está en `docker-compose.yml`, ni en el `Caddyfile`, ni en el instalador, ni en la homepage. `calibre.pi` no resuelve.
+>
+> Esta carpeta queda como referencia por si algún día lo volvés a querer: `install.sh`, `bin/` y `systemd/` siguen siendo válidos. El contexto de por qué se cayó está en [../docs/INCIDENTE-2026-08-20.md](../docs/INCIDENTE-2026-08-20.md).
+>
+> Lo que sigue describe cómo era cuando funcionaba.
+
+---
+
 Servidor de biblioteca personal de libros electrónicos. Corre **nativo en el Pi** (no en Docker), expone la biblioteca por web y actúa como distribuidor central para leer desde cualquier dispositivo (browser, e-reader con OPDS, Moon+ Reader, KOReader, etc.).
 
 La gestión de libros (búsqueda, descarga de fuentes open-source, metadata) se hace con **Calibre Desktop en la laptop**. Los libros se suben al Pi por el **web UI** del Content Server — el server corre con `--enable-local-write` así que cualquier usuario autenticado (vía Caddy) puede agregar libros desde el browser.

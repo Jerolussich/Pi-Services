@@ -29,8 +29,8 @@ Los contenedores ya levantan con `docker compose up -d`, pero apuntan a un `/mnt
 | Almacenamiento | **Dos discos unidos con mergerfs** | Una sola biblioteca, hardlinks funcionando, y podés sumar un tercer disco después |
 | Redundancia | **Ninguna** | Con dos discos no hay paridad sin resignar capacidad |
 | Acceso remoto | **Tailscale** | Sin abrir puertos en el router |
-| Series (Sonarr) | **No incluido** | No lo pediste. Entra igual el día que quieras |
-| Cómo se levanta | **Junto con todo** | Un `docker compose up -d` levanta los 20 servicios |
+| Series (Sonarr) | **Incluido** | Se sumó después, junto con Seerr para pedir contenido |
+| Cómo se levanta | **Junto con todo** | Un `docker compose up -d` levanta los 23 servicios |
 
 ---
 

@@ -62,14 +62,14 @@ Cada servicio tiene un nombre `*.pi` que Pi-hole resuelve a la IP del Pi. Caddy 
 
 Por eso Pi-hole no es solo un bloqueador de publicidad: es la pieza de la que depende que funcionen los nombres de toda tu infraestructura. Si Pi-hole se cae, los servicios siguen andando pero no llegás a ellos por nombre.
 
-Los registros se cargan en Pi-hole, en `Local DNS → DNS Records`, todos apuntando a `192.168.68.66`.
+Los registros se cargan en Pi-hole, en `Local DNS → DNS Records`, todos apuntando a `192.168.68.66`. **No hace falta cargarlos a mano**: el instalador los deriva del Caddyfile, uno por nombre, cada vez que corre. Hoy son 19.
 
 ### 3. Un solo compose levanta todo
 
 El `docker-compose.yml` de la raíz no define servicios: los **incluye** desde cada carpeta. Eso permite dos cosas a la vez:
 
 ```bash
-docker compose up -d          # desde la raiz: levanta los 22 servicios
+docker compose up -d          # desde la raiz: levanta los 23 servicios
 ```
 
 ```bash
@@ -98,8 +98,8 @@ La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.en
 
 | Capa | Qué hace |
 |---|---|
-| **UFW** | Solo deja entrar 22, 80 y 53. El 8181 de Pi-hole está bloqueado desde afuera y solo se llega vía Caddy |
-| **fail2ban** | Banea por una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy |
+| **UFW** | Solo deja entrar 22, 80 y 53. Los puertos del host (8181 de Pi-hole, 8123 de Home Assistant) están bloqueados desde afuera y solo se llega vía Caddy |
+| **fail2ban** | Banea por una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy. Tu LAN y tu tailnet están exentas, porque si no te dejaba afuera a vos |
 | **Caddy** | Punto único de entrada HTTP, con autenticación donde hace falta |
 | **Tailscale** | Acceso remoto sin abrir un solo puerto en el router |
 
