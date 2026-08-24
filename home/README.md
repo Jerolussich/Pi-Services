@@ -31,11 +31,13 @@ http:
 
 Pero escribirlo no alcanza, y acá está la parte que no es obvia.
 
-**Home Assistant no se cree esa configuración porque se la pidas.** La aplica como `pending` y espera que llegue un pedido **a través del proxy** dentro de los cinco minutos. Si no llega, la revierte, la marca `not_promoted` y no la reintenta nunca más.
+**Home Assistant no se cree esa configuración porque se la pidas.** La aplica como `pending` y espera confirmación. Si en cinco minutos no llega, la revierte, la marca `not_promoted`, y `casa.pi` contesta 400 a partir de ahí.
 
-El resultado es el peor error posible de diagnosticar: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, el log no dice nada útil, y `casa.pi` contesta 400 para siempre.
+Y lo que confirma no es cualquier pedido: tiene que ser **autenticado y llegar por el proxy**. Un `curl` sin sesión devuelve 302, parece que anda, y cinco minutos después vuelve el 400.
 
-Por eso el instalador hace la confirmación él mismo. Y si encuentra un `pending` ya quemado, borra `.storage/http` (que se regenera solo desde el YAML, con copia previa) y reinicia para que vuelva a intentarlo.
+O sea que **solo lo podés confirmar vos**, creando tu cuenta. Es la razón de fondo por la que este es el único servicio del repo que el instalador no puede terminar. Lo que sí hace: dejar el YAML escrito, abrir el puerto, y si encuentra un `pending` ya quemado borrar `.storage/http` (que se regenera solo desde el YAML, con copia previa) para que tengas la ventana abierta cuando entres.
+
+El resultado, si no se sabe, es el peor error posible de diagnosticar: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, y el log no menciona proxies hasta que ya es tarde.
 
 ### Que Caddy pueda llegarle
 
@@ -57,7 +59,11 @@ Si algún día tenés el disco externo y querés historial largo, subí `purge_k
 
 ## Lo que sí tenés que hacer vos
 
-**Crear tu usuario.** La primera vez que entres a `http://casa.pi` te pide nombre, contraseña y ubicación. Eso no se puede automatizar: Home Assistant genera claves criptográficas por instalación durante ese paso, y sembrarlas de antemano sería peor que hacerlo a mano.
+**Crear tu usuario, y hacerlo entrando por `http://casa.pi`.** No por la IP con `:8123`, y esto no es un detalle estético.
+
+Te pide nombre, contraseña y ubicación. Eso no se puede automatizar: Home Assistant genera claves criptográficas por instalación durante ese paso, y sembrarlas de antemano sería peor que hacerlo a mano.
+
+Pero además, **ese primer login es lo único que confirma la configuración del proxy**. Si entrás por la IP, el pedido no pasa por Caddy, no confirma nada, y `casa.pi` te va a seguir dando 400 hasta que lo hagas bien.
 
 Son dos minutos y es una sola vez.
 

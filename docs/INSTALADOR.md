@@ -149,7 +149,7 @@ Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`
 | **Pi-hole** | Le pone la contraseña del panel y **genera su clave de API** para las métricas |
 | **FreshRSS** | Hace el asistente entero, crea tu usuario y **habilita la API con su clave** |
 | **Wallabag** | Le cambia la contraseña de fábrica y **le crea el cliente de API** que usa el filtro |
-| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, y **confirma la configuración del proxy** |
+| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque y abre su puerto solo para Caddy. Es el único que **no puede terminar solo**, y abajo está por qué |
 
 #### Las tres cuentas que ya no tenés que crear
 
@@ -199,12 +199,12 @@ El orden importa y no es casual: qBittorrent antes que Radarr, porque Radarr nec
 
 ### 7. Te guía con lo que queda
 
-Después de todo eso, lo que queda son **elecciones que son tuyas**: qué trackers usás, de dónde bajar los subtítulos, qué complementos querés en Jellyfin.
+Después de todo eso queda poco, y de dos tipos: **elecciones que son tuyas** (qué trackers usás, de dónde bajar los subtítulos, qué complementos querés en Jellyfin) y **la cuenta de Home Assistant**, que es la única que no se puede automatizar de verdad.
 
-Son **tres pantallas**, y las tres son decisiones, no trámites. Antes eran seis, y la mitad eran cuentas que había que crear a mano solo para poder copiar un token de vuelta.
+Son **cuatro pantallas**. Antes eran seis, y la mitad eran cuentas que había que crear a mano solo para poder copiar un token de vuelta. Esas ya no están.
 
 ```
-  [1/3]  prowlarr   Cargar los indexers que uses
+  [2/4]  prowlarr   Cargar los indexers que uses
         http://prowlarr.pi
 
         1. Entra con admin y tu contrasena. Ya se la configure.
@@ -338,11 +338,15 @@ Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están
 
 **Y detrás de Caddy tira `400 Bad Request` si no se lo avisa.** Ve todas las visitas viniendo de la IP de Caddy y las rechaza. El síntoma es una pantalla en blanco que no menciona proxies por ningún lado. Por eso el instalador deja `trusted_proxies` escrito **antes** del primer arranque, no después.
 
-**Pero escribirlo no alcanza: hay que confirmarlo, y por el proxy.** Home Assistant no se cree la configuración nueva porque se la pidas. La aplica como `pending` y espera que llegue un pedido **a través del proxy** dentro de los cinco minutos. Si no llega, la revierte, la marca `not_promoted` y no la reintenta nunca más.
+**Pero escribirlo no alcanza: hay que confirmarlo, y solo lo podés confirmar vos.** Home Assistant no se cree la configuración nueva porque se la pidas. La aplica como `pending` y espera confirmación; si en cinco minutos no llega, la revierte, la marca `not_promoted` y `casa.pi` contesta 400 a partir de ahí.
 
-Ese es el peor error de toda la instalación: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, el log no dice nada útil, y `casa.pi` contesta 400 para siempre. Nada en el síntoma apunta a la causa.
+Lo que confirma no es cualquier pedido: tiene que ser un pedido **autenticado que llegue por el proxy**. Y para que exista un pedido autenticado tiene que existir un usuario, que se crea en el asistente de bienvenida.
 
-Así que el instalador hace la confirmación él mismo, y si encuentra un `pending` ya quemado, lo destraba. Antes de eso abre el puerto en el firewall, porque si Caddy no llega, la confirmación tampoco puede pasar y todo el mecanismo se cae en cadena. Es exactamente lo que pasó la primera vez.
+O sea que la cadena se cierra recién cuando entrás a `casa.pi` y creás tu cuenta. **Es el único servicio del repo que el instalador no puede terminar**, y no por falta de código: un `curl` sin sesión devuelve 302 y parece que anda, pero no confirma nada y cinco minutos después vuelve el 400. Está comprobado.
+
+Así que el instalador deja todo listo hasta donde se puede (el puerto abierto, la configuración escrita, y el `pending` fresco si estaba quemado) y te dice el paso que falta con la parte que importa: **entrá por `casa.pi`, no por la IP con `:8123`**, porque un login por la IP no pasa por el proxy y no confirma nada.
+
+Ese es también el peor error posible de diagnosticar si no lo sabés: `configuration.yaml` dice exactamente lo correcto, el contenedor está sano, y el log no menciona proxies hasta que ya es tarde.
 
 **Un servicio nuevo en la red del host necesita su regla de UFW, o Caddy contesta 502.** Y esa lista estaba escrita a mano con un solo puerto adentro, el 8181 de Pi-hole. Ahora sale del Caddyfile, igual que los registros DNS: los destinos que empiezan con un número son del host, los que empiezan con una letra son contenedores.
 
