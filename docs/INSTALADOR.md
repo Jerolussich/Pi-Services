@@ -350,6 +350,8 @@ Ese es también el peor error posible de diagnosticar si no lo sabés: `configur
 
 **Un servicio nuevo en la red del host necesita su regla de UFW, o Caddy contesta 502.** Y esa lista estaba escrita a mano con un solo puerto adentro, el 8181 de Pi-hole. Ahora sale del Caddyfile, igual que los registros DNS: los destinos que empiezan con un número son del host, los que empiezan con una letra son contenedores.
 
+**Un contenedor en la red del host no tiene IP, pero `docker inspect` no devuelve vacío: devuelve el texto `invalid IP`.** Es lo que imprime el template de Go cuando el campo no aplica. Si no se filtra, se arma una URL `http://invalid:8123`, falla, y un servicio perfectamente sano figura como caído. El diagnóstico reportó a Home Assistant como muerto por esto. Ahora tanto el instalador como el diagnóstico preguntan por la misma función, `ip_de`, que devuelve `127.0.0.1` para los de red del host.
+
 **Su historial es lo que más escribe en la tarjeta.** El `recorder` guarda cada cambio de cada entidad y de fábrica retiene 10 días. Queda en 3, con confirmación cada 30 segundos y sacando las entidades que cambian cada pocos segundos.
 
 **`pihole setpassword --help` no muestra ayuda: te cambia la contraseña a `--help`.**

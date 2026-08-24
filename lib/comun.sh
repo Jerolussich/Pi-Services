@@ -1524,8 +1524,20 @@ print(json.dumps(d))' 2>/dev/null)
 #  POST de bootstrap devuelve error. Como todo este repo se apoya en que volver
 #  a correr el instalador es seguro, hay que preguntar antes.
 
+# Donde preguntarle a un contenedor si responde.
+#
+# Ojo con el caso de la red del host: ahi .IPAddress no viene vacio, viene con
+# el texto "invalid IP", que es lo que imprime el template de Go cuando el
+# campo no aplica. Sin filtrarlo se arma una URL http://invalid:8123 y el
+# resultado es que un servicio perfectamente sano figura como caido. Le paso
+# al diagnostico con Home Assistant.
 ip_de() {
-    $DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1" 2>/dev/null | awk '{print $1}'
+    local modo; modo=$($DOCKER inspect -f '{{.HostConfig.NetworkMode}}' "$1" 2>/dev/null)
+    [ "$modo" = "host" ] && { echo 127.0.0.1; return; }
+    local ip
+    ip=$($DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1" 2>/dev/null | awk '{print $1}')
+    case "$ip" in invalid|"") return 1 ;; esac
+    echo "$ip"
 }
 
 seerr_api() {

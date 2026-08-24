@@ -362,8 +362,11 @@ revisar_contenedor() {
     # La mitad de las imagenes no traen curl, y ahi el exec falla con un texto
     # que se colaba como si fuera un codigo HTTP: decia "responde" sin haber
     # comprobado nada, que es el peor error que puede cometer un diagnostico.
+    # Por ip_de, que es la misma que usa el instalador. Tener aca una copia
+    # propia era justamente el problema: esta no sabia de la red del host y
+    # daba por caido a Home Assistant, que estaba perfecto.
     local ip code
-    ip=$($DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$svc" 2>/dev/null | awk '{print $1}')
+    ip=$(ip_de "$svc")
     if [ -z "$ip" ]; then
         bien "$svc" "corriendo, sin IP para consultar"
         return 0
