@@ -1,0 +1,18 @@
+# Todo lo que corre en la Pi se guarda y se saca con finales de linea de Unix.
+#
+# El repo se edita desde Windows, donde git tiene core.autocrlf=true y
+# convierte a CRLF al sacar los archivos. Un script con CRLF no arranca en
+# Linux: bash lee "#!/bin/bash\r" y contesta "bad interpreter", que es un
+# error que no se parece en nada a su causa. Con una unidad de systemd es
+# peor todavia, porque falla en silencio.
+#
+# Esto lo cierra de una vez y no depende de que nadie configure nada.
+*.sh            text eol=lf
+*.service       text eol=lf
+*.timer         text eol=lf
+*.tmpfiles      text eol=lf
+*.conf          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+Caddyfile       text eol=lf
+98-pi-services  text eol=lf
