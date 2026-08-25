@@ -107,7 +107,28 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 
 ## Lo que corre solo
 
-Tres cosas pasan sin que las pidas. Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
+Cinco cosas pasan sin que las pidas. Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
+
+Todas las instala y las programa el instalador. Los horarios salen de [`ajustes.conf`](../ajustes.conf), un solo archivo, y no de las unidades de systemd.
+
+### Avisos al celular
+
+Cada hora el diagnóstico revisa todo y, **si algo cambió de estado**, te llega una notificación al teléfono por ntfy. Si no cambió nada, silencio.
+
+Son dos canales: `alertas` (suena, casi nunca habla) y `media` (silencioso, avisa cuando una película o una serie está lista).
+
+```bash
+./avisos.sh --canales     # a que suscribirte desde el celular
+./avisos.sh --probar      # una prueba a cada canal
+```
+
+Todo el detalle en [AVISOS.md](AVISOS.md).
+
+### Feed de eventos
+
+Lo que no merece interrumpirte pero sí recordarse: el respaldo que salió bien, la revisión de discos, las importaciones de anoche. En **`http://eventos.pi`** o con `./avisos.sh`.
+
+No hay ningún servicio detrás: Caddy sirve una página estática y un archivo de texto que escribe el diagnóstico.
 
 ### Respaldo diario
 
@@ -137,7 +158,7 @@ Adentro de cada `.tar.gz` hay un `MANIFIESTO.txt` con los pasos de restauración
 
 ### Aviso al entrar por SSH
 
-Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuando entrás por SSH, si hay algo mal te lo muestra; si está todo bien, no molesta. Lo dispara el timer `pi-estado`.
+Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuando entrás por SSH, si hay algo mal te lo muestra; si está todo bien, no molesta. Lo dispara el timer `pi-estado`, el mismo que manda los avisos y publica las métricas.
 
 ### Límite a los logs
 
@@ -160,6 +181,7 @@ journalctl --disk-usage              # y el journal
 
 - [OPERACION.md](OPERACION.md): levantar, bajar, actualizar, ver logs, backups
 - [ARQUITECTURA.md](ARQUITECTURA.md): cómo encaja todo, decisiones de diseño y por qué
+- [AVISOS.md](AVISOS.md): notificaciones al celular, feed de eventos, métricas propias y el score de salud
 
 ### Multimedia
 
@@ -190,8 +212,11 @@ pi-services/
 │
 ├── respaldo.sh                ← respaldo diario de lo irrecuperable
 ├── diagnostico.sh             ← que anda, que no, y por que
+├── avisos.sh                  ← el feed de eventos y los avisos al celular
+├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
-├── systemd/                   ← los timers de respaldo y de estado
+├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
+├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
 ├── caddy/                     ← proxy inverso, la puerta de entrada

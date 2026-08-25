@@ -57,6 +57,7 @@ Es el único contenedor en la red del host, porque descubre dispositivos por mDN
 | Pi-hole | `pihole.pi` | DNS de la red, bloqueo de publicidad, resuelve los `*.pi` |
 | Caddy | interno | Proxy inverso: todo el tráfico HTTP entra por acá |
 | Homepage | `homepage.pi` | Panel de inicio, con datos en vivo de cada servicio |
+| Eventos | `eventos.pi` | Feed de lo que fue pasando. Sin servicio detrás: un archivo estático |
 | Tailscale | interno | Acceso remoto sin abrir puertos en el router |
 
 ### Monitoreo
@@ -95,15 +96,25 @@ Ver [fitbit-exporter/README.md](fitbit-exporter/README.md) y [finance/finance-tr
 
 ## Lo que corre solo
 
-Tres cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
+Cinco cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
 
 | | Qué | Cuándo |
 |---|---|---|
+| **Avisos** | si algo **cambia** de estado, te llega al celular por ntfy. Si no cambia nada, silencio | cada hora |
+| **Feed** | lo que no merece interrumpirte pero sí recordarse, en `eventos.pi` | siempre |
 | **Respaldo** | [`respaldo.sh`](respaldo.sh) guarda los `.env`, los tokens y todas las bases de datos en `~/respaldos` | todos los días a las 04:00 |
-| **Diagnóstico** | [`diagnostico.sh`](diagnostico.sh) revisa todo y te deja el resultado en el mensaje de bienvenida del SSH | cada hora |
+| **Diagnóstico** | [`diagnostico.sh`](diagnostico.sh) revisa todo, avisa, anota y publica métricas a Grafana | cada hora |
 | **Límite a los logs** | [`docker/daemon.json`](docker/README.md) acota los logs de Docker, que de fábrica no tienen tope y pueden llenar la tarjeta | siempre |
 
-Los dos primeros los disparan timers de systemd, en [`systemd/`](systemd/).
+Los timers los instala y los programa el instalador, desde [`systemd/`](systemd/). **Los horarios y los umbrales se cambian en un solo archivo**, [`ajustes.conf`](ajustes.conf), y no adentro de las unidades ni del código.
+
+```bash
+./avisos.sh --canales     # a que suscribirte desde el celular
+./avisos.sh --probar      # una prueba a cada canal
+./avisos.sh               # el feed de eventos
+```
+
+El detalle, en [docs/AVISOS.md](docs/AVISOS.md).
 
 **Falta un paso que es tuyo:** bajarte una copia del respaldo. Mientras viva en la misma tarjeta, no es un respaldo.
 
@@ -146,6 +157,8 @@ Cada dato vive en un solo lugar y el resto se deriva. Los registros DNS de Pi-ho
 
 Las API keys tampoco se copian: el instalador las lee de cada servicio y las escribe donde hacen falta.
 
+Y lo mismo con el tiempo: **los horarios de las tareas automáticas salen de [`ajustes.conf`](ajustes.conf)**, no de las unidades de systemd. Cambiás una línea ahí, volvés a correr el instalador, y las unidades se reescriben solas.
+
 ---
 
 ## Estructura
@@ -154,11 +167,14 @@ Las API keys tampoco se copian: el instalador las lee de cada servicio y las esc
 pi-services/
 ├── instalador.sh              ← levanta y configura, por modulos
 ├── diagnostico.sh             ← que anda, que no, y por que
+├── avisos.sh                  ← el feed de eventos y los avisos al celular
 ├── respaldo.sh                ← respaldo diario de lo irrecuperable
 ├── setup-security.sh          ← UFW y fail2ban
+├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── docker-compose.yml         ← incluye todos los servicios
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
-├── systemd/                   ← los timers de respaldo y de estado
+├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
+├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 ├── docs/                      ← toda la documentacion transversal
 │
@@ -215,6 +231,7 @@ Nunca se commitean, y están en `.gitignore`. Son también **lo primero que hay 
 | Cómo funciona el instalador | [docs/INSTALADOR.md](docs/INSTALADOR.md) |
 | Decisiones de diseño y por qué | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) |
 | Levantar, bajar, actualizar, logs | [docs/OPERACION.md](docs/OPERACION.md) |
+| Avisos al celular, feed y métricas | [docs/AVISOS.md](docs/AVISOS.md) |
 | Salud del equipo y la tarjeta | [docs/MANTENIMIENTO.md](docs/MANTENIMIENTO.md) |
 | Acceso remoto | [TAILSCALE.md](TAILSCALE.md) |
 | Qué pasó el 20 de agosto de 2026 | [docs/INCIDENTE-2026-08-20.md](docs/INCIDENTE-2026-08-20.md) |

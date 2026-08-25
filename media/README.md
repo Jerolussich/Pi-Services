@@ -270,6 +270,32 @@ Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra 
 
 ---
 
+## El aviso cuando algo se importa
+
+Radarr y Sonarr te avisan al celular cuando una película o una serie queda lista, por el canal `media` de ntfy. El instalador lo configura solo.
+
+Pero **no avisan ellos**: ejecutan [`avisar-import.sh`](avisar-import.sh), que escribe una línea en un archivo compartido con el host. Es un `echo` y nada más.
+
+```
+ Radarr importa  ─┐
+                  ├─▶  una linea en un archivo  ─▶  timer  ─▶  ntfy
+ Sonarr importa  ─┘        (adentro del contenedor)  (en el host)
+```
+
+Tres cosas salen de armarlo así:
+
+**El nombre del canal nunca entra a un contenedor.** El script de adentro no necesita curl, ni internet, ni saber que ntfy existe.
+
+**Un pack de temporada es un aviso, no ocho.** El host espera unos minutos a que la tanda termine y manda un solo mensaje: `Fallout · temporada 2 · 8 episodios nuevos`. Un capítulo suelto sigue siendo un aviso.
+
+**Las mejoras de calidad se descartan.** Que te reemplacen un 720p por un 1080p de algo que ya tenías no es una novedad, y el perfil de calidad que mejora solo lo dispara seguido. Se cambia con `MEDIA_AVISAR_MEJORAS` en [`../ajustes.conf`](../ajustes.conf).
+
+El instalador también le pide a Jellyfin que reescanee al importar. Sin eso el aviso mentiría: te diría "ya la podés ver" antes de que Jellyfin la haya indexado.
+
+Si el gancho se pierde (pasa si alguien recrea el contenedor desde cero), el diagnóstico lo detecta y lo vuelve a poner con `./diagnostico.sh --arreglar`. El detalle está en [../docs/AVISOS.md](../docs/AVISOS.md).
+
+---
+
 ## Notas
 
 **El tráfico de torrents sale directo**, sin VPN. Tu IP es visible para los otros pares del enjambre. Si más adelante querés cambiarlo, el patrón habitual es un contenedor `gluetun` con killswitch y qBittorrent usando su red.
