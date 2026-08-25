@@ -4,8 +4,10 @@
 #
 #      ./avisos.sh              las ultimas lineas del feed
 #      ./avisos.sh --todo       el feed entero
-#      ./avisos.sh --canales    a que suscribirte en la app
+#      ./avisos.sh --canales    a que suscribirte en la app, paso a paso
 #      ./avisos.sh --probar     manda un aviso de prueba a los dos canales
+#      ./avisos.sh --prender    vuelve a mandar avisos al celular
+#      ./avisos.sh --apagar     deja de mandarlos, sin borrar los canales
 #      ./avisos.sh --media      manda la tanda de importaciones, si toca
 #
 #  COMO LLEGAN LOS AVISOS
@@ -78,29 +80,68 @@ mostrar_feed() {
 
 mostrar_canales() {
     titulo "Tus canales"
+    if avisos_apagados; then
+        info "Los avisos estan ${B}apagados${N} porque asi lo elegiste."
+        echo ""
+        gris "     El diagnostico sigue corriendo igual, el feed se llena igual"
+        gris "     y Grafana recibe las metricas igual. Solo no suena el celular."
+        echo ""
+        info "Para prenderlos:  ${B}./avisos.sh --prender${N}"
+        echo ""
+        return 0
+    fi
     if ! avisos_configurados; then
-        falla "Todavia no hay canales configurados."
-        info "Los crea el instalador:  ${B}./instalador.sh${N}"
+        falla "Todavia no hay canales creados."
+        info "Los crea el instalador. Corré ${B}./instalador.sh${N} y elegí el modulo"
+        info "${B}Avisos${N} de la lista."
         echo ""
         return 1
     fi
-    info "Baja la app ${B}ntfy${N} (Google Play, App Store o F-Droid), toca el +"
-    info "y escribi estos nombres. No hay cuenta ni contrasena que crear."
-    echo ""
-    echo "  ${B}alertas${N}   ${C}$NTFY_ALERTAS${N}"
-    gris "            lo que se rompe. Dejalo con sonido."
-    echo ""
-    if [ -n "${NTFY_MEDIA:-}" ]; then
-        echo "  ${B}media${N}     ${C}$NTFY_MEDIA${N}"
-        gris "            peliculas y series listas. Silencialo en la app."
+    guia_suscripcion
+}
+
+# Prender y apagar. Existe porque decir que no en el instalador no puede ser
+# una decision para siempre, y porque borrar los nombres para apagarlos te
+# obligaria a volver a suscribirte desde cero si cambias de idea.
+prender() {
+    escribir_ajuste AVISOS si
+    titulo "Avisos prendidos"
+    if [ -z "${NTFY_ALERTAS:-}" ]; then
+        info "Todavia no hay canales creados."
+        info "Corré ${B}./instalador.sh${N} y elegí el modulo ${B}Avisos${N}."
         echo ""
+        return 0
     fi
-    info "Tambien se ven en el navegador, sin instalar nada:"
-    gris "     $NTFY_SERVIDOR/$NTFY_ALERTAS"
+    AVISOS=si
+    ok "Vuelven a salir por los canales de siempre."
+    guia_suscripcion
+}
+
+apagar() {
+    escribir_ajuste AVISOS no
+    titulo "Avisos apagados"
+    ok "No te va a llegar nada mas al celular."
     echo ""
-    echo "  ${A}El nombre del canal es la contrasena.${N}"
-    gris "     Cualquiera que lo sepa recibe tus avisos. No lo publiques."
+    gris "     Los nombres de los canales quedan guardados, asi que si los"
+    gris "     prendes de nuevo no hace falta volver a suscribirse."
     echo ""
+    info "Lo que sigue funcionando igual:"
+    gris "     el diagnostico cada hora, el feed en http://eventos.pi,"
+    gris "     las metricas de Grafana y el mensaje de bienvenida del SSH."
+    echo ""
+    info "Para volver a prenderlos:  ${B}./avisos.sh --prender${N}"
+    echo ""
+    # El envio agrupado de media no tiene sentido sin canal donde mandarlo.
+    sudo systemctl disable --now pi-media.timer >/dev/null 2>&1
+}
+
+escribir_ajuste() {
+    local var="$1" valor="$2" tmp
+    touch "$REPO/.env"
+    tmp=$(mktemp)
+    grep -vE "^${var}=" "$REPO/.env" > "$tmp" 2>/dev/null
+    printf '%s=%s\n' "$var" "$valor" >> "$tmp"
+    mv "$tmp" "$REPO/.env"
 }
 
 probar() {
@@ -208,8 +249,10 @@ case "${1:-}" in
     --media)         enviar_media ;;
     --canales|-c)    mostrar_canales ;;
     --probar|-p)     probar ;;
+    --prender)       prender ;;
+    --apagar)        apagar ;;
     --todo|-t)       mostrar_feed 100000 ;;
-    --ayuda|-h)      sed -n '3,10p' "$0" | sed 's/^# \?//' ;;
+    --ayuda|-h)      sed -n '3,12p' "$0" | sed 's/^# \?//' ;;
     "")              mostrar_feed 30 ;;
     *)               falla "No conozco la opcion $1"; exit 1 ;;
 esac

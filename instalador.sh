@@ -938,6 +938,7 @@ ejecutar() {
             pihole)     instalar_pihole ;;
             tailscale)  instalar_tailscale ;;
             seguridad)  instalar_seguridad ;;
+            avisos)     instalar_avisos ;;
             *)
                 # levantar_modulo respeta los servicios elegidos y saltea
                 # los que ya estan corriendo, asi que es seguro llamarlo

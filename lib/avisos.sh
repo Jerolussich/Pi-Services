@@ -116,7 +116,71 @@ _av_escribir() {
 NTFY_ALERTAS="$(_av_leer "$REPO/.env" NTFY_ALERTAS || true)"
 NTFY_MEDIA="$(_av_leer "$REPO/.env" NTFY_MEDIA || true)"
 
-avisos_configurados() { [ -n "${NTFY_ALERTAS:-}" ]; }
+# AVISOS=no es una decision tuya, no algo que falta. Se respeta aunque los
+# canales sigan creados, asi apagarlos no obliga a borrar nada ni a volver a
+# inventar los nombres si despues los prendes de nuevo.
+AVISOS="$(_av_leer "$REPO/.env" AVISOS || true)"
+
+avisos_configurados() {
+    [ "${AVISOS:-}" != "no" ] && [ -n "${NTFY_ALERTAS:-}" ]
+}
+
+# Distinto de lo anterior: esto es "dijiste que no los queres", que no es lo
+# mismo que "faltan". El diagnostico no tiene que reprocharte una decision.
+avisos_apagados() { [ "${AVISOS:-}" = "no" ]; }
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LA GUIA PARA SUSCRIBIRSE
+#
+#  Crear los canales es la parte facil y la hace el instalador. Suscribirse
+#  desde el celular es la unica parte que un script NO puede hacer por vos,
+#  igual que crear una cuenta.
+#
+#  Asi que se explica paso a paso, con los nombres a la vista. Un ok verde que
+#  dice "2 canales creados" y no te dice que hacer con ellos no sirve de nada.
+#
+#  Vive aca y no en comun.sh para que sea el MISMO texto en el instalador y en
+#  ./avisos.sh --canales. Con dos copias, en tres meses dicen cosas distintas.
+# ══════════════════════════════════════════════════════════════════════════════
+
+guia_suscripcion() {
+    local a="${NTFY_ALERTAS:-}" m="${NTFY_MEDIA:-}"
+    [ -n "$a" ] || return 0
+
+    echo ""
+    echo "  ${B}${C}Ahora te toca a vos. Son treinta segundos.${N}"
+    echo ""
+    echo "  ${B}1${N})  Baja la app ${B}ntfy${N} en el celular"
+    echo "  ${G}    Esta en Google Play, App Store y F-Droid. Gratis y sin cuenta.${N}"
+    echo ""
+    echo "  ${B}2${N})  Abrila, toca el ${B}+${N} y escribi este nombre, tal cual:"
+    echo ""
+    echo "          ${C}${B}$a${N}"
+    echo ""
+    echo "  ${G}    Es el de las alertas. Dejalo CON sonido: casi nunca habla, y${N}"
+    echo "  ${G}    cuando habla es porque hay algo para mirar.${N}"
+    if [ -n "$m" ]; then
+        echo ""
+        echo "  ${B}3${N})  Toca el ${B}+${N} otra vez y agrega este otro:"
+        echo ""
+        echo "          ${C}${B}$m${N}"
+        echo ""
+        echo "  ${G}    Es el de peliculas y series listas. A este SILENCIALO en la app:${N}"
+        echo "  ${G}    llega seguido y nunca es urgente.${N}"
+    fi
+    echo ""
+    echo "  ${A}!${N} ${B}El nombre del canal es la contrasena.${N}"
+    echo "  ${G}    Cualquiera que lo sepa recibe tus avisos. No lo publiques.${N}"
+    echo ""
+    echo "    Para comprobar que llega:       ${B}./avisos.sh --probar${N}"
+    echo "    Para volver a ver los nombres:  ${B}./avisos.sh --canales${N}"
+    echo "    Sin la app, desde el navegador: ${B}$NTFY_SERVIDOR/$a${N}"
+    echo ""
+    # Solo cuando corre desde el instalador, que es quien lleva esa lista.
+    declare -F pendiente >/dev/null 2>&1 && \
+        pendiente "Suscribirte a los canales de ntfy desde el celular: ./avisos.sh --canales"
+    return 0
+}
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CANILLA 1  ·  NTFY

@@ -96,11 +96,10 @@ Ver [fitbit-exporter/README.md](fitbit-exporter/README.md) y [finance/finance-tr
 
 ## Lo que corre solo
 
-Cinco cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
+Cuatro cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
 
 | | Qué | Cuándo |
 |---|---|---|
-| **Avisos** | si algo **cambia** de estado, te llega al celular por ntfy. Si no cambia nada, silencio | cada hora |
 | **Feed** | lo que no merece interrumpirte pero sí recordarse, en `eventos.pi` | siempre |
 | **Respaldo** | [`respaldo.sh`](respaldo.sh) guarda los `.env`, los tokens y todas las bases de datos en `~/respaldos` | todos los días a las 04:00 |
 | **Diagnóstico** | [`diagnostico.sh`](diagnostico.sh) revisa todo, avisa, anota y publica métricas a Grafana | cada hora |
@@ -108,9 +107,16 @@ Cinco cosas pasan sin que las pidas, y están acá porque son justo las que uno 
 
 Los timers los instala y los programa el instalador, desde [`systemd/`](systemd/). **Los horarios y los umbrales se cambian en un solo archivo**, [`ajustes.conf`](ajustes.conf), y no adentro de las unidades ni del código.
 
+### Y una que sí elegís
+
+**Avisos al celular.** Es un módulo del menú del instalador, no algo que pasa solo, porque es lo único de todo el repo que manda algo fuera de tu casa: los títulos de los avisos pasan por ntfy.sh, un servicio público gratuito.
+
+Si lo activás, cada hora el diagnóstico revisa todo y **te avisa solo si algo cambió de estado**. Si no cambió nada, silencio. Y el instalador te deja los pasos para suscribirte, con los nombres a la vista.
+
 ```bash
-./avisos.sh --canales     # a que suscribirte desde el celular
+./avisos.sh --canales     # los pasos, con tus nombres
 ./avisos.sh --probar      # una prueba a cada canal
+./avisos.sh --apagar      # dejar de recibirlos, sin borrar los canales
 ./avisos.sh               # el feed de eventos
 ```
 
