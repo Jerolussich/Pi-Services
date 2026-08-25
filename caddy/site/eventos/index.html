@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<!--
+  El feed de eventos de Pi-Services.
+
+  Es un archivo estatico y nada mas. No hay servidor, no hay base de datos, no
+  hay contenedor: Caddy sirve esta pagina y el texto plano que escribe el
+  diagnostico, y el navegador los junta.
+
+  Por eso no hay nada que mantener ni que actualizar. El dia que cambie el
+  formato del feed, cambia esta pagina y listo.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eventos · Pi-Services</title>
+<style>
+  :root {
+    --fondo: #0f172a;
+    --caja: #1e293b;
+    --borde: #334155;
+    --texto: #e2e8f0;
+    --tenue: #94a3b8;
+    --alerta: #fbbf24;
+    --media: #38bdf8;
+    --discos: #a78bfa;
+    --sistema: #64748b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem;
+    background: var(--fondo); color: var(--texto);
+    font: 15px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: .75rem;
+    align-items: baseline; justify-content: space-between;
+    max-width: 900px; margin: 0 auto 1.25rem;
+  }
+  h1 { font-size: 1.1rem; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  #resumen { color: var(--tenue); font-size: .85rem; }
+  #filtros { display: flex; gap: .4rem; flex-wrap: wrap; }
+  button {
+    background: var(--caja); color: var(--tenue);
+    border: 1px solid var(--borde); border-radius: 6px;
+    padding: .25rem .7rem; font: inherit; font-size: .8rem; cursor: pointer;
+  }
+  button:hover { color: var(--texto); }
+  button[aria-pressed="true"] { background: var(--borde); color: var(--texto); }
+  main { max-width: 900px; margin: 0 auto; }
+  .fila {
+    display: grid; grid-template-columns: 8.5rem 5.5rem 1fr;
+    gap: .75rem; padding: .45rem .75rem;
+    border-bottom: 1px solid var(--borde);
+  }
+  .fila:hover { background: var(--caja); }
+  .fecha { color: var(--tenue); font-size: .82rem; white-space: nowrap; }
+  .origen { font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+  .origen[data-o="alerta"]  { color: var(--alerta); }
+  .origen[data-o="media"]   { color: var(--media); }
+  .origen[data-o="discos"]  { color: var(--discos); }
+  .origen[data-o="sistema"] { color: var(--sistema); }
+  .texto { word-break: break-word; }
+  .vacio { color: var(--tenue); padding: 2rem .75rem; }
+  @media (max-width: 600px) {
+    body { padding: 1rem .5rem; }
+    .fila { grid-template-columns: 1fr; gap: .1rem; padding: .6rem .5rem; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Eventos</h1>
+  <div id="filtros"></div>
+  <div id="resumen">cargando…</div>
+</header>
+<main id="lista"></main>
+
+<script>
+// Los eventos mas nuevos van arriba, que es como se lee un feed. El archivo
+// los guarda al reves, asi que se da vuelta al mostrar.
+const lista = document.getElementById('lista');
+const resumen = document.getElementById('resumen');
+const filtros = document.getElementById('filtros');
+let eventos = [];
+let filtro = 'todo';
+
+function pintar() {
+  const vistos = filtro === 'todo' ? eventos : eventos.filter(e => e.origen === filtro);
+  if (!vistos.length) {
+    lista.innerHTML = '<div class="vacio">Nada por aca todavia.</div>';
+    return;
+  }
+  lista.innerHTML = vistos.map(e =>
+    '<div class="fila">' +
+      '<span class="fecha">' + e.fecha + '</span>' +
+      '<span class="origen" data-o="' + e.origen + '">' + e.origen + '</span>' +
+      '<span class="texto">' + e.texto + '</span>' +
+    '</div>'
+  ).join('');
+}
+
+function pintarFiltros() {
+  const origenes = ['todo', ...new Set(eventos.map(e => e.origen))];
+  filtros.innerHTML = origenes.map(o =>
+    '<button data-f="' + o + '" aria-pressed="' + (o === filtro) + '">' + o + '</button>'
+  ).join('');
+  filtros.querySelectorAll('button').forEach(b => {
+    b.onclick = () => { filtro = b.dataset.f; pintarFiltros(); pintar(); };
+  });
+}
+
+function escapar(s) {
+  return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+async function cargar() {
+  try {
+    const r = await fetch('feed.txt?' + Date.now());
+    if (!r.ok) throw new Error(r.status);
+    const texto = await r.text();
+    eventos = texto.split('\n')
+      .filter(l => l.trim())
+      .map(l => {
+        const p = l.split('\t');
+        return { fecha: escapar(p[0] || ''), origen: escapar(p[1] || 'sistema'), texto: escapar(p.slice(2).join(' ')) };
+      })
+      .reverse();
+    resumen.textContent = eventos.length + ' eventos · se actualiza solo';
+    pintarFiltros();
+    pintar();
+  } catch (e) {
+    resumen.textContent = 'no pude leer el feed';
+    lista.innerHTML = '<div class="vacio">Todavia no hay nada anotado, o el diagnostico no corrio nunca.</div>';
+  }
+}
+
+cargar();
+setInterval(cargar, 60000);
+</script>
+</body>
+</html>

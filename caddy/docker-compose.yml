@@ -12,6 +12,11 @@ services:
       # Log de acceso en ruta fija del host, para que fail2ban no dependa
       # del ID del contenedor y sobreviva a cada recreacion.
       - /var/log/caddy:/var/log/caddy
+      # El feed de eventos en eventos.pi. Son dos montajes de solo lectura y
+      # ningun servicio nuevo: la pagina es un archivo estatico y el feed es
+      # un texto plano que escribe el diagnostico.
+      - ./site:/srv/site:ro
+      - ../datos:/srv/datos:ro
     env_file:
       - .env
     extra_hosts:
