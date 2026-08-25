@@ -48,19 +48,37 @@ aviso() { echo "  ${A}!${N} $*"; }
 info()  { echo "    $*"; }
 gris()  { echo "  ${G}$*${N}"; }
 
+# Para poder avisar si falla. Un respaldo que se rompe en silencio es peor que
+# no tenerlo, porque te deja creyendo que estas cubierto.
+# shellcheck source=lib/avisos.sh
+. "$REPO/lib/avisos.sh"
+
 SOLO_LISTAR=0
 DESTINO="/tmp"
 ROTAR=0
 CALLADO=0
+AVISAR=0
 for arg in "$@"; do
     case "$arg" in
         --listar|-l)  SOLO_LISTAR=1 ;;
         --callado|-q) CALLADO=1 ;;
+        --avisar)     AVISAR=1 ;;
         --rotar=*)    ROTAR="${arg#--rotar=}" ;;
         --ayuda|-h)   sed -n '3,9p' "$0" | sed 's/^# \?//'; exit 0 ;;
         *)            DESTINO="$arg" ;;
     esac
 done
+
+# El exito NO notifica, a proposito: seria un mensaje por dia que no pide
+# ninguna decision, y con eso el canal se vuelve ruido. Queda anotado en el
+# feed, que es donde vive lo que vale la pena recordar y no interrumpe.
+respaldo_termino() {
+    local nivel="$1" texto="$2"
+    [ "$AVISAR" = "1" ] || return 0
+    avisar_si_cambio respaldo "$nivel" "respaldo" "$texto"
+    [ "$nivel" = "bien" ] && evento sistema "respaldo ok · $texto"
+    return 0
+}
 
 FECHA=$(date +%Y-%m-%d-%H%M)
 TRABAJO="/tmp/respaldo-$FECHA"
@@ -127,6 +145,22 @@ listar_config() {
     return 0
 }
 
+# La historia propia: el feed de eventos y el estado de los avisos.
+#
+# No es configuracion y no es una base, pero tampoco se reconstruye de ningun
+# lado: son meses de "que paso y cuando", y el estado de los avisos es lo que
+# evita que despues de restaurar te lleguen de golpe treinta notificaciones de
+# cosas que ya sabias. Todo junto pesa unos 100 KB.
+listar_historia() {
+    local f
+    for f in "$REPO/datos/eventos.log" \
+             "$REPO/datos/estado-avisos" \
+             "$REPO/datos/metricas-lentas.prom"; do
+        [ -f "$f" ] && echo "$f"
+    done
+    return 0
+}
+
 if [ "$SOLO_LISTAR" = "1" ]; then
     echo "${B}  Variables y contrasenas${N}"
     listar_envs | sed "s|$REPO/|    |"
@@ -141,14 +175,17 @@ if [ "$SOLO_LISTAR" = "1" ]; then
     echo "${B}  Configuracion editada a mano${N}"
     listar_config | sed "s|$REPO/|    |"
     echo ""
+    echo "${B}  Historia propia${N}"
+    listar_historia | sed "s|$REPO/|    |"
+    echo ""
     exit 0
 fi
 
 # ── Armado ────────────────────────────────────────────────────────────────────
 rm -rf "$TRABAJO"
-mkdir -p "$TRABAJO"/{env,tokens,db,config}
+mkdir -p "$TRABAJO"/{env,tokens,db,config,historia}
 
-n_env=0; n_tok=0; n_db=0; n_cfg=0; fallos=0
+n_env=0; n_tok=0; n_db=0; n_cfg=0; n_hist=0; fallos=0
 
 for f in $(listar_envs); do
     rel="${f#"$REPO"/}"
@@ -188,6 +225,10 @@ for f in $(listar_config); do
     fi
 done
 
+for f in $(listar_historia); do
+    cp "$f" "$TRABAJO/historia/$(basename "$f")" 2>/dev/null && n_hist=$((n_hist+1))
+done
+
 # ── Manifiesto: sin esto, dentro de seis meses el tar es un misterio ──────────
 cat > "$TRABAJO/MANIFIESTO.txt" <<EOF
 Respaldo de Pi-Services
@@ -199,6 +240,7 @@ Contenido
   tokens/      $n_tok tokens de OAuth (Fitbit, Microsoft)
   db/          $n_db bases de datos, copiadas con la API de SQLite
   config/      $n_cfg archivos de configuracion editados a mano
+  historia/    $n_hist archivos: el feed de eventos y el estado de los avisos
 
 Lo que NO esta, porque se reconstruye del repo o solo:
   imagenes de Docker, cache de Jellyfin, historico de Prometheus,
@@ -210,8 +252,9 @@ Como se restaura
   3. Copiá los .env:           cp -r env/* ~/pi-services/
   4. Copiá los tokens:         cp -r tokens/* ~/pi-services/
   5. Las bases de repo:        cp -r db/repo/* ~/pi-services/
-  6. Levantá:                  cd ~/pi-services && ./instalador.sh
-  7. Las bases de volumenes van adentro de cada volumen de Docker, con el
+  6. La historia:              mkdir -p ~/pi-services/datos && cp historia/* ~/pi-services/datos/
+  7. Levantá:                  cd ~/pi-services && ./instalador.sh
+  8. Las bases de volumenes van adentro de cada volumen de Docker, con el
      contenedor PARADO. Ejemplo, para Radarr:
        docker stop radarr
        docker run --rm -v pi-services_radarr-config:/c -v \$PWD/db/volumenes:/b \\
@@ -229,6 +272,7 @@ tar czf "$ARCHIVO" -C "$TRABAJO" . 2>/dev/null
 
 if [ ! -s "$ARCHIVO" ]; then
     falla "No se pudo crear el archivo"
+    respaldo_termino mal "no se pudo crear el archivo en $DESTINO"
     rm -rf "$TRABAJO"
     exit 1
 fi
@@ -237,6 +281,7 @@ fi
 entradas=$(tar tzf "$ARCHIVO" 2>/dev/null | wc -l)
 if [ "$entradas" -lt 5 ]; then
     falla "El archivo se creo pero casi no tiene nada adentro ($entradas entradas)"
+    respaldo_termino mal "el archivo salio casi vacio ($entradas entradas)"
     rm -rf "$TRABAJO"
     exit 1
 fi
@@ -253,12 +298,18 @@ if [ "$ROTAR" -gt 0 ] 2>/dev/null; then
     fi
 fi
 
+if [ "$fallos" -gt 0 ]; then
+    respaldo_termino ojo "$tamano, pero $fallos archivos no se pudieron copiar"
+else
+    respaldo_termino bien "$tamano, $entradas entradas"
+fi
+
 if [ "$CALLADO" = "1" ]; then
     echo "$(date '+%F %T')  $ARCHIVO  $tamano  $entradas entradas  $fallos fallos"
     exit 0
 fi
 
-ok "$n_env .env  ·  $n_tok tokens  ·  $n_db bases  ·  $n_cfg configuraciones"
+ok "$n_env .env  ·  $n_tok tokens  ·  $n_db bases  ·  $n_cfg configuraciones  ·  $n_hist de historia"
 [ "$fallos" -gt 0 ] && aviso "$fallos archivos no se pudieron copiar"
 ok "Listo: ${B}$ARCHIVO${N}  ($tamano, $entradas entradas, verificado)"
 
