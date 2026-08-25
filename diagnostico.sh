@@ -404,8 +404,28 @@ revisar_contenedor() {
     fi
 
     # ── Eslabon 3: bucle de reinicios ──
-    if [ "${reinicios:-0}" -gt 5 ]; then
-        mal "$svc" "reinicio $reinicios veces"
+    #
+    # RestartCount es un contador DE POR VIDA que no se reinicia nunca. Y hay
+    # servicios que se reinician solos como parte de su funcionamiento normal:
+    # la homepage lo hace cada vez que editas su configuracion, asi que junta
+    # veinticinco reinicios sin haber tenido un solo problema.
+    #
+    # Mirar solo ese numero era reportar como roto algo que anda perfecto y
+    # lleva horas arriba. Un indicador que miente es peor que ninguno: te
+    # acostumbras a ignorarlo y el dia que se rompe de verdad ya no lo mirás.
+    # Con los avisos al celular es peor todavia, porque ese ruido llega al
+    # bolsillo y termina con el canal silenciado.
+    #
+    # Un bucle de verdad son dos cosas, no una: que el contador CREZCA de una
+    # corrida a la siguiente, o que el contenedor lleve segundos de vida con
+    # muchos reinicios encima. Si el numero es alto pero no se movio y el
+    # servicio lleva rato arriba, son cicatrices viejas y no una herida.
+    local subio_reinicios=0
+    crecio "reinicios_$svc" "${reinicios:-0}" && subio_reinicios=1
+    edad=$(segundos_desde "$($DOCKER inspect -f '{{.State.StartedAt}}' "$svc" 2>/dev/null)")
+
+    if [ "${reinicios:-0}" -gt 5 ] && { [ "$subio_reinicios" = "1" ] || [ "${edad:-99999}" -lt 120 ]; }; then
+        mal "$svc" "reinicio $reinicios veces, y sigue reiniciandose"
         implica "arranca y se cae solo, asi que levantarlo de nuevo no arregla nada"
         evidencia "$svc" 4
         limite "el bucle de $svc" \
@@ -432,7 +452,8 @@ revisar_contenedor() {
         return 0
     fi
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$ip:$puerto/" 2>/dev/null)
-    edad=$(segundos_desde "$($DOCKER inspect -f '{{.State.StartedAt}}' "$svc" 2>/dev/null)")
+    # edad ya viene calculada del eslabon 3. Antes se volvia a pedir aca, que
+    # eran veintitres docker inspect de mas por corrida.
 
     case "$code" in
         ""|000)
