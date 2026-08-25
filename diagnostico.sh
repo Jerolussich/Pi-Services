@@ -78,6 +78,7 @@ RAIZ=""              # la causa que explica al resto
 HALLAZGOS=()         # "nivel|clave", para el score del final
 CONFIRMAR=0          # 1 mientras se revisan contenedores, ver mas abajo
 SALUD=""             # el score, solo en corridas completas
+CAPA="general"       # la seccion actual, para no repetir metricas
 
 # ── El registro: las otras tres salidas ───────────────────────────────────────
 #
@@ -101,7 +102,12 @@ registrar() {
     local nivel="$1" clave="$2" detalle="${3:-}" codigo=0
     case "$nivel" in ojo) codigo=1 ;; mal) codigo=2 ;; esac
     HALLAZGOS+=("$nivel|$clave")
-    metrica "pi_check{nombre=\"$(etiqueta_metrica "$clave")\"}" "$codigo"
+    # La capa va en la etiqueta y no es un adorno: hay servicios que se
+    # revisan DOS veces y son dos preguntas distintas. Bazarr aparece en "los
+    # contenedores" (¿corre y contesta?) y otra vez en "multimedia" (¿tiene
+    # perfil de idiomas?). Sin la capa las dos lineas quedan identicas, y una
+    # metrica repetida hace que node-exporter descarte el archivo ENTERO.
+    metrica "pi_check{capa=\"${CAPA:-general}\",nombre=\"$(etiqueta_metrica "$clave")\"}" "$codigo"
     [ "$AVISAR" = "1" ] && avisar_si_cambio "$clave" "$nivel" "$clave" "$detalle" "$CONFIRMAR"
     return 0
 }
@@ -136,7 +142,12 @@ limite() {
 }
 
 # Titulo con el objetivo al lado. El objetivo va una vez, no en cada hallazgo.
+#
+# Ademas deja anotada la capa para las metricas, y eso va ANTES del return del
+# modo breve: si no, en la corrida horaria todos los chequeos quedarian en la
+# misma capa y volverian a colisionar entre si.
 seccion() {
+    CAPA=$(etiqueta_metrica "$1")
     [ "$MODO_BREVE" = "1" ] && return 0
     echo ""
     printf "${B}${C}%s${N}  ${G}%s${N}\n" "$1" "$2"

@@ -336,7 +336,7 @@
             { "refId": "A", "format": "table", "instant": true, "expr": "sort_desc(pi_check)", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
           ],
           "transformations": [
-            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true }, "renameByName": { "nombre": "chequeo", "Value": "estado" } } }
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true }, "renameByName": { "nombre": "chequeo", "capa": "capa", "Value": "estado" } } }
           ],
           "fieldConfig": {
             "defaults": {
