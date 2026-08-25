@@ -1,0 +1,13 @@
+[Unit]
+Description=Revisar si hay importaciones para avisar
+
+[Timer]
+# Cada pocos minutos. No es que la pelicula se vuelva urgente, es que la
+# ventana de agrupacion no puede ser mas larga que la espera aceptable: entre
+# que termina de importarse y que te enteras pasan como mucho estos minutos
+# mas los de MEDIA_ESPERA_MIN.
+OnBootSec=5min
+OnUnitActiveSec=__MEDIA_CADA__min
+
+[Install]
+WantedBy=timers.target

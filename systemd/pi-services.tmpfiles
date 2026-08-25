@@ -1,0 +1,17 @@
+# Carpetas en RAM que tienen que existir ANTES de que arranque Docker.
+#
+# Va a /etc/tmpfiles.d/pi-services.conf y lo instala ./instalador.sh, que
+# reemplaza __USUARIO__ por el usuario real.
+#
+# POR QUE HACE FALTA
+#
+# node-exporter monta /run/pi-services/metrics para leer las metricas propias
+# del diagnostico. Si esa carpeta no existe cuando arranca el contenedor,
+# Docker la crea el mismo, y la crea de root: despues el diagnostico corre
+# como tu usuario y no puede escribir adentro. El sintoma es feo porque no es
+# un error visible, es un tablero de Grafana que se queda vacio sin decir por que.
+#
+# Con esto, la carpeta existe con el dueno correcto en cada arranque, sin que
+# nadie tenga que acordarse de nada.
+d /run/pi-services       0755 __USUARIO__ __USUARIO__ -
+d /run/pi-services/metrics 0755 __USUARIO__ __USUARIO__ -

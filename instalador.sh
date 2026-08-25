@@ -1302,9 +1302,13 @@ paso "eligiendo modulos";          menu
 paso "eligiendo servicios";        elegir_servicios
 paso "pidiendo los datos";         recolectar
 paso "decidiendo lo del disco";    decidir_das_temprano
+# Antes de levantar nada: si Docker monta una carpeta de datos que no existe,
+# la crea el mismo y de root, y despues los contenedores no pueden escribir.
+paso "creando las carpetas";       crear_datos
 paso "levantando los servicios";   ejecutar
 paso "aplicando las contrasenas";  recrear_por_clave
 paso "configurando los servicios"; configurar_servicios
+paso "programando lo automatico";  configurar_automatico
 paso "guiando las cuentas";        guia_cuentas
 paso ""
 resumen

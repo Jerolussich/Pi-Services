@@ -1,11 +1,12 @@
 [Unit]
-Description=Revisar el estado de Pi-Services cada hora
+Description=Revisar el estado de Pi-Services periodicamente
 
 [Timer]
 # A los dos minutos de arrancar, para que el mensaje de bienvenida diga algo
-# util ya en el primer login despues de un reinicio.
+# util ya en el primer login despues de un reinicio, y para que las metricas
+# vuelvan a existir enseguida (viven en RAM y se borran al apagar).
 OnBootSec=2min
-OnUnitActiveSec=1h
+OnUnitActiveSec=__DIAGNOSTICO_CADA__
 
 [Install]
 WantedBy=timers.target
