@@ -1,9 +1,43 @@
+# Un solo numero que dice si hace falta abrir algo. Verde significa no abras
+# nada, y esa es toda su funcion.
+#
+# Lo escribe el diagnostico cada hora y lo sirve Caddy como archivo estatico,
+# asi que aca no hay ningun servicio nuevo detras: es un JSON de tres campos.
+- Estado:
+    - Salud del Pi:
+        icon: mdi-heart-pulse
+        href: http://eventos.pi
+        description: Feed de eventos y estado general
+        widget:
+          type: customapi
+          url: http://caddy/estado.json
+          refreshInterval: 60000
+          mappings:
+            - field: salud
+              label: Salud
+              format: number
+            - field: problemas
+              label: Para mirar
+              format: number
+            - field: actualizado
+              label: Al
+
 - Media:
     - Jellyfin:
         icon: jellyfin.png
         href: http://jellyfin.pi
         description: Reproducir peliculas y series
         siteMonitor: http://jellyfin:8096
+        # El recuadro estaba apagado y solo se veia el puntito de "esta vivo".
+        # Con la clave, muestra quien esta reproduciendo ahora y el tamano de
+        # la biblioteca, que es lo que se queria de la pantalla de media.
+        # La clave la crea y la escribe el instalador: nunca pasa por tus manos.
+        widget:
+          type: jellyfin
+          url: http://jellyfin:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
+          enableBlocks: true
+          enableNowPlaying: true
     - Seerr:
         icon: jellyseerr.png
         href: http://seerr.pi
@@ -36,6 +70,13 @@
         href: http://qbit.pi
         description: Descargas en curso
         siteMonitor: http://qbittorrent:8080
+        # No tiene clave de API: se entra con usuario y contrasena, asi que el
+        # instalador reusa la que le acaba de poner en vez de preguntartela.
+        widget:
+          type: qbittorrent
+          url: http://qbittorrent:8080
+          username: "{{HOMEPAGE_VAR_QBIT_USER}}"
+          password: "{{HOMEPAGE_VAR_QBIT_PASS}}"
     - Bazarr:
         icon: bazarr.png
         href: http://bazarr.pi
