@@ -2,6 +2,11 @@
 **/.env
 **/tokens.json
 
+# Datos propios: el feed de eventos, el estado de los avisos, las metricas
+# lentas y la cola de importaciones. Se generan solos y no se versionan, pero
+# respaldo.sh SI los guarda: son meses de historia que no se reconstruyen.
+datos/
+
 # Caddy
 caddy/password.hash
 
