@@ -115,6 +115,10 @@ Hay tres lugares distintos y conviene no confundirlos:
 
 **Carpetas del repositorio.** Las bases SQLite de fitbit, finanzas y news-filter viven en `data/` o `exports/` dentro de cada carpeta de servicio. Están en `.gitignore`, así que **no se van a GitHub**: si perdés el Pi, se pierden salvo que las tengas respaldadas aparte.
 
+**`datos/`**, en la raíz. El feed de eventos, el estado de los avisos y las métricas que se miden cada dos días. Son unos 100 KB de historia que no se reconstruye de ningún lado, así que `respaldo.sh` los guarda. Y el estado de los avisos importa más de lo que parece: sin él, después de restaurar te llegarían de golpe treinta notificaciones de cosas que ya sabías.
+
+**`/run/pi-services/`**, que es RAM. Lo que se reescribe entero cada hora y no tiene nada que recordar: el estado para el mensaje de bienvenida y las métricas que lee node-exporter. Va ahí y no en el disco para no desgastar la tarjeta justamente con la herramienta que vigila que no se desgaste.
+
 **El DAS.** Todo el contenido multimedia. Ver [../media/DAS.md](../media/DAS.md).
 
 Los archivos `.env` con contraseñas y tokens también están fuera de git. Es lo correcto, pero implica que **son lo primero que hay que respaldar**.
@@ -132,9 +136,46 @@ Dos piezas corren directamente en el sistema, no en contenedores, y en los dos c
 
 ---
 
+## Un hallazgo sale por cuatro lados
+
+El diagnóstico siempre supo qué significa "estar bien". Lo que le faltaba era que ese saber saliera de la casa: moría en un archivo que solo veías si entrabas por SSH.
+
+```
+                 diagnostico.sh
+                       │
+     ┌─────────────┬───┴────────┬──────────────┐
+     ▼             ▼            ▼              ▼
+   pantalla       ntfy         feed        metrica
+     │             │            │              │
+   MOTD y      celular      eventos.pi     Grafana
+   terminal   (si cambio)   (la memoria)  (el historial)
+```
+
+Un motor, cuatro canillas, y **un solo punto de llamada**: las funciones `bien`, `ojo` y `mal`. Agregar un chequeo nuevo no obliga a acordarse de la métrica ni del aviso.
+
+Tres decisiones sostienen esto y están desarrolladas en [AVISOS.md](AVISOS.md):
+
+**El que avisa no puede romperse con lo que avisa.** Por eso las notificaciones no son un contenedor sino un `curl` en el host, y el servidor que las reparte no vive en casa. Es el mismo criterio que deja a Pi-hole y Tailscale fuera de Docker.
+
+**Se avisa por cambio, no por estado.** Un canal que repite lo mismo cada hora se silencia en una semana. Y los chequeos de contenedores esperan a confirmar el problema en la corrida siguiente, para que un reinicio de treinta segundos no te despierte.
+
+**Las métricas propias entran por el buzón de node-exporter**, que lee una carpeta de archivos de texto y los publica como métricas suyas. Con una línea de configuración, el diagnóstico se convierte en exporter sin ser un contenedor, y ahí llegan SMART, la red, el espacio y el score sin instalar un exporter por cada cosa.
+
+---
+
 ## Tareas programadas
 
 En vez de que cada servicio traiga su propio programador, hay uno solo: **Ofelia**, que dispara trabajos en los demás contenedores según etiquetas. Un único lugar donde ver y cambiar todo lo que corre periódicamente. Ver [../ofelia/README.md](../ofelia/README.md).
+
+Ofelia es para lo que corre **adentro de un contenedor**. Lo que corre en el host (el diagnóstico, el respaldo, el aviso agrupado de media) va por timers de systemd, porque necesita ver el disco, hablar con `smartctl` y conocer el canal de ntfy.
+
+Y en los dos casos vale lo mismo: **el horario no está escrito en el archivo que lo ejecuta**. Los de systemd salen de [`../ajustes.conf`](../ajustes.conf) y el instalador los sustituye al instalar las unidades, igual que deriva los registros DNS del Caddyfile.
+
+### La cadencia de lo pesado
+
+El diagnóstico corre cada hora y esa es la pulsación. Lo que no necesita esa frecuencia no trae su propio temporizador: declara cada cuánto quiere correr y se saltea el resto de las corridas.
+
+Los discos van cada 48 horas por un motivo que no es obvio: **preguntarle a un disco cómo está lo despierta**. Un chequeo horario tendría los dos discos del DAS girando las 24 horas, o sea que la herramienta que los cuida sería la que los gasta.
 
 **El cron de Ofelia lleva seis campos y el primero son segundos.** No es el cron de siempre. Con los cinco clásicos, `0 * * * *` no significa "cada hora" sino "cada minuto", y nadie avisa: las tareas simplemente corren sesenta veces más de lo que pensabas. Para cada hora va `0 0 * * * *`.
 

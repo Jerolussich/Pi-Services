@@ -120,6 +120,24 @@ Algunos servicios no muestran solo un enlace sino **datos reales**: cuántas pel
 | `HOMEPAGE_VAR_SONARR_KEY` | la config de Sonarr |
 | `HOMEPAGE_VAR_PROWLARR_KEY` | la config de Prowlarr |
 | `HOMEPAGE_VAR_SEERR_KEY` | `settings.json` de Seerr |
+| `HOMEPAGE_VAR_JELLYFIN_KEY` | una clave propia que el instalador crea en Jellyfin |
+| `HOMEPAGE_VAR_QBIT_USER` y `_PASS` | la contraseña que el instalador le acaba de poner |
+
+Jellyfin y qBittorrent traían recuadro nativo y estaban apagados: solo mostraban el puntito de "está vivo". Ahora muestran quién está reproduciendo, el tamaño de la biblioteca y qué se está bajando, que era lo que se quería de la pantalla de media.
+
+qBittorrent es el único que no tiene clave de API: se entra con usuario y contraseña. El instalador no te la vuelve a preguntar, reusa la que le acaba de poner.
+
+### El recuadro de salud
+
+El primero de la pantalla no viene de ningún servicio: es un JSON de tres campos que escribe `diagnostico.sh` cada hora y que sirve Caddy como archivo estático.
+
+```yaml
+widget:
+  type: customapi
+  url: http://caddy/estado.json
+```
+
+Va contra `caddy` y no contra `eventos.pi` porque la homepage lo pide desde adentro de la red de Docker, con ese nombre como Host. Es un número y un conteo, sin autenticación, y nada de esto está publicado a internet. Ver [../docs/AVISOS.md](../docs/AVISOS.md).
 
 ### El detalle que hace fallar todo esto
 
