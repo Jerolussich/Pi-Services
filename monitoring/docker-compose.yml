@@ -24,6 +24,15 @@ services:
     - --path.procfs=/host/proc
     - --path.sysfs=/host/sys
     - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    # El buzon.
+    #
+    # node-exporter lee esta carpeta y publica como metrica propia cualquier
+    # archivo .prom que encuentre. Con eso, el diagnostico se convierte en
+    # exporter sin ser un contenedor: escribe un archivo de texto y listo.
+    #
+    # Es lo que permite que SMART, el estado de los 40 chequeos, la red y el
+    # score lleguen a Grafana sin instalar un exporter por cada cosa.
+    - --collector.textfile.directory=/run/pi-services/metrics
     container_name: node-exporter
     image: prom/node-exporter
     restart: unless-stopped
@@ -31,6 +40,11 @@ services:
     - /proc:/host/proc:ro
     - /sys:/host/sys:ro
     - /:/rootfs:ro
+    # Solo lectura: node-exporter lee, el que escribe es el diagnostico.
+    # La carpeta la crea /etc/tmpfiles.d en cada arranque con el dueno
+    # correcto. Sin eso, Docker la crearia el como root al montarla y el
+    # diagnostico no podria escribir adentro.
+    - /run/pi-services/metrics:/run/pi-services/metrics:ro
   pihole-exporter:
     container_name: pihole-exporter
     environment:
@@ -43,6 +57,14 @@ services:
   prometheus:
     command:
     - --config.file=/etc/prometheus/prometheus.yml
+    # De fabrica guarda 15 dias y borra. Todo el valor de tener historico es
+    # la tendencia larga: distinguir un contador de SMART que sube despacio
+    # hace meses de uno que salto anteanoche, o saber a que ritmo se llena el
+    # disco. Con dos semanas eso no existe.
+    #
+    # No aumenta la escritura, solo el espacio: lo que se escribe por segundo
+    # depende del scrape_interval, que esta en prometheus.yml.
+    - --storage.tsdb.retention.time=1y
     container_name: prometheus
     image: prom/prometheus
     restart: unless-stopped
