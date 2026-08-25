@@ -261,7 +261,10 @@ avisar_si_cambio() {
 crecio() {
     local clave="_num_$1" actual="$2" previo
     previo=$(_av_leer "$ESTADO_AVISOS" "$clave" || true)
-    _av_escribir "$ESTADO_AVISOS" "$clave" "$actual"
+    # Solo se escribe si cambio. Esto se llama una vez por contenedor en cada
+    # corrida, asi que escribir siempre serian veintitres reescrituras del
+    # archivo por hora sobre la microSD, para guardar los mismos numeros.
+    [ "$previo" = "$actual" ] || _av_escribir "$ESTADO_AVISOS" "$clave" "$actual"
     case "$previo" in ''|*[!0-9]*) return 1 ;; esac
     [ "$actual" -gt "$previo" ]
 }
