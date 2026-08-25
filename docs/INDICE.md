@@ -113,13 +113,14 @@ Todas las instala y las programa el instalador. Los horarios salen de [`ajustes.
 
 ### Avisos al celular
 
-Cada hora el diagnóstico revisa todo y, **si algo cambió de estado**, te llega una notificación al teléfono por ntfy. Si no cambió nada, silencio.
+Este **se elige**: es el módulo `Avisos` del menú del instalador, y no algo que pasa solo. Es lo único del repo que manda algo fuera de tu casa (los títulos pasan por ntfy.sh), así que se pregunta antes de crear nada.
 
-Son dos canales: `alertas` (suena, casi nunca habla) y `media` (silencioso, avisa cuando una película o una serie está lista).
+Si lo activás: cada hora el diagnóstico revisa todo y, **si algo cambió de estado**, te llega una notificación al teléfono. Si no cambió nada, silencio. Son dos canales, `alertas` (suena, casi nunca habla) y `media` (silencioso, avisa cuando una película o una serie está lista).
 
 ```bash
-./avisos.sh --canales     # a que suscribirte desde el celular
+./avisos.sh --canales     # los pasos para suscribirte, con tus nombres
 ./avisos.sh --probar      # una prueba a cada canal
+./avisos.sh --apagar      # dejar de recibirlos, sin borrar los canales
 ```
 
 Todo el detalle en [AVISOS.md](AVISOS.md).

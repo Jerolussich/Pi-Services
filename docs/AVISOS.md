@@ -58,10 +58,29 @@ Es un canal de radio. Elegís un nombre, la Pi transmite ahí, tu celular está 
 
 Sin cuenta, sin registro, sin token. **El nombre del canal es la contraseña**: quien lo sabe, escucha. Por eso lo genera el instalador al azar y nunca te lo hace inventar, igual que hace con las claves de API de Radarr y Seerr.
 
-```bash
-./avisos.sh --canales     # a que suscribirte
-./avisos.sh --probar      # manda uno de prueba a cada canal
+### Se elige, no viene puesto
+
+Es un **módulo del menú del instalador**, como Pi-hole o Tailscale, y no algo que pasa solo. El motivo es concreto: es lo único de todo el repo que **manda algo fuera de tu casa**, así que esa decisión es tuya y se pregunta antes de crear nada.
+
 ```
+  11)  ○  Avisos  ·  notificaciones al celular            sin instalar
+          La Pi te avisa al celular cuando algo se rompe. No instala nada:
+          crea dos nombres de canal al azar y te explica como suscribirte
+          desde la app. Los titulos pasan por ntfy.sh, un servicio publico.
+```
+
+Si lo elegís, el instalador te explica qué hace y qué resignás, pregunta, y recién ahí crea los canales. Después te deja los pasos con los nombres a la vista, porque suscribirse desde el celular es la única parte que un script no puede hacer por vos.
+
+Y se prende y se apaga cuando quieras, sin perder los nombres:
+
+```bash
+./avisos.sh --canales     # los pasos, con tus nombres
+./avisos.sh --probar      # manda uno de prueba a cada canal
+./avisos.sh --apagar      # deja de mandar, sin borrar nada
+./avisos.sh --prender     # vuelve a mandar
+```
+
+Apagados, **todo lo demás sigue igual**: el diagnóstico corre, el feed se llena, Grafana recibe las métricas y el MOTD te avisa al entrar. Solo no suena el celular. Y el diagnóstico no te lo reprocha: lo reporta como una decisión tomada, no como algo que falta.
 
 Bajás la app **ntfy** (Google Play, App Store o F-Droid), tocás el `+`, escribís el nombre. Son treinta segundos y no lo tocás nunca más. También se ve en el navegador, sin instalar nada.
 

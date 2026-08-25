@@ -114,7 +114,7 @@ CLAVE_POR_SERVICIO=0
 #  y si es nativo (fuera de Docker).
 # ══════════════════════════════════════════════════════════════════════════════
 
-MODULOS=(sistema pihole core monitoring news finance fitbit media home ofelia tailscale seguridad)
+MODULOS=(sistema pihole core monitoring news finance fitbit media home ofelia avisos tailscale seguridad)
 
 declare -A NOMBRE=(
   [sistema]="Base del sistema"
@@ -127,6 +127,7 @@ declare -A NOMBRE=(
   [media]="Multimedia  ·  Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr"
   [home]="Casa  ·  Home Assistant, domotica"
   [ofelia]="Ofelia  ·  programador de tareas"
+  [avisos]="Avisos  ·  notificaciones al celular"
   [tailscale]="Tailscale  ·  acceso remoto"
   [seguridad]="UFW y fail2ban  ·  firewall"
 )
@@ -142,6 +143,7 @@ declare -A DESCRIPCION=(
   [media]="Descarga, organiza, subtitula y reproduce. Necesita un disco externo montado."
   [home]="Automatizar la casa: luces, sensores, enchufes. Descubre solo lo que hay en tu red."
   [ofelia]="Dispara las tareas programadas del resto de los contenedores."
+  [avisos]="La Pi te avisa al celular cuando algo se rompe. No instala nada: crea dos nombres de canal al azar y te explica como suscribirte desde la app. Los titulos pasan por ntfy.sh, un servicio publico gratuito."
   [tailscale]="Entras a tus servicios desde afuera de casa sin abrir puertos. Tambien te da SSH de emergencia si Docker se rompe."
   [seguridad]="Cierra todo salvo lo necesario y banea intentos de fuerza bruta."
 )
@@ -157,7 +159,7 @@ declare -A SERVICIOS=(
   [ofelia]="ofelia"
 )
 
-declare -A NATIVO=( [sistema]=1 [pihole]=1 [tailscale]=1 [seguridad]=1 )
+declare -A NATIVO=( [sistema]=1 [pihole]=1 [tailscale]=1 [seguridad]=1 [avisos]=1 )
 
 # Que hace cada servicio suelto, para poder elegirlos de a uno
 declare -A QUE_HACE=(
@@ -729,6 +731,22 @@ detectar() {
         fi
     else
         ESTADO[seguridad]=inactivo; DETALLE[seguridad]="firewall desactivado"
+    fi
+
+    # Los avisos tienen tres estados y no dos, porque "apagados" puede ser una
+    # decision tuya y no algo que falta. Un modulo que aparece incompleto para
+    # siempre porque dijiste que no lo queres es un reproche, no un estado.
+    local ntfy_topic ntfy_flag
+    ntfy_topic=$(leer_var "$REPO/.env" NTFY_ALERTAS 2>/dev/null)
+    ntfy_flag=$(leer_var "$REPO/.env" AVISOS 2>/dev/null)
+    if [ "$ntfy_flag" = "no" ]; then
+        ESTADO[avisos]=activo; DETALLE[avisos]="apagados a proposito"
+    elif [ -n "$ntfy_topic" ] && systemctl is-enabled pi-estado.timer >/dev/null 2>&1; then
+        ESTADO[avisos]=activo; DETALLE[avisos]="2 canales · mira los nombres con ./avisos.sh --canales"
+    elif [ -n "$ntfy_topic" ]; then
+        ESTADO[avisos]=parcial; DETALLE[avisos]="canales creados, falta programar el diagnostico"
+    else
+        ESTADO[avisos]=inactivo; DETALLE[avisos]="sin configurar"
     fi
 
     # --- modulos de Docker ---
@@ -2584,6 +2602,56 @@ recrear_filtro_noticias() {
 #  levanta solo, porque busca todos los .env del repo.
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  EL MODULO DE AVISOS
+#
+#  Es el unico modulo que manda algo FUERA de tu casa, asi que se pregunta y
+#  se explica antes de crear nada. El resto del repo no publica un solo byte a
+#  internet, y eso deja de ser cierto en cuanto activas esto.
+#
+#  Y no alcanza con crearlo: suscribirse desde el celular es la unica parte que
+#  un script no puede hacer por vos, igual que crear una cuenta. Asi que se
+#  guia paso a paso, con los nombres a la vista, en vez de dejarte un ok verde
+#  y que despues no sepas que hacer con el.
+# ══════════════════════════════════════════════════════════════════════════════
+
+instalar_avisos() {
+    local ya; ya=$(leer_var "$REPO/.env" NTFY_ALERTAS 2>/dev/null)
+
+    if [ -z "$ya" ]; then
+        echo ""
+        info "${B}Que hace:${N} la Pi te manda una notificacion al celular cuando"
+        info "algo se rompe. Si no se rompe nada, no te llega nada."
+        echo ""
+        info "${B}Como:${N} por ntfy, que funciona como un canal de radio. Se elige un"
+        info "nombre, la Pi transmite ahi y tu celular escucha. Sin cuenta, sin"
+        info "usuario y sin contrasena que crear."
+        echo ""
+        info "${B}No instala nada en la Pi:${N} ni un programa ni un contenedor."
+        echo ""
+        aviso "${B}Lo unico que resignas${N}"
+        gris "     Los titulos de los avisos pasan por ntfy.sh, un servidor publico"
+        gris "     y gratuito de internet. Son textos como \"disco al 91%\"."
+        gris "     Es la unica cosa de todo el repo que sale de tu casa."
+        echo ""
+
+        if ! preguntar "¿Los activo?" "s"; then
+            escribir_var "$REPO/.env" AVISOS no
+            info "Listo, no los activo. Todo lo demas sigue igual:"
+            gris "     el diagnostico corre igual, el feed de eventos se llena igual,"
+            gris "     y Grafana recibe las metricas igual. Solo no te suena el celular."
+            echo ""
+            gris "     Si cambias de idea:  ./avisos.sh --prender"
+            return 0
+        fi
+        echo ""
+    fi
+
+    escribir_var "$REPO/.env" AVISOS si
+    cfg_avisos
+    guia_suscripcion
+}
+
 cfg_avisos() {
     local nuevos=0 t
 
@@ -2607,10 +2675,11 @@ cfg_avisos() {
     NTFY_MEDIA="$(leer_var "$REPO/.env" NTFY_MEDIA 2>/dev/null)"
 
     if [ "$nuevos" -gt 0 ]; then
-        ok "Avisos: $nuevos $(plural "$nuevos" "canal creado" "canales creados")"
-        pendiente "Suscribirte a los canales de ntfy desde el celular: ./avisos.sh --canales"
+        ok "$nuevos $(plural "$nuevos" "canal creado" "canales creados"), con nombre al azar"
+        gris "     No te los hago inventar a vos: el nombre es la contrasena y"
+        gris "     uno pensado por una persona se adivina."
     else
-        ok "Avisos: los canales ya estaban"
+        ok "Los canales ya estaban creados"
     fi
 }
 
@@ -2782,14 +2851,24 @@ instalar_automatismos() {
     [ "$cambio" = "1" ] && sudo systemctl daemon-reload >/dev/null 2>&1
 
     local prendidos=0
-    for u in pi-estado pi-respaldo pi-media; do
+    for u in pi-estado pi-respaldo; do
         sudo systemctl enable --now "$u.timer" >/dev/null 2>&1 && prendidos=$((prendidos+1))
     done
 
+    # El de media solo tiene sentido si hay avisos: lo unico que hace es
+    # mandar la tanda de importaciones al celular. Sin canales seria un
+    # temporizador corriendo cada cinco minutos para no hacer nada.
+    if avisos_configurados; then
+        sudo systemctl enable --now pi-media.timer >/dev/null 2>&1 && prendidos=$((prendidos+1))
+    else
+        sudo systemctl disable --now pi-media.timer >/dev/null 2>&1
+    fi
+
     if [ "$prendidos" -gt 0 ]; then
-        ok "Automatismos: $prendidos $(plural "$prendidos" "tarea" "tareas") programadas"
-        gris "     diagnostico cada $DIAGNOSTICO_CADA, respaldo a las ${HORA_RESPALDO}:00, avisos de media cada ${MEDIA_CADA_MIN} min"
-        gris "     los horarios se cambian en ajustes.conf y se aplican al volver a correr esto"
+        ok "$prendidos $(plural "$prendidos" "tarea programada" "tareas programadas")"
+        gris "     diagnostico cada $DIAGNOSTICO_CADA  ·  respaldo a las ${HORA_RESPALDO}:00"
+        avisos_configurados && gris "     avisos de peliculas y series cada ${MEDIA_CADA_MIN} min"
+        gris "     Los horarios se cambian en ${B}ajustes.conf${N} y se aplican al volver a correr esto."
     else
         aviso "No pude programar las tareas automaticas"
         pendiente "Revisar 'systemctl list-timers pi-*'"
@@ -2806,16 +2885,18 @@ crear_datos() {
     return 0
 }
 
-# Lo que corre solo, sin que lo pidas. Va aparte de configurar_servicios
-# porque no depende de que modulos hayas elegido: los avisos y el diagnostico
-# horario tienen sentido tengas lo que tengas levantado.
+# Las tareas programadas. Va aparte de configurar_servicios porque no depende
+# de que modulos hayas elegido: el diagnostico horario y el respaldo diario
+# tienen sentido tengas lo que tengas levantado, y no mandan nada afuera.
+#
+# Los avisos NO estan aca: son un modulo del menu, porque son lo unico que
+# sale de tu casa y eso lo decidis vos.
 configurar_automatico() {
-    titulo "Lo que va a correr solo"
+    titulo "Las tareas programadas"
 
     info "Ninguna de estas cosas te va a pedir nada nunca mas."
     echo ""
 
-    cfg_avisos
     instalar_automatismos
 }
 
@@ -2955,7 +3036,10 @@ configurar_servicios() {
         # El gancho de las importaciones va despues de Jellyfin, porque para
         # pedirle el reescaneo hace falta su clave, y esa solo existe una vez
         # que Jellyfin tiene usuario.
-        cfg_ganchos_media
+        #
+        # Y solo si hay avisos: sin canal, el gancho escribiria en un archivo
+        # que nadie lee nunca.
+        avisos_configurados && cfg_ganchos_media
 
         # Con las claves ya disponibles, los recuadros de la homepage pasan
         # de ser un enlace a mostrar datos en vivo.

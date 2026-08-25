@@ -1066,12 +1066,18 @@ print(faltan)
 rev_avisos() {
     seccion "Los avisos" "· el que avisa tambien puede romperse"
 
-    if ! avisos_configurados; then
+    if avisos_apagados; then
+        # Dijiste que no los queres. Eso es un estado valido, no una falta, y
+        # un diagnostico que te reprocha una decision tuya en cada corrida es
+        # ruido que despues se ignora entero.
+        bien "canales" "apagados a proposito"
+        metrica pi_avisos_ok 1
+    elif ! avisos_configurados; then
         ojo "canales" "sin configurar"
         implica "el diagnostico ve todo y no te lo puede decir a ningun lado"
         limite "crearlos" \
             "hay que elegir los nombres y suscribirse desde tu celular" \
-            "correr ./instalador.sh, y despues ./avisos.sh --canales"
+            "correr ./instalador.sh y elegir el modulo Avisos"
         metrica pi_avisos_ok 0
     elif ! command -v curl >/dev/null 2>&1; then
         mal "canales" "falta curl"
@@ -1099,7 +1105,9 @@ rev_avisos() {
     fi
 
     # Los ganchos de media: se pierden en silencio si alguien recrea el
-    # contenedor con una configuracion vieja.
+    # contenedor con una configuracion vieja. Sin avisos no hay gancho que
+    # revisar, asi que no se dice nada.
+    avisos_configurados || return 0
     local svc puerto faltan=()
     for svc in radarr:7878 sonarr:8989; do
         puerto="${svc#*:}"; svc="${svc%%:*}"
