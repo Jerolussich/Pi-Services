@@ -57,6 +57,11 @@ services:
       # El DAS entero, no subcarpetas sueltas: descargas y biblioteca tienen
       # que estar bajo el mismo montaje para que los hardlinks funcionen.
       - ${DAS_ROOT:-/mnt/das}:/data
+      # El gancho que anota cada importacion. No manda nada y no sabe que
+      # existe ntfy: solo escribe una linea. Quien avisa es el host, para que
+      # el nombre del canal nunca entre a un contenedor. Ver avisar-import.sh.
+      - ./avisar-import.sh:/scripts/avisar-import.sh:ro
+      - ../datos/media-pendiente:/avisos
     depends_on:
       - prowlarr
       - qbittorrent
@@ -76,6 +81,10 @@ services:
       # El DAS entero, igual que Radarr: descargas y biblioteca tienen que
       # compartir montaje o se pierden los hardlinks.
       - ${DAS_ROOT:-/mnt/das}:/data
+      # Mismo gancho que Radarr, mismo archivo compartido: por eso un pack de
+      # temporada y una pelicula que entran juntos salen bien agrupados.
+      - ./avisar-import.sh:/scripts/avisar-import.sh:ro
+      - ../datos/media-pendiente:/avisos
     depends_on:
       - prowlarr
       - qbittorrent
