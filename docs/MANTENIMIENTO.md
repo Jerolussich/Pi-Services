@@ -88,6 +88,50 @@ sudo touch /forcefsck && sudo reboot
 
 ---
 
+## Grafana se cae al arrancar, una de cada dos veces
+
+Descubierto el 25 de agosto de 2026. Vale la pena dejarlo escrito porque el síntoma no se parece en nada a la causa y se pierde mucho tiempo buscando en el lugar equivocado.
+
+**El síntoma.** Grafana entra en bucle de reinicio y en su log aparece:
+
+```
+fatal error: slice bounds out of range
+panic during panic
+runtime.pcvalue ... runtime/symtab.go
+```
+
+Los stack traces caen en lugares **sin relación entre sí**: `regexp`, el registro de rutas, `slice.go`. Y no es determinista: el mismo contenedor con la misma configuración arranca bien una vez y se cae la siguiente.
+
+**Lo que no es.** No es un tablero mal formado, ni un plugin, ni los datasources, ni memoria (12 GB libres, sin OOM), ni la tarjeta (`Filesystem state: clean`). Grafana **pelado**, sin un solo tablero ni plugin, se cae en 4 de cada 5 arranques.
+
+**La causa.** El Pi 5 corre el kernel de páginas de 16 KB:
+
+```bash
+getconf PAGESIZE
+```
+
+Si eso dice `16384`, los binarios de Go compilados asumiendo páginas de 4 KB fallan de forma aleatoria dentro del propio runtime. Prometheus, Caddy y node-exporter no lo sufren; Grafana sí.
+
+**Por qué aparece de golpe.** Un contenedor que ya está arriba sigue andando: el problema es solo el arranque. Así que Grafana puede pasar semanas bien y romperse el día que lo recrees, actualices o reinicies el equipo. Si acabás de correr `docker compose pull`, la imagen nueva se estrena en el siguiente arranque y ahí se nota.
+
+**Cómo se arregla.** Volver al kernel de 4 KB, que es una línea en `/boot/firmware/config.txt` y un reinicio:
+
+```
+kernel=kernel8.img
+```
+
+Es reversible: se saca la línea y se vuelve a reiniciar.
+
+**Cómo comprobar que estás en este caso** antes de tocar nada, sin arriesgar el Grafana que usás:
+
+```bash
+for i in 1 2 3 4 5; do docker rm -f gtest >/dev/null 2>&1; docker run -d --name gtest grafana/grafana-oss >/dev/null; sleep 32; docker ps --filter name=gtest --format "{{.Status}}"; done; docker rm -f gtest
+```
+
+Si de cinco arranques varios no dicen `Up`, es esto.
+
+---
+
 ## Detectar corrupción antes de que duela
 
 Estas tres verificaciones encuentran daño que no se ve a simple vista.
