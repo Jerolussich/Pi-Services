@@ -22,6 +22,14 @@ IP_FIJA="192.168.68.66"
 MASCARA="22"
 GATEWAY="192.168.68.1"
 
+# Las cuatro salidas de un hallazgo, y los ajustes de ajustes.conf.
+#
+# Va aparte y no aca adentro porque respaldo.sh y avisos.sh tambien necesitan
+# avisar, y no tiene sentido que carguen las 2600 lineas de este archivo para
+# mandar una notificacion.
+# shellcheck source=avisos.sh
+. "$REPO/lib/avisos.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
@@ -1300,8 +1308,15 @@ qbit_resetear() {
     return 0
 }
 
+# La contrasena con la que quedo qBittorrent, para que el recuadro de la
+# homepage pueda entrar. No se vuelve a preguntar en ningun lado: se recuerda
+# la que se acaba de poner, que es el mismo criterio de "la clave ya existe en
+# un lugar, asi que ese lugar es la fuente".
+QBIT_CLAVE=""
+
 cfg_qbittorrent() {
     local clave="$1" ck=/tmp/instalador.cookie tmp entro=0 prefs resp
+    QBIT_CLAVE="$clave"
     esperar_http qbittorrent 8080 || { aviso "qBittorrent no contesta"; pendiente "Configurar qBittorrent: no contestaba al instalar. Volve a correr el instalador"; return 1; }
 
     # Minimo 6 caracteres, impuesto por qBittorrent.
@@ -1434,6 +1449,40 @@ jf_api() {
         $DOCKER exec jellyfin curl -s -X "$metodo" -H "Content-Type: application/json" \
             -H "Authorization: $auth" "http://localhost:8096$ruta"
     fi
+}
+
+# Una clave de API propia de Jellyfin, para el recuadro de la homepage y para
+# que Radarr le pida reescanear al importar.
+#
+# Se reusa la que ya creamos si existe, en vez de crear una nueva en cada
+# corrida: si no, en un ano Jellyfin tendria doce claves nuestras dando vueltas
+# y ninguna forma de saber cual esta en uso.
+_jf_clave_guardada() {
+    jf_api GET "/Auth/Keys" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = d.get("Items") if isinstance(d, dict) else d
+for i in items or []:
+    if i.get("AppName") == "pi-services":
+        print(i.get("AccessToken", ""))
+        break
+' 2>/dev/null
+}
+
+api_key_jellyfin() {
+    esta_arriba jellyfin || return 1
+    [ -n "$JF_TOKEN" ] || return 1
+    local k
+    k=$(_jf_clave_guardada)
+    if [ -z "$k" ]; then
+        jf_api POST "/Auth/Keys?App=pi-services" >/dev/null 2>&1
+        k=$(_jf_clave_guardada)
+    fi
+    [ -n "$k" ] || return 1
+    echo "$k"
 }
 
 # Lo deja sin contrasena para poder ponerle una nueva.
@@ -2028,6 +2077,27 @@ cfg_homepage_widgets() {
         [ -n "$k" ] && { escribir_var homepage/.env HOMEPAGE_VAR_SEERR_KEY "$k"; escritas=$((escritas+1)); }
     fi
 
+    # Jellyfin y qBittorrent tienen recuadro nativo en la homepage y estaban
+    # apagados: solo mostraban un puntito de "esta vivo". Con esto pasan a
+    # mostrar quien esta reproduciendo y que se esta bajando, que es lo que
+    # tenia el boceto original de la pantalla de media.
+    if esta_arriba jellyfin; then
+        k=$(api_key_jellyfin) || k=""
+        if [ -n "$k" ]; then
+            escribir_var homepage/.env HOMEPAGE_VAR_JELLYFIN_KEY "$k"; escritas=$((escritas+1))
+        else
+            pendiente "El recuadro de Jellyfin en la homepage necesita que el instalador configure Jellyfin"
+        fi
+    fi
+
+    # Aca no hay clave de API que leer: qBittorrent se entra con usuario y
+    # contrasena, asi que se usa la que le acabamos de poner.
+    if esta_arriba qbittorrent && [ -n "$QBIT_CLAVE" ]; then
+        escribir_var homepage/.env HOMEPAGE_VAR_QBIT_USER admin
+        escribir_var homepage/.env HOMEPAGE_VAR_QBIT_PASS "$QBIT_CLAVE"
+        escritas=$((escritas+1))
+    fi
+
     [ "$escritas" -eq 0 ] && return 0
 
     # El contenedor tiene las variables cargadas en memoria: hay que recrearlo
@@ -2041,7 +2111,9 @@ cfg_homepage_widgets() {
     # 401 o 403, y la homepage decia "API Error" sin decir por que. Se comprueba
     # adentro, que es el unico lugar donde la respuesta es la verdadera.
     local llegaron
-    llegaron=$($DOCKER exec homepage sh -c 'env | grep -c "^HOMEPAGE_VAR_[A-Z_]*_KEY="' 2>/dev/null | tr -d '[:space:]')
+    # Se cuentan todas las HOMEPAGE_VAR_ y no solo las que terminan en _KEY:
+    # qBittorrent no tiene clave de API, entra con usuario y contrasena.
+    llegaron=$($DOCKER exec homepage sh -c 'env | grep -c "^HOMEPAGE_VAR_"' 2>/dev/null | tr -d '[:space:]')
     [ -n "$llegaron" ] || llegaron=0
 
     if [ "$llegaron" -lt "$escritas" ]; then
@@ -2497,6 +2569,256 @@ recrear_filtro_noticias() {
     gris "     news-filter reiniciado para que tome las credenciales"
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  LOS AVISOS
+#
+#  Dos canales de ntfy. El nombre del canal ES la contrasena: quien lo sabe,
+#  recibe. Por eso lo genera el instalador al azar y nunca te lo hace inventar,
+#  igual que hace con las API keys de Radarr y Seerr.
+#
+#  Son dos y no uno para que puedas silenciar el de media sin quedarte ciego al
+#  de alertas, y para que el de alertas conserve la propiedad que lo hace util:
+#  que si no suena, esta todo bien.
+#
+#  Van en el .env de la raiz, que nunca se versiona y que respaldo.sh ya
+#  levanta solo, porque busca todos los .env del repo.
+# ══════════════════════════════════════════════════════════════════════════════
+
+cfg_avisos() {
+    local nuevos=0 t
+
+    if [ -z "$(leer_var "$REPO/.env" NTFY_ALERTAS 2>/dev/null)" ]; then
+        t="pi-$(python3 -c 'import secrets;print(secrets.token_hex(6))')"
+        escribir_var "$REPO/.env" NTFY_ALERTAS "$t"
+        nuevos=$((nuevos+1))
+    fi
+
+    # Independiente del anterior a proposito: si fuera derivado, conocer el
+    # canal de media (que es el que se comparte sin pensar) daria el de alertas.
+    if [ -z "$(leer_var "$REPO/.env" NTFY_MEDIA 2>/dev/null)" ]; then
+        t="pi-$(python3 -c 'import secrets;print(secrets.token_hex(6))')"
+        escribir_var "$REPO/.env" NTFY_MEDIA "$t"
+        nuevos=$((nuevos+1))
+    fi
+
+    # Recargar, porque avisos.sh los leyo al arrancar el script y en la
+    # primera corrida todavia no existian.
+    NTFY_ALERTAS="$(leer_var "$REPO/.env" NTFY_ALERTAS 2>/dev/null)"
+    NTFY_MEDIA="$(leer_var "$REPO/.env" NTFY_MEDIA 2>/dev/null)"
+
+    if [ "$nuevos" -gt 0 ]; then
+        ok "Avisos: $nuevos $(plural "$nuevos" "canal creado" "canales creados")"
+        pendiente "Suscribirte a los canales de ntfy desde el celular: ./avisos.sh --canales"
+    else
+        ok "Avisos: los canales ya estaban"
+    fi
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EL GANCHO DE LAS IMPORTACIONES
+#
+#  Radarr y Sonarr saben ejecutar un script al terminar de importar. Ese script
+#  no manda nada: escribe una linea en un archivo compartido con el host, y el
+#  host agrupa la tanda y manda UN aviso.
+#
+#  Asi el nombre del canal nunca entra a un contenedor, y un pack de temporada
+#  no son ocho notificaciones seguidas.
+#
+#  Se arma leyendo el esquema que el propio servicio publica y completandolo,
+#  en vez de escribir el JSON a mano: si Radarr agrega un campo obligatorio en
+#  una version nueva, esto sigue andando.
+# ══════════════════════════════════════════════════════════════════════════════
+
+gancho_puesto() {
+    arr_api "$1" "$2" v3 GET /notification 2>/dev/null | grep -q "avisar-import"
+}
+
+cfg_gancho_arr() {
+    local svc="$1" puerto="$2" nombre="$3" cuerpo
+
+    esta_arriba "$svc" || return 0
+    if gancho_puesto "$svc" "$puerto"; then
+        ok "$nombre: el gancho de avisos ya estaba"
+        return 0
+    fi
+
+    cuerpo=$(arr_api "$svc" "$puerto" v3 GET /notification/schema 2>/dev/null | python3 -c '
+import sys, json
+try:
+    esquemas = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for e in esquemas:
+    if e.get("implementation") != "CustomScript":
+        continue
+    e["name"] = "Pi-Services"
+    e["onDownload"] = True
+    # Las mejoras de calidad llegan al gancho y se filtran en el host, para
+    # que la decision viva en ajustes.conf y no haya que recrear nada.
+    e["onUpgrade"] = True
+    for campo in e.get("fields", []):
+        if campo.get("name") == "path":
+            campo["value"] = "/scripts/avisar-import.sh"
+    print(json.dumps(e))
+    break
+' 2>/dev/null)
+
+    if [ -z "$cuerpo" ]; then
+        aviso "$nombre: no pude leer su esquema de notificaciones"
+        pendiente "Enganchar los avisos de $nombre: volve a correr el instalador"
+        return 1
+    fi
+
+    arr_api "$svc" "$puerto" v3 POST /notification "$cuerpo" >/dev/null 2>&1
+    if gancho_puesto "$svc" "$puerto"; then
+        ok "$nombre: avisa al celular cuando importa"
+    else
+        aviso "$nombre: no acepto el gancho"
+        gris "     suele ser que /scripts/avisar-import.sh no es ejecutable adentro"
+        pendiente "Enganchar los avisos de $nombre a mano en Settings, Connect"
+        return 1
+    fi
+}
+
+# Que Jellyfin reescanee al importar. Sin esto el aviso miente: te dice que ya
+# la podes ver y Jellyfin todavia no la indexo.
+cfg_rescan_jellyfin() {
+    local svc="$1" puerto="$2" nombre="$3" clave cuerpo
+    esta_arriba "$svc" || return 0
+    esta_arriba jellyfin || return 0
+
+    arr_api "$svc" "$puerto" v3 GET /notification 2>/dev/null | grep -q '"implementation":"MediaBrowser"' && return 0
+
+    clave=$(api_key_jellyfin) || return 0
+    [ -n "$clave" ] || return 0
+
+    cuerpo=$(arr_api "$svc" "$puerto" v3 GET /notification/schema 2>/dev/null | CLAVE="$clave" python3 -c '
+import sys, json, os
+try:
+    esquemas = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+valores = {"host": "jellyfin", "port": 8096, "apiKey": os.environ["CLAVE"],
+           "updateLibrary": True, "useSsl": False}
+for e in esquemas:
+    if e.get("implementation") != "MediaBrowser":
+        continue
+    e["name"] = "Jellyfin"
+    e["onDownload"] = True
+    e["onUpgrade"] = True
+    e["onRename"] = True
+    for campo in e.get("fields", []):
+        if campo.get("name") in valores:
+            campo["value"] = valores[campo["name"]]
+    print(json.dumps(e))
+    break
+' 2>/dev/null)
+
+    [ -n "$cuerpo" ] || return 0
+    arr_api "$svc" "$puerto" v3 POST /notification "$cuerpo" >/dev/null 2>&1 \
+        && ok "$nombre: Jellyfin reescanea al importar"
+    return 0
+}
+
+cfg_ganchos_media() {
+    cfg_gancho_arr radarr 7878 Radarr
+    cfg_gancho_arr sonarr 8989 Sonarr
+    cfg_rescan_jellyfin radarr 7878 Radarr
+    cfg_rescan_jellyfin sonarr 8989 Sonarr
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LOS AUTOMATISMOS
+#
+#  Los timers de systemd y el mensaje de bienvenida estaban en el repo desde
+#  siempre y no los instalaba nadie: habia que copiarlos a mano y acordarse.
+#  Lo que hay que acordarse de hacer, tarde o temprano no se hace.
+#
+#  Los horarios NO estan escritos en las unidades: salen de ajustes.conf y se
+#  sustituyen aca. Es el mismo principio que los registros DNS del Caddyfile.
+#  Cambias una linea en ajustes.conf, corres el instalador, y listo.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Copia un archivo a su lugar del sistema solo si cambio. Devuelve 0 si toco algo.
+_instalar_si_cambio() {
+    local origen="$1" destino="$2" modo="${3:-644}" tmp
+    tmp=$(mktemp)
+    sed -e "s|__REPO__|$REPO|g" \
+        -e "s|__USUARIO__|$(id -un)|g" \
+        -e "s|__CASA__|$HOME|g" \
+        -e "s|__DIAGNOSTICO_CADA__|${DIAGNOSTICO_CADA}|g" \
+        -e "s|__HORA_RESPALDO__|$(printf '%02d' "${HORA_RESPALDO}")|g" \
+        -e "s|__MEDIA_CADA__|${MEDIA_CADA_MIN}|g" \
+        "$origen" > "$tmp"
+    if sudo cmp -s "$tmp" "$destino" 2>/dev/null; then
+        rm -f "$tmp"; return 1
+    fi
+    sudo cp "$tmp" "$destino" && sudo chmod "$modo" "$destino" && sudo chown root:root "$destino"
+    rm -f "$tmp"
+    return 0
+}
+
+instalar_automatismos() {
+    local cambio=0 u
+
+    # Las carpetas en RAM, antes que nada: node-exporter monta una de ellas y
+    # si no existe, Docker la crea de root y despues el diagnostico no puede
+    # escribir adentro.
+    _instalar_si_cambio "$REPO/systemd/pi-services.tmpfiles" /etc/tmpfiles.d/pi-services.conf && cambio=1
+    sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-services.conf >/dev/null 2>&1
+
+    for u in pi-estado pi-respaldo pi-media; do
+        _instalar_si_cambio "$REPO/systemd/$u.service" "/etc/systemd/system/$u.service" && cambio=1
+        _instalar_si_cambio "$REPO/systemd/$u.timer"   "/etc/systemd/system/$u.timer"   && cambio=1
+    done
+
+    # El mensaje de bienvenida del SSH. Es el unico canal que existia antes de
+    # los avisos, y sigue siendo util: te muestra lo que esta mal justo en el
+    # lugar por el que ya entras.
+    if [ -d /etc/update-motd.d ]; then
+        _instalar_si_cambio "$REPO/motd/98-pi-services" /etc/update-motd.d/98-pi-services 755 && cambio=1
+    fi
+
+    [ "$cambio" = "1" ] && sudo systemctl daemon-reload >/dev/null 2>&1
+
+    local prendidos=0
+    for u in pi-estado pi-respaldo pi-media; do
+        sudo systemctl enable --now "$u.timer" >/dev/null 2>&1 && prendidos=$((prendidos+1))
+    done
+
+    if [ "$prendidos" -gt 0 ]; then
+        ok "Automatismos: $prendidos $(plural "$prendidos" "tarea" "tareas") programadas"
+        gris "     diagnostico cada $DIAGNOSTICO_CADA, respaldo a las ${HORA_RESPALDO}:00, avisos de media cada ${MEDIA_CADA_MIN} min"
+        gris "     los horarios se cambian en ajustes.conf y se aplican al volver a correr esto"
+    else
+        aviso "No pude programar las tareas automaticas"
+        pendiente "Revisar 'systemctl list-timers pi-*'"
+    fi
+}
+
+# Las carpetas de datos propios. Se crean ANTES de levantar contenedores: si
+# Docker monta una que no existe, la crea el mismo y de root, y despues ni el
+# gancho de Radarr ni el diagnostico pueden escribir adentro.
+crear_datos() {
+    mkdir -p "$DATOS/media-pendiente" 2>/dev/null || return 0
+    # Si quedo de root de una corrida vieja, se corrige.
+    [ -w "$DATOS/media-pendiente" ] || sudo chown -R "$(id -u):$(id -g)" "$DATOS" 2>/dev/null
+    return 0
+}
+
+# Lo que corre solo, sin que lo pidas. Va aparte de configurar_servicios
+# porque no depende de que modulos hayas elegido: los avisos y el diagnostico
+# horario tienen sentido tengas lo que tengas levantado.
+configurar_automatico() {
+    titulo "Lo que va a correr solo"
+
+    info "Ninguna de estas cosas te va a pedir nada nunca mas."
+    echo ""
+
+    cfg_avisos
+    instalar_automatismos
+}
+
 configurar_servicios() {
     local hay=0 mod
     for mod in media monitoring pihole news home; do
@@ -2629,6 +2951,11 @@ configurar_servicios() {
                 pendiente "Entrar a http://seerr.pi con tu usuario de Jellyfin y conectar Radarr y Sonarr"
             fi
         fi
+
+        # El gancho de las importaciones va despues de Jellyfin, porque para
+        # pedirle el reescaneo hace falta su clave, y esa solo existe una vez
+        # que Jellyfin tiene usuario.
+        cfg_ganchos_media
 
         # Con las claves ya disponibles, los recuadros de la homepage pasan
         # de ser un enlace a mostrar datos en vivo.

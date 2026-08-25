@@ -2,18 +2,20 @@
 # Respaldo diario de lo irrecuperable: contrasenas, tokens y bases de datos.
 # Va como servicio del sistema y no como tarea de Ofelia, porque respaldo.sh
 # corre en el host y Ofelia solo sabe ejecutar cosas adentro de contenedores.
+#
+# __REPO__ y __USUARIO__ los reemplaza el instalador. No se copia a mano.
 Description=Respaldo de Pi-Services
-Documentation=file:/home/jlussich/pi-services/respaldo.sh
+Documentation=file:__REPO__/respaldo.sh
 After=docker.service
 Wants=docker.service
 
 [Service]
 Type=oneshot
-User=jlussich
-WorkingDirectory=/home/jlussich/pi-services
+User=__USUARIO__
+WorkingDirectory=__REPO__
 # Se guardan los ultimos 7. Cada uno pesa menos de medio mega, asi que una
 # semana entera ocupa menos que una sola foto.
-ExecStart=/home/jlussich/pi-services/respaldo.sh --callado --rotar=7 /home/jlussich/respaldos
+ExecStart=__REPO__/respaldo.sh --callado --avisar --rotar=7 __CASA__/respaldos
 # Que no compita con nada: esto puede esperar.
 Nice=10
 IOSchedulingClass=idle

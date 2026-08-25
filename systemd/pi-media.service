@@ -1,0 +1,27 @@
+[Unit]
+# Manda el aviso de las peliculas y series que se importaron, agrupadas.
+#
+# Radarr y Sonarr no avisan al importar: escriben una linea en un archivo. Esto
+# revisa cada pocos minutos si esa tanda ya termino, y manda UN mensaje.
+#
+# Sin esto, un pack de temporada serian ocho notificaciones seguidas. Y con
+# esto un capitulo suelto sigue siendo un aviso, que es lo que se queria.
+#
+# Corre en el host, y no adentro del contenedor, porque es el unico lado donde
+# vive el nombre del canal de ntfy. Es a proposito: el secreto de tus avisos
+# nunca entra a un contenedor.
+#
+# __REPO__ y __USUARIO__ los reemplaza el instalador. No se copia a mano.
+Description=Aviso agrupado de importaciones de Radarr y Sonarr
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+User=__USUARIO__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/avisos.sh --media
+# Sale enseguida si no hay nada pendiente, que es el caso casi siempre.
+Nice=15
+IOSchedulingClass=idle
+TimeoutStartSec=60

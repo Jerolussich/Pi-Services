@@ -2,8 +2,8 @@
 Description=Respaldo diario de Pi-Services
 
 [Timer]
-# A las 4 de la manana, cuando no hay nadie usando nada.
-OnCalendar=*-*-* 04:00:00
+# La hora sale de ajustes.conf. De madrugada, cuando no hay nadie usando nada.
+OnCalendar=*-*-* __HORA_RESPALDO__:00:00
 # Si la Pi estaba apagada a esa hora, corre al prender. Un respaldo que se
 # saltea en silencio porque el equipo estaba apagado no sirve de nada.
 Persistent=true
