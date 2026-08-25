@@ -1,0 +1,367 @@
+{
+  "uid": "pi-main",
+  "title": "Pi",
+  "description": "Un solo tablero con filas que se abren. Arriba el score y el reloj del propio diagnostico; el detalle vive adentro de cada fila y se mira solo cuando hace falta.",
+  "tags": ["pi-services"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "editable": true,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Salud",
+      "description": "100 menos lo que cuesta cada problema. No es un promedio: un solo problema grave deja el numero en rojo sin que haga falta que se acumule nada mas.",
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 0 },
+      "id": 1,
+      "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+      "targets": [
+        { "refId": "A", "expr": "pi_salud", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+      ],
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0, "max": 100, "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 70 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Para mirar",
+      "description": "Cuantos hallazgos hay abiertos ahora mismo.",
+      "gridPos": { "h": 5, "w": 4, "x": 5, "y": 0 },
+      "id": 2,
+      "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+      "targets": [
+        { "refId": "A", "expr": "pi_problemas", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+      ],
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Hace cuanto se midio",
+      "description": "QUIEN VIGILA AL VIGILANTE.\n\nSi el diagnostico se muere, sus metricas no desaparecen: se quedan pegadas en el ultimo valor bueno, y el tablero se ve todo en verde porque ya nadie esta mirando.\n\nEste panel es la defensa. En rojo significa que hace mas de tres horas que nadie mide nada, o sea que TODO lo demas de este tablero es viejo.",
+      "gridPos": { "h": 5, "w": 5, "x": 9, "y": 0 },
+      "id": 3,
+      "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+      "targets": [
+        { "refId": "A", "expr": "time() - max(node_textfile_mtime_seconds{file=\"pi.prom\"})", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+      ],
+      "options": {
+        "graphMode": "none",
+        "colorMode": "background",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 7200 },
+              { "color": "red", "value": 10800 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Voltaje",
+      "description": "El bajo voltaje corrompe escrituras sin dar ningun error. Es una de las causas de lo que paso el 20 de agosto de 2026, y no aparece en ningun otro tablero.",
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 0 },
+      "id": 4,
+      "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+      "targets": [
+        { "refId": "A", "expr": "pi_voltaje_ok", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+      ],
+      "options": {
+        "graphMode": "none",
+        "colorMode": "background",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "con bajones", "color": "red", "index": 0 }, "1": { "text": "sano", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Avisos",
+      "description": "Si esto esta en rojo, el diagnostico ve todo y no te lo puede decir a ningun lado.",
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 0 },
+      "id": 5,
+      "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+      "targets": [
+        { "refId": "A", "expr": "pi_avisos_ok", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+      ],
+      "options": {
+        "graphMode": "none",
+        "colorMode": "background",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "sin canal", "color": "red", "index": 0 }, "1": { "text": "llegan", "color": "green", "index": 1 } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+
+    {
+      "type": "row",
+      "title": "Sistema",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 100,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "CPU y memoria",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+          "id": 101,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "CPU", "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } },
+            { "refId": "B", "legendFormat": "Memoria", "expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Temperatura",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+          "id": 102,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{type}}", "expr": "node_thermal_zone_temp", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "celsius", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Espacio usado",
+          "description": "La tarjeta del sistema y, cuando exista, cada disco del DAS. Lo que importa no es el numero sino la PENDIENTE: 'el disco esta al 76%' es un numero, 'sube 1% por semana' es una fecha.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+          "id": 103,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{mountpoint}}", "expr": "100 - (node_filesystem_avail_bytes{mountpoint=~\"/|/mnt/.*\"} * 100 / node_filesystem_size_bytes{mountpoint=~\"/|/mnt/.*\"})", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 8 },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 75 }, { "color": "red", "value": 90 }] }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Errores del sistema de archivos",
+          "description": "Un contador que no se mueve es dano viejo ya contenido. Un contador que sube es dano ocurriendo ahora, y es exactamente lo que precedio a la corrupcion de la tarjeta.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+          "id": 104,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "errores", "expr": "pi_fs_errores", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Red",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 200,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Latencia a internet",
+          "description": "Un numero suelto no dice nada. La curva de un mes muestra si el proveedor viene flojo siempre a la misma hora.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+          "id": 201,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "latencia", "expr": "pi_red_latencia_ms", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "ms", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Paquetes perdidos",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+          "id": 202,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "perdida", "expr": "pi_red_perdida_pct", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Consultas de Pi-hole",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+          "id": 203,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "bloqueadas", "expr": "rate(pihole_query_by_status{status=\"GRAVITY\"}[15m]) * 60", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Discos",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
+      "id": 300,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "SMART: sectores en problemas",
+          "description": "El DAS es mergerfs sin paridad: no hay nada que reconstruya un disco muerto. Estos contadores son el unico aviso previo que existe.\n\nY lo que importa es la PENDIENTE, no el valor: 8 sectores que hace dos anos son 8 es un disco sano; 8 que aparecieron esta semana es un disco muriendose.",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "id": 301,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{disco}} reasignados", "expr": "pi_smart_reasignados", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } },
+            { "refId": "B", "legendFormat": "{{disco}} pendientes", "expr": "pi_smart_pendientes", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } },
+            { "refId": "C", "legendFormat": "{{disco}} no corregibles", "expr": "pi_smart_no_corregibles", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "SMART: temperatura y cable",
+          "description": "Los errores CRC NO son del disco: son del cable o del puente USB. Distinguirlos es lo que evita tirar un disco sano.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "id": 302,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{disco}} °C", "expr": "pi_smart_temperatura", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } },
+            { "refId": "B", "legendFormat": "{{disco}} errores CRC", "expr": "pi_smart_crc", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "none", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Que ocupa la biblioteca",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "id": 303,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{carpeta}}", "expr": "pi_biblioteca_bytes", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        },
+        {
+          "type": "timeseries",
+          "title": "Descargas que nunca llegaron a la biblioteca",
+          "description": "Archivos en descargas con un solo nombre, o sea sin enlace duro hacia la biblioteca: importaciones que fallaron. Espacio ocupado que no le sirve a nadie y que no aparece como error en ningun lado.",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "id": 304,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "recuperable", "expr": "pi_huerfanos_bytes", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 8 } }, "overrides": [] }
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Servicios",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 400,
+      "panels": [
+        {
+          "type": "table",
+          "title": "Los chequeos, ahora",
+          "description": "0 bien, 1 para mirar, 2 mal. Son los mismos que imprime ./diagnostico.sh: un solo lugar donde se decide que significa estar bien.",
+          "gridPos": { "h": 12, "w": 10, "x": 0, "y": 9 },
+          "id": 401,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "format": "table", "instant": true, "expr": "sort_desc(pi_check)", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "transformations": [
+            { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true }, "renameByName": { "nombre": "chequeo", "Value": "estado" } } }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [
+                { "type": "value", "options": { "0": { "text": "bien", "color": "green", "index": 0 }, "1": { "text": "para mirar", "color": "orange", "index": 1 }, "2": { "text": "mal", "color": "red", "index": 2 } } }
+              ],
+              "custom": { "cellOptions": { "type": "color-text" } },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Que se rompe seguido",
+          "description": "Con un ano de historico, esta curva muestra que servicio se cae mas veces. Es informacion que hoy no existe en ningun otro lado.",
+          "gridPos": { "h": 12, "w": 14, "x": 10, "y": 9 },
+          "id": 402,
+          "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" },
+          "targets": [
+            { "refId": "A", "legendFormat": "{{nombre}}", "expr": "pi_check > 0", "datasource": { "type": "prometheus", "uid": "afdfqn8b7ss1sf" } }
+          ],
+          "fieldConfig": { "defaults": { "unit": "none", "max": 2, "min": 0, "custom": { "fillOpacity": 20, "drawStyle": "bars", "lineWidth": 0 } }, "overrides": [] }
+        }
+      ]
+    }
+  ]
+}

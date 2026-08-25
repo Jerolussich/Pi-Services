@@ -1,5 +1,15 @@
 apiVersion: 1
 providers:
+  # El tablero del equipo. Es UNO solo con filas colapsadas, y no cuatro
+  # tableros separados de red, discos, seguridad y salud: una fila cerrada es
+  # lo que deja que un tablero contenga cuatro sin ser cuatro.
+  - name: Pi
+    folder: Pi
+    type: file
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards/pi
+
   - name: Fitbit
     folder: Fitbit
     type: file

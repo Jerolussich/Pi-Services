@@ -8,11 +8,47 @@ Stack de monitoreo del Pi basado en Prometheus y Grafana. Recolecta métricas de
 
 ```
 Node Exporter (sistema)  ──┐
+  └─ textfile collector ──┤
 Pi-hole Exporter         ──┼──→ Prometheus → Grafana
                            │                    ↑
 fitbit.db (SQLite)  ───────────────────────────┤
 finance.db (SQLite) ───────────────────────────┘
 ```
+
+---
+
+## El buzón
+
+Node Exporter tiene una función que casi nadie usa: **lee una carpeta con archivos de texto planos y publica lo que encuentre como métrica propia**. Es, literalmente, un buzón.
+
+```
+--collector.textfile.directory=/run/pi-services/metrics
+```
+
+Con esa línea, `diagnostico.sh` se convierte en exporter **sin ser un contenedor**. Escribe un archivo de texto y listo.
+
+Es lo que permite que lleguen a Grafana los 40 chequeos del diagnóstico, SMART de los discos del DAS, la latencia a internet, el espacio recuperable en descargas y el score de salud, sin instalar un exporter por cada cosa. La alternativa eran tres o cuatro contenedores nuevos, cada uno con su configuración, su actualización y su forma de romperse.
+
+| Archivo | Quién lo escribe | Cada cuánto |
+|---|---|---|
+| `pi.prom` | el diagnóstico, entero y de forma atómica | cada hora |
+| `pi-lentas.prom` | SMART, espacio y biblioteca | cada 48 h, y se recopia desde disco en cada corrida |
+
+**Qué va y qué no:** solo lo que Node Exporter no puede saber solo. El espacio de disco, la CPU, la RAM y la temperatura ya los tiene, y escribirlos de nuevo sería tener dos fuentes para el mismo hecho.
+
+La carpeta la crea `/etc/tmpfiles.d/pi-services.conf` en cada arranque, **antes que Docker**. Sin eso, Docker la crearía él al montarla y de root, y después el diagnóstico no podría escribir adentro: el síntoma sería un tablero vacío sin ningún error.
+
+El detalle completo está en [../docs/AVISOS.md](../docs/AVISOS.md).
+
+---
+
+## Retención e intervalo
+
+Dos valores que no son los de fábrica, y por qué:
+
+**`scrape_interval: 60s`** en vez de 15. Los 15 segundos están pensados para infraestructura donde importa el segundo. Para un servidor de casa son cuatro veces más de lo necesario, y ese "cuatro veces" se paga dos veces: cuadruplica el espacio del histórico y cuadruplica **las escrituras en la microSD**. Sobre una tarjeta que ya se corrompió una vez por escrituras, bajarlo es de las cosas más baratas que se pueden hacer.
+
+**`--storage.tsdb.retention.time=1y`** en vez de 15 días. Todo el valor de tener histórico es la tendencia larga: distinguir un contador de SMART que sube despacio hace meses de uno que saltó anteanoche, o saber a qué ritmo se llena el disco. Con dos semanas eso no existe. No aumenta la escritura, solo el espacio.
 
 ---
 
@@ -37,6 +73,8 @@ monitoring/
 ├── prometheus.yml                ← Configuración de scraping
 └── grafana/
     ├── dashboards/
+    │   ├── pi/
+    │   │   └── pi_dashboard.json ← UNO solo, con filas que se abren
     │   ├── fitbit/
     │   │   ├── fitbit_dashboard.json
     │   │   └── fitbit_insights_dashboard.json
@@ -162,6 +200,7 @@ Los dashboards se provisionan automáticamente desde `grafana/dashboards/` al in
 
 | Dashboard | Carpeta en Grafana | Descripción |
 |---|---|---|
+| **Pi** | **Pi** | **Salud, sistema, red, discos y servicios. Ver abajo** |
 | Fitbit Main | Fitbit | Actividad, sueño y frecuencia cardíaca |
 | Fitbit Insights | Fitbit | Correlaciones y tendencias |
 | Finance | Finance | Transacciones Itaú |
@@ -171,6 +210,24 @@ Para el dashboard de sistema (Node Exporter), importar desde Grafana:
 1. **Dashboards → Import**
 2. ID: `1860` (Node Exporter Full)
 3. Seleccionar el datasource Prometheus
+
+#### El tablero "Pi"
+
+Es **uno solo con filas colapsadas**, y no cuatro tableros separados de red, discos, seguridad y salud. Una fila cerrada es lo que deja que un tablero contenga cuatro sin ser cuatro: lo abrís solo si la respuesta corta no te alcanzó.
+
+```
+┌────────────────────────────────────────────────┐
+│  Salud 94   Para mirar 2   Medido hace 12 min  │
+│  Voltaje: sano       Avisos: llegan            │
+│                                                │
+│  ▶ Sistema      CPU, RAM, temperatura, espacio │
+│  ▶ Red          latencia, perdida, Pi-hole     │
+│  ▶ Discos       SMART, biblioteca, huerfanos   │
+│  ▶ Servicios    los 40 chequeos y su historial │
+└────────────────────────────────────────────────┘
+```
+
+Arriba de todo hay un panel que no es del equipo sino **del propio diagnóstico**: "hace cuánto se midió". Importa porque si el diagnóstico se muere, sus métricas no desaparecen, se quedan pegadas en el último valor bueno, y el tablero se ve todo en verde porque ya nadie está mirando. En rojo significa que todo lo demás de esa pantalla es viejo.
 
 ### Datasources
 

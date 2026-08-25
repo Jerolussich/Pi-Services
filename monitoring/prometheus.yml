@@ -1,11 +1,24 @@
 global:
-  scrape_interval: 15s
+  # Cada 60 s y no cada 15.
+  #
+  # Los 15 s son el valor de fabrica, pensado para infraestructura donde
+  # importa el segundo. Para un servidor de casa son cuatro veces mas de lo
+  # necesario, y ese "cuatro veces" se paga dos veces: cuadruplica el espacio
+  # del historico y cuadruplica las escrituras en la microSD.
+  #
+  # Sobre una tarjeta que ya se corrompio una vez por escrituras, bajarlo es
+  # de las cosas mas baratas que se pueden hacer. No se pierde nada util: no
+  # hay ninguna decision que dependa de ver el minuto con resolucion de 15 s.
+  scrape_interval: 60s
 
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
+  # Las metricas propias del diagnostico (SMART, red, score, respaldo) NO son
+  # un job aparte: llegan por este mismo, a traves del textfile collector de
+  # node-exporter. Ver monitoring/README.md.
   - job_name: 'node'
     static_configs:
       - targets: ['node-exporter:9100']
