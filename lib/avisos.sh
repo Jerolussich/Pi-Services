@@ -446,7 +446,15 @@ metricas_volcar() {
     local tmp="$METRICAS_ARCHIVO.tmp"
     # Ordenadas para que las lineas del mismo nombre queden juntas, que es lo
     # que espera el formato. Como el nombre es el prefijo, alcanza con sort.
-    printf '%s\n' "${METRICAS[@]}" | sort > "$tmp" 2>/dev/null || return 0
+    #
+    # Y sin repetidas: dos lineas con el mismo nombre y las mismas etiquetas
+    # hacen que node-exporter descarte el archivo ENTERO, asi que un solo
+    # chequeo duplicado por descuido dejaria a Grafana sin ninguna metrica y
+    # sin decir por que. Se conserva el ultimo valor de cada clave.
+    printf '%s\n' "${METRICAS[@]}" \
+        | awk '{ clave=$0; sub(/ [^ ]*$/, "", clave); ultimo[clave]=$0 }
+               END { for (k in ultimo) print ultimo[k] }' \
+        | sort > "$tmp" 2>/dev/null || return 0
     mv "$tmp" "$METRICAS_ARCHIVO" 2>/dev/null || rm -f "$tmp"
     return 0
 }
