@@ -19,7 +19,23 @@ name: pi-services
 # igual que el 8181, y solo Caddy llega.
 services:
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
+    # CLAVADA A PROPOSITO, no actualizar a ciegas.
+    #
+    # De 2026.7.0 en adelante la imagen se construye sobre Alpine 3.24, que trae
+    # musl 1.2.6, y musl 1.2.6 no puede relocalizar sus librerias con el kernel
+    # de paginas de 16 KB de la Pi 5: el contenedor entra en bucle de reinicio
+    # con "Error relocating _ssl...: X509_up_ref: symbol not found". No es cosa
+    # de Home Assistant, se reproduce con alpine:3.24 pelado:
+    #
+    #   docker run --rm alpine:3.24 /lib/ld-musl-aarch64.so.1 --list /usr/lib/libcrypto.so.3
+    #
+    # 2026.6.4 es la ultima sobre Alpine 3.22 (musl 1.2.5), que anda. Los demas
+    # contenedores del repo no se ven afectados porque son binarios de Go,
+    # estaticos, que nunca usan el enlazador dinamico de musl.
+    #
+    # Para volver a :stable, antes probar que esto de cero errores:
+    #   docker run --rm alpine:3.24 /lib/ld-musl-aarch64.so.1 --list /usr/lib/libcrypto.so.3
+    image: ghcr.io/home-assistant/home-assistant:2026.6.4
     container_name: homeassistant
     network_mode: host
     env_file:
