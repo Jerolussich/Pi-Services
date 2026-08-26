@@ -413,8 +413,53 @@ elegir_servicios() {
 
 # Los .env de TODOS los modulos tienen que existir, aunque no los uses:
 # Docker Compose falla al leer la configuracion si falta uno solo.
+# Que .env pide cada compose, leido de los composes mismos y con la ruta ya
+# resuelta respecto de la raiz del repo. Soporta las dos formas de escribirlo:
+# la lista con guiones y el valor suelto en la misma linea.
+envs_de_los_composes() {
+    local f dir
+    while IFS= read -r f; do
+        dir=$(dirname "$f")
+        awk -v dir="$dir" '
+            # env_file: ruta     (todo en una linea)
+            /^[[:space:]]*env_file:[[:space:]]*[^[:space:]]/ {
+                linea = $0
+                sub(/^[[:space:]]*env_file:[[:space:]]*/, "", linea)
+                gsub(/["'"'"']/, "", linea)
+                if (linea != "") print dir "/" linea
+                dentro = 0
+                next
+            }
+            # env_file:
+            #   - ruta
+            /^[[:space:]]*env_file:[[:space:]]*$/ { dentro = 1; next }
+            dentro && /^[[:space:]]*-[[:space:]]*/ {
+                linea = $0
+                sub(/^[[:space:]]*-[[:space:]]*/, "", linea)
+                gsub(/["'"'"']/, "", linea)
+                if (linea != "") print dir "/" linea
+                next
+            }
+            dentro { dentro = 0 }
+        ' "$f"
+    done < <(find . -name docker-compose.yml -not -path "./.git/*" 2>/dev/null)
+}
+
 crear_envs_vacios() {
-    local linea m arch v _
+    local linea m arch v _ p
+
+    # La lista de .env salia de VARIABLES, o sea de los datos que el instalador
+    # sabe pedir. El modulo home no tiene ninguna variable, asi que su .env no
+    # se creaba nunca, y Compose se niega a leer la configuracion entera si le
+    # falta un env_file: "home/.env not found" y no levanta nada. Cualquier
+    # modulo nuevo sin variables caia en lo mismo, asi que ahora la lista sale
+    # de los composes, que son los que de verdad los piden.
+    while IFS= read -r p; do
+        [ -n "$p" ] || continue
+        mkdir -p "$(dirname "$p")"
+        [ -f "$p" ] || touch "$p"
+    done < <(envs_de_los_composes)
+
     for linea in "${VARIABLES[@]}"; do
         IFS='|' read -r m arch v _ _ _ <<< "$linea"
         mkdir -p "$(dirname "$arch")"
