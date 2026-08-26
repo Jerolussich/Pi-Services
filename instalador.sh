@@ -1245,9 +1245,11 @@ guia_cuentas() {
     info "$(plural "${#pendientes[@]}" "Queda 1 paso" "Quedan ${#pendientes[@]} pasos") que $(plural "${#pendientes[@]}" "depende" "dependen") de vos. $(plural "${#pendientes[@]}" "Va" "Van") por la pantalla"
     info "de cada servicio, asi que $(plural "${#pendientes[@]}" "necesita" "necesitan") un navegador:"
     echo ""
+    local n=1
     for linea in "${pendientes[@]}"; do
         IFS='|' read -r m srv url que <<< "$linea"
-        printf "      ${B}·${N} ${C}%-14s${N} %s\n" "$srv" "$que"
+        printf "      ${B}%d)${N}  ${C}%-14s${N} %s\n" "$n" "$srv" "$que"
+        n=$((n+1))
     done
     echo ""
     info "Te llevo de a uno, ${B}en el orden correcto${N}, con el paso a paso, y"
@@ -1257,10 +1259,50 @@ guia_cuentas() {
     gris "     Si no te abren, revisa que tu DNS apunte a $IP_FIJA."
     echo ""
 
-    preguntar "$(plural "${#pendientes[@]}" "¿Lo hacemos ahora?" "¿Los hacemos ahora?")" "s" || {
-        pendiente "Terminar en el navegador: $(for l in "${pendientes[@]}"; do IFS='|' read -r _ s _ _ <<< "$l"; printf '%s ' "$s"; done)"
-        return 0
-    }
+    # Antes era todo o nada: un solo si/no para los cuatro pasos. Si querias
+    # cargar los indexers pero no ponerte a instalar complementos de Jellyfin,
+    # la unica salida era decir que no a todo y quedarte sin ninguno.
+    info "Escribi los numeros separados por espacio.  Ejemplo:  ${B}1 3${N}"
+    info "O escribi:  ${B}todo${N}  ·  ${B}ninguno${N}  ${G}(quedan anotados como pendientes)${N}"
+    echo ""
+
+    local elegidos=() resp malos e esta
+    while true; do
+        read -r -p "  ${B}Tu eleccion:${N} " resp </dev/tty
+        elegidos=()
+        case "${resp:-todo}" in
+            todo) elegidos=("${pendientes[@]}") ;;
+            ninguno|salir|no|n)
+                for linea in "${pendientes[@]}"; do
+                    IFS='|' read -r m srv url que <<< "$linea"
+                    pendiente "$srv: $que  ($url)"
+                done
+                return 0 ;;
+            *)
+                malos=""
+                for n in $resp; do
+                    if [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#pendientes[@]}" ]; then
+                        elegidos+=("${pendientes[$((n-1))]}")
+                    else
+                        malos="$malos $n"
+                    fi
+                done
+                [ -n "$malos" ] && aviso "No entendi:${B}$malos${N}. Van numeros del 1 al ${#pendientes[@]}, o ${B}todo${N}."
+                ;;
+        esac
+        [ ${#elegidos[@]} -gt 0 ] && break
+    done
+
+    # Lo que no elegiste no se pierde: queda anotado en el resumen del final
+    for linea in "${pendientes[@]}"; do
+        esta=0
+        for e in "${elegidos[@]}"; do [ "$e" = "$linea" ] && esta=1; done
+        if [ "$esta" = "0" ]; then
+            IFS='|' read -r m srv url que <<< "$linea"
+            pendiente "$srv: $que  ($url)"
+        fi
+    done
+    pendientes=("${elegidos[@]}")
 
     local i=1 total=${#pendientes[@]}
     for linea in "${pendientes[@]}"; do
