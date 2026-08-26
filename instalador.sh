@@ -278,8 +278,11 @@ actualizar_claves_existentes() {
         IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
         nueva=$(clave_para "$desc")
         if [ "$tipo" = "hash" ]; then
-            info "Generando el hash de $desc, bcrypt es lento a proposito..."
-            hash=$($DOCKER run --rm caddy:2-alpine caddy hash-password --plaintext "$nueva" 2>/dev/null)
+            hash=""
+            if asegurar_docker; then
+                info "Generando el hash de $desc, bcrypt es lento a proposito..."
+                hash=$($DOCKER run --rm caddy:2-alpine caddy hash-password --plaintext "$nueva" 2>/dev/null)
+            fi
             if [ -z "$hash" ]; then
                 aviso "No se pudo generar el hash de $desc"
                 pendiente "Actualizar $v en $arch"
@@ -527,15 +530,17 @@ recolectar() {
             aviso "Salteado"
             INCOMPLETOS+=("$m|$arch|$v|$desc|$ayuda")
         elif [ "$tipo" = "hash" ]; then
-            info "Generando el hash, bcrypt es lento a proposito..."
-            local hash
-            hash=$($DOCKER run --rm caddy:2-alpine caddy hash-password --plaintext "$valor" 2>/dev/null)
+            local hash=""
+            if asegurar_docker; then
+                info "Generando el hash, bcrypt es lento a proposito..."
+                hash=$($DOCKER run --rm caddy:2-alpine caddy hash-password --plaintext "$valor" 2>/dev/null)
+            fi
             if [ -n "$hash" ]; then
                 # Cada $ va duplicado o Docker Compose lo toma por variable
                 escribir_var "$arch" "$v" "${hash//\$/\$\$}"
                 ok "Guardado"
             else
-                falla "No se pudo generar el hash. ¿Docker esta corriendo?"
+                falla "No se pudo generar el hash"
                 INCOMPLETOS+=("$m|$arch|$v|$desc|$ayuda")
             fi
             unset hash
@@ -553,17 +558,17 @@ recolectar() {
 #  INSTALACION
 # ══════════════════════════════════════════════════════════════════════════════
 
-instalar_sistema() {
-    [ "${ESTADO[sistema]}" = "activo" ] && { ok "Ya estaba listo"; return; }
-
-    sudo timedatectl set-timezone "$(timedatectl show -p Timezone --value)" 2>/dev/null
-    sudo tune2fs -c 30 "$(findmnt -no SOURCE /)" >/dev/null 2>&1
-    ok "Chequeo del disco cada 30 arranques"
-    gris "     Viene desactivado de fabrica, y por eso un sistema de archivos"
-    gris "     danado puede degradarse meses sin que nadie se entere."
+# El asistente que pide los datos genera el hash de Caddy con un contenedor, y
+# corre ANTES de esta etapa. En un equipo recien formateado eso hacia que el
+# primer dato que pedia fallara, con un mensaje que encima preguntaba si Docker
+# estaba corriendo cuando el problema era que no estaba instalado. Ahora Docker
+# se asegura en el momento en que hace falta, sin depender del orden de los pasos.
+DOCKER_LISTO=0
+asegurar_docker() {
+    [ "$DOCKER_LISTO" = "1" ] && return 0
 
     if ! command -v docker >/dev/null 2>&1; then
-        info "Instalando Docker..."
+        aviso "Docker no detectado. Instalando Docker..."
         curl -fsSL https://get.docker.com | sudo sh >/dev/null 2>&1
         # Se comprueba que quedo, no que el comando no dio error. Sin internet
         # el instalador remoto falla y con toda la salida a /dev/null el visto
@@ -575,10 +580,40 @@ instalar_sistema() {
             return 1
         fi
         sudo usermod -aG docker "$USER"
-        sudo systemctl enable --now docker >/dev/null 2>&1
         ok "Docker instalado"
-    else
+    fi
+
+    # Instalado no es lo mismo que corriendo: despues de un arranque a medias el
+    # binario esta y el demonio no, y desde afuera el error se veia identico.
+    if ! systemctl is-active --quiet docker; then
+        info "Docker esta parado, arrancandolo..."
+        sudo systemctl enable --now docker >/dev/null 2>&1
+        if ! systemctl is-active --quiet docker; then
+            falla "Docker no arranca"
+            info "Mira que dice:  sudo systemctl status docker"
+            pendiente "Arrancar Docker y volver a correr el instalador"
+            return 1
+        fi
+    fi
+
+    DOCKER_LISTO=1
+    return 0
+}
+
+instalar_sistema() {
+    [ "${ESTADO[sistema]}" = "activo" ] && { ok "Ya estaba listo"; return; }
+
+    sudo timedatectl set-timezone "$(timedatectl show -p Timezone --value)" 2>/dev/null
+    sudo tune2fs -c 30 "$(findmnt -no SOURCE /)" >/dev/null 2>&1
+    ok "Chequeo del disco cada 30 arranques"
+    gris "     Viene desactivado de fabrica, y por eso un sistema de archivos"
+    gris "     danado puede degradarse meses sin que nadie se entere."
+
+    if command -v docker >/dev/null 2>&1 && systemctl is-active --quiet docker; then
+        DOCKER_LISTO=1
         ok "Docker ya estaba"
+    else
+        asegurar_docker || return 1
     fi
 
     if ! systemctl is-enabled log2ram >/dev/null 2>&1; then
