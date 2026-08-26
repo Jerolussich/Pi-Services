@@ -914,6 +914,83 @@ print("\n".join(sorted(imgs)))' 2>/dev/null)
     done
 }
 
+# Espera a que los contenedores levanten, diciendo cual va cayendo en su lugar.
+#
+# Antes esto era un "sleep 4" seguido de un conteo, y tenia dos problemas. El
+# primero es que cuatro segundos son pocos: en una Pi levantando siete
+# contenedores a la vez, los ultimos todavia estan arrancando, asi que se
+# reportaban como caidos servicios que estaban perfectamente. El segundo es que
+# durante la espera no se decia nada, y un modulo grande parecia colgado.
+#
+# Se mira el estado real de Docker y no solo "esta en la lista de corriendo",
+# porque el que arranca y se muere en bucle y el que todavia no arranco son dos
+# problemas distintos y necesitan mensajes distintos.
+esperar_servicios() {
+    local mod="$1"; shift
+    local servicios="$*"
+    local limite=90 t=0 s n e estado snap faltan arriba=0 total=0
+    local -A visto=()
+
+    for s in $servicios; do total=$((total+1)); done
+
+    while :; do
+        # Una sola consulta por vuelta, no una por servicio: en una Pi cada
+        # invocacion de docker cuesta, y aca se repite cada dos segundos.
+        snap=$($DOCKER ps -a --format '{{.Names}}|{{.State}}' 2>/dev/null)
+        faltan=""
+        for s in $servicios; do
+            [ -n "${visto[$s]:-}" ] && continue
+            estado=""
+            while IFS='|' read -r n e; do
+                [ "$n" = "$s" ] && { estado="$e"; break; }
+            done <<< "$snap"
+            if [ "$estado" = "running" ]; then
+                visto[$s]=1
+                arriba=$((arriba+1))
+                printf "      ${V}✓${N} %-16s ${G}arriba${N}\n" "$s"
+            else
+                faltan="$faltan $s"
+            fi
+        done
+        [ -z "$faltan" ] && break
+        [ "$t" -ge "$limite" ] && break
+        # Cada diez segundos se dice a quien se espera, para que no parezca colgado
+        [ "$t" -gt 0 ] && [ $((t % 10)) -eq 0 ] && gris "     esperando a:$faltan"
+        sleep 2
+        t=$((t+2))
+    done
+
+    # Los que no llegaron: se dice por que, que no es lo mismo en cada caso
+    snap=$($DOCKER ps -a --format '{{.Names}}|{{.State}}' 2>/dev/null)
+    for s in $servicios; do
+        [ -n "${visto[$s]:-}" ] && continue
+        estado="sin_crear"
+        while IFS='|' read -r n e; do
+            [ "$n" = "$s" ] && { estado="$e"; break; }
+        done <<< "$snap"
+        case "$estado" in
+            restarting) printf "      ${R}✗${N} %-16s ${A}arranca y se muere, en bucle${N}\n" "$s" ;;
+            exited|dead) printf "      ${R}✗${N} %-16s ${A}se cerro solo${N}\n" "$s" ;;
+            created)    printf "      ${R}✗${N} %-16s ${A}creado pero nunca arranco${N}\n" "$s" ;;
+            paused)     printf "      ${R}✗${N} %-16s ${A}en pausa${N}\n" "$s" ;;
+            sin_crear)  printf "      ${R}✗${N} %-16s ${A}no se llego a crear${N}\n" "$s" ;;
+            *)          printf "      ${R}✗${N} %-16s ${A}sigue arrancando despues de ${limite}s${N}\n" "$s" ;;
+        esac
+    done
+
+    olvidar_estado
+    if [ "$arriba" -eq "$total" ]; then
+        ok "$arriba de $total contenedores arriba"
+    else
+        aviso "$arriba de $total arriba"
+        for s in $servicios; do
+            [ -n "${visto[$s]:-}" ] || \
+                gris "     ver que paso con:  docker compose logs $s"
+        done
+        pendiente "Revisar los contenedores de ${NOMBRE[$mod]} que no levantaron"
+    fi
+}
+
 levantar_modulo() {
     local mod="$1"
     local servicios; servicios=$(servicios_elegidos "$mod")
@@ -951,22 +1028,8 @@ levantar_modulo() {
     $DOCKER compose up -d $pendientes 2>&1 | grep -viE "^\s*$" | tail -6 | sed 's/^/      /'
     olvidar_estado
 
-    sleep 4
-    local arriba=0 total=0
-    for s in $servicios; do
-        total=$((total+1))
-        esta_arriba "$s" && arriba=$((arriba+1))
-    done
-    if [ "$arriba" -eq "$total" ]; then
-        ok "$arriba de $total contenedores arriba"
-    else
-        aviso "$arriba de $total arriba"
-        for s in $servicios; do
-            esta_arriba "$s" || \
-                gris "     no levanto: $s   ·   ver con: docker compose logs $s"
-        done
-        pendiente "Revisar los contenedores de ${NOMBRE[$mod]} que no levantaron"
-    fi
+    # shellcheck disable=SC2086
+    esperar_servicios "$mod" $servicios
 }
 
 instalar_tailscale() {
