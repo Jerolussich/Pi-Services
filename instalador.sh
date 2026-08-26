@@ -1143,9 +1143,11 @@ ejecutar() {
 #  DESPUES de crear las cuentas de FreshRSS y Wallabag.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Solo lo que NO se puede automatizar: crear una cuenta desde cero, y las
-# elecciones que son tuyas (que indexers usas, en que idioma queres los
-# subtitulos). Todo lo demas lo dejo hecho antes de llegar aca.
+# Solo lo que NO se puede automatizar: el usuario de Home Assistant, que se
+# crea en su propia pantalla porque ahi genera claves propias de la instalacion,
+# y las elecciones que son tuyas (que indexers usas, en que idioma queres los
+# subtitulos, que complementos de Jellyfin). Todo lo demas lo dejo hecho antes
+# de llegar aca.
 #
 # modulo|servicio|url|de que se trata
 #
@@ -1233,12 +1235,20 @@ guia_cuentas() {
 
     titulo "Lo que queda para vos"
 
-    info "Ya configure todo lo que se puede configurar solo. Lo que queda es"
-    info "de dos tipos:"
+    # Antes esto anunciaba "dos tipos" en abstracto, y el primero era "crear una
+    # cuenta desde cero", que no dice donde ni por que, y encima casi nunca era
+    # el caso: de los cuatro pasos habituales, tres son elecciones y uno solo es
+    # una cuenta. Se muestra directamente lo que viene, que ya esta escrito al
+    # lado de cada servicio y es concreto.
+    info "Ya configure todo lo que se puede configurar solo."
     echo ""
-    info "  ${B}·${N} crear una cuenta desde cero, que necesita un navegador"
-    info "  ${B}·${N} elecciones que son tuyas, como que indexers usar o en que"
-    info "    idioma queres los subtitulos"
+    info "$(plural "${#pendientes[@]}" "Queda 1 paso" "Quedan ${#pendientes[@]} pasos") que $(plural "${#pendientes[@]}" "depende" "dependen") de vos. $(plural "${#pendientes[@]}" "Va" "Van") por la pantalla"
+    info "de cada servicio, asi que $(plural "${#pendientes[@]}" "necesita" "necesitan") un navegador:"
+    echo ""
+    for linea in "${pendientes[@]}"; do
+        IFS='|' read -r m srv url que <<< "$linea"
+        printf "      ${B}·${N} ${C}%-14s${N} %s\n" "$srv" "$que"
+    done
     echo ""
     info "Te llevo de a uno, ${B}en el orden correcto${N}, con el paso a paso, y"
     info "despues de cada uno te pido los datos que hayan salido de ahi."
@@ -1247,8 +1257,8 @@ guia_cuentas() {
     gris "     Si no te abren, revisa que tu DNS apunte a $IP_FIJA."
     echo ""
 
-    preguntar "¿Las hacemos ahora?" "s" || {
-        pendiente "Crear las cuentas de: $(for l in "${pendientes[@]}"; do IFS='|' read -r _ s _ _ <<< "$l"; printf '%s ' "$s"; done)"
+    preguntar "$(plural "${#pendientes[@]}" "¿Lo hacemos ahora?" "¿Los hacemos ahora?")" "s" || {
+        pendiente "Terminar en el navegador: $(for l in "${pendientes[@]}"; do IFS='|' read -r _ s _ _ <<< "$l"; printf '%s ' "$s"; done)"
         return 0
     }
 
