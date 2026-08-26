@@ -2977,6 +2977,15 @@ configurar_servicios() {
         fi
     fi
 
+    # Recien en este punto se sabe si el panel quedo abierto de verdad: o
+    # porque TOCAR_CLAVES era 0 y nadie intento ponerla, o porque cfg_pihole
+    # fallo. Comprobarlo antes, al final de instalar_pihole, avisaba siempre.
+    if [[ " ${SELECCION[*]} " == *" pihole "* ]] && command -v pihole-FTL >/dev/null 2>&1 \
+       && ! pihole_tiene_clave; then
+        aviso "Pi-hole quedo sin contrasena: su panel es accesible desde tu LAN"
+        pendiente "Poner contrasena a Pi-hole:  sudo pihole setpassword"
+    fi
+
     # La clave de API de Pi-hole la necesita el exporter de monitoreo, pero
     # quien la genera es Pi-hole. Va despues de ponerle la contrasena del
     # panel, porque para generarla hay que entrar con ella.

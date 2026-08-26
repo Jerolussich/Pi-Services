@@ -671,6 +671,29 @@ instalar_sistema() {
 
 BL_BASE="https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock"
 
+# Un dominio no es una URL, y la diferencia importa: Pi-hole compara contra el
+# nombre que viaja en la consulta DNS, que es "www.reddit.com" pelado, sin
+# esquema ni barras. Pegar https://www.reddit.com/ dejaba en la lista un regex
+# imposible de satisfacer, y el instalador lo anunciaba como bloqueado igual.
+#
+# Devuelve el dominio limpio por salida estandar, o 1 si lo que entro no es un
+# dominio. Saca el www porque el regex que se arma despues ya agarra todos los
+# subdominios.
+normalizar_dominio() {
+    local d="$1"
+    d="$(printf '%s' "$d" | tr -d '[:space:]')"
+    d="${d,,}"
+    d="${d#*://}"        # esquema
+    d="${d##*@}"         # usuario:clave@
+    d="${d%%/*}"         # ruta
+    d="${d%%\?*}"        # query
+    d="${d%%:*}"         # puerto
+    d="${d#www.}"
+    d="${d%.}"           # punto final del FQDN
+    [[ "$d" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || return 1
+    printf '%s\n' "$d"
+}
+
 elegir_blocklists() {
     local actuales
     actuales=$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM adlist WHERE enabled=1;' 2>/dev/null)
@@ -740,16 +763,47 @@ elegir_blocklists() {
     echo ""
     if preguntar "¿Queres bloquear algun sitio puntual? (por ejemplo redes sociales)" "n"; then
         info "Escribi un dominio por vez. Enter vacio para terminar."
+        gris "     Asi:  reddit.com      instagram.com      x.com"
+        gris "     Sin https://, sin barras y sin www: eso es una URL, no un dominio."
+        gris "     Se bloquea el dominio y todos sus subdominios."
+        local bloqueados=0
         while true; do
-            local d
+            local d limpio rx hay
             read -r -p "     ${B}dominio${N} (Enter para terminar): " d </dev/tty
             [ -z "$d" ] && break
+
+            if ! limpio=$(normalizar_dominio "$d"); then
+                aviso "\"$d\" no es un dominio"
+                gris "     Tiene que ser el nombre solo, como  reddit.com"
+                continue
+            fi
+            # Si hubo que limpiarlo, se dice: bloquear algo distinto de lo que
+            # el usuario escribio, en silencio, es peor que rechazarlo.
+            [ "$limpio" != "$(printf '%s' "$d" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" ] &&
+                info "Lo tomo como: ${B}$limpio${N}"
+
             # Regex para que agarre el dominio y todos sus subdominios
-            local limpio="${d#www.}"
-            printf "INSERT OR IGNORE INTO domainlist (type, domain, enabled, comment) VALUES (3, '(\\.|^)%s\$', 1, 'Bloqueado a mano');\n" \
-                "${limpio//./\\.}" | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
-            ok "Bloqueado: $limpio y sus subdominios"
+            rx="(\\.|^)${limpio//./\\.}\$"
+            printf "INSERT OR IGNORE INTO domainlist (type, domain, enabled, comment) VALUES (3, '%s', 1, 'Bloqueado a mano');\n" \
+                "$rx" | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
+            # Se comprueba que la fila quedo, no que el comando no dio error
+            hay=$(printf "SELECT COUNT(*) FROM domainlist WHERE type=3 AND domain='%s';\n" "$rx" \
+                | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null)
+            if [ "${hay:-0}" -ge 1 ]; then
+                ok "Bloqueado: $limpio y sus subdominios"
+                bloqueados=$((bloqueados+1))
+            else
+                aviso "No pude guardar el bloqueo de $limpio"
+                pendiente "Bloquear $limpio a mano en pihole.pi, Domains"
+            fi
         done
+
+        # Sin recargar, FTL sigue sirviendo la lista que tenia en memoria y el
+        # bloqueo no vale hasta el proximo arranque.
+        if [ "$bloqueados" -gt 0 ]; then
+            sudo pihole reloaddns >/dev/null 2>&1
+            ok "$bloqueados $(plural "$bloqueados" "dominio bloqueado" "dominios bloqueados") y en vigencia"
+        fi
     fi
 
     if [ "$agregadas" -gt 0 ] || [ "${dominios:-0}" -lt 1000 ]; then
@@ -810,10 +864,11 @@ EOF
 
     elegir_blocklists
 
-    if [ -z "$(sudo pihole-FTL --config webserver.api.pwhash 2>/dev/null | tr -d '"')" ]; then
-        aviso "Pi-hole quedo sin contrasena: su panel es accesible desde tu LAN"
-        pendiente "Poner contrasena a Pi-hole:  sudo pihole setpassword"
-    fi
+    # El aviso de "Pi-hole quedo sin contrasena" vivia aca y era una falsa
+    # alarma: quien se la pone es cfg_pihole, dos pasos mas adelante, en
+    # configurar_servicios. Se avisaba de un agujero que el propio instalador
+    # estaba por tapar, y encima despues de haber prometido que la contrasena
+    # unica cubria Pi-hole. El aviso se movio a donde el resultado ya se sabe.
 }
 
 # Baja las imagenes de a una. En paralelo satura la SD y se cuelga sin dar
