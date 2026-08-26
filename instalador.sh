@@ -59,7 +59,14 @@ listar_faltantes() {
         else
             gris "         va en:  $arch  ->  $v="
         fi
-        [ -n "$ayuda" ] && gris "         donde:  $ayuda"
+        # Los que escribe el instalador se listan igual, porque faltar faltan,
+        # pero sin el "donde conseguirlo": no hay nada que ir a buscar, y la
+        # pantalla cerraba diciendo que se piden de a uno, que para estos es falso.
+        if lo_genera_el_instalador "$arch" "$v"; then
+            gris "         lo genera el instalador solo, no te lo va a pedir"
+        elif [ -n "$ayuda" ]; then
+            gris "         donde:  $ayuda"
+        fi
     done
 }
 
@@ -309,6 +316,17 @@ sale_de_una_cuenta() {
     return 1
 }
 
+# ¿Este dato lo escribe el instalador solo? Entonces no se pregunta nunca: el
+# servicio que lo produce ni siquiera esta levantado cuando corre el asistente.
+lo_genera_el_instalador() {
+    local arch="$1" var="$2" g ga gv
+    for g in "${GENERA_EL_INSTALADOR[@]}"; do
+        IFS='|' read -r ga gv <<< "$g"
+        [ "$ga" = "$arch" ] && [ "$gv" = "$var" ] && return 0
+    done
+    return 1
+}
+
 avisar_dependencias() {
     local elegidos="$1" linea srv deps motivo faltan d
     for linea in "${DEPENDENCIAS[@]}"; do
@@ -463,18 +481,29 @@ recolectar() {
     # levantado. La unica respuesta posible era Enter, cuatro veces, cada una
     # con su aviso amarillo de "salteado". Esos se piden al final, en la guia
     # de cuentas, que es el momento en que existen.
-    local faltantes=() para_despues=0
+    local faltantes=() para_despues=0 genera_solo=0
     for linea in "${VARIABLES[@]}"; do
         IFS='|' read -r m arch v tipo desc ayuda <<< "$linea"
         [[ " ${SELECCION[*]} " == *" $m "* ]] || continue
         [ "$tipo" = "auto" ] && continue
         completa "$arch" "$v" && continue
+        if lo_genera_el_instalador "$arch" "$v"; then
+            genera_solo=$((genera_solo+1))
+            continue
+        fi
         if [ "$tipo" = "token" ] && sale_de_una_cuenta "$arch" "$v"; then
             para_despues=$((para_despues+1))
             continue
         fi
         faltantes+=("$linea")
     done
+
+    if [ "$genera_solo" -gt 0 ]; then
+        echo ""
+        info "$genera_solo $(plural "$genera_solo" "dato sale" "datos salen") de un panel que todavia no existe."
+        gris "     $(plural "$genera_solo" "Lo genera" "Los genera") el instalador solo, mas adelante."
+        gris "     No hace falta que $(plural "$genera_solo" "lo busques" "los busques")."
+    fi
 
     if [ "$para_despues" -gt 0 ]; then
         echo ""

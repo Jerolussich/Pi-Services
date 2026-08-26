@@ -249,6 +249,31 @@ VARIABLES=(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  DATOS QUE ESCRIBE EL INSTALADOR POR SU CUENTA
+#
+#  Estos no se preguntan nunca. Cada uno vive en el panel de un servicio que
+#  todavia no esta levantado cuando corre el asistente, asi que en una maquina
+#  limpia la unica respuesta posible era Enter, con su aviso amarillo de
+#  "salteado". Y encima el instalador los genera solo mas tarde, en
+#  configurar_servicios, cuando el servicio ya existe: se pedia un dato
+#  imposible para despues pisarlo.
+#
+#  Esto NO es lo mismo que TOKENS_DE_CUENTA. Aquellos salen de una cuenta que
+#  crea el usuario en el navegador, y se piden al final, en la guia de cuentas.
+#  Estos no se piden en ningun momento.
+#
+#  Si la generacion automatica falla, cada cfg_* deja su propio pendiente con el
+#  paso manual, asi que ninguno queda en silencio.
+#
+#  archivo|VARIABLE
+GENERA_EL_INSTALADOR=(
+"monitoring/.env|PIHOLE_API_KEY"
+"news/news-filter/.env|FRESHRSS_API_PASSWORD"
+"news/news-filter/.env|WALLABAG_CLIENT_ID"
+"news/news-filter/.env|WALLABAG_CLIENT_SECRET"
+)
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  ARCHIVOS QUE HACEN FALTA Y NO SON VARIABLES
 #
 #  Algunos servicios necesitan un archivo, no una variable de entorno: tokens
