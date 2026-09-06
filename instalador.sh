@@ -690,6 +690,28 @@ instalar_sistema() {
         asegurar_docker || return 1
     fi
 
+    # smartctl es lo que el diagnostico usa para mirar la salud del disco, y no
+    # lo instalaba nadie: el chequeo existia desde siempre y lo unico que podia
+    # decir era que le faltaba la herramienta.
+    #
+    # En la Pi daba igual, porque las microSD no reportan SMART y por eso nunca
+    # se noto. En un SSD o un disco duro es la unica forma de enterarse de que
+    # se esta muriendo ANTES de que se muera, que es exactamente lo que no se
+    # pudo hacer con las dos tarjetas que se perdieron.
+    if command -v smartctl >/dev/null 2>&1; then
+        ok "smartctl ya estaba"
+    else
+        info "Instalando smartmontools, que es lo que lee la salud del disco..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y smartmontools >/dev/null 2>&1
+        if command -v smartctl >/dev/null 2>&1; then
+            ok "smartctl instalado"
+        else
+            aviso "No pude instalar smartmontools"
+            gris "     sin el, el diagnostico no puede decir nada del estado del disco"
+            pendiente "Instalar smartmontools:  sudo apt-get install -y smartmontools"
+        fi
+    fi
+
     configurar_log2ram
 }
 

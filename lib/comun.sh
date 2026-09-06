@@ -133,7 +133,7 @@ declare -A NOMBRE=(
 )
 
 declare -A DESCRIPCION=(
-  [sistema]="Zona horaria, chequeo periodico del disco, Docker y log2ram."
+  [sistema]="Zona horaria, chequeo periodico del disco, Docker, la salud del disco (SMART) y log2ram si arrancas de una microSD."
   [pihole]="Resuelve los nombres *.pi de todos tus servicios y bloquea publicidad en toda la red. Va nativo para que responda aunque Docker se caiga."
   [core]="Caddy recibe TODO el trafico web y lo reparte. Sin esto no entras a ningun servicio por su nombre."
   [monitoring]="Tableros con metricas del sistema, de Pi-hole, y de tus datos de Fitbit y finanzas."
@@ -720,10 +720,34 @@ detectar() {
     local mod
 
     # --- nativos ---
-    if command -v docker >/dev/null 2>&1 && systemctl is-enabled log2ram >/dev/null 2>&1; then
-        ESTADO[sistema]=activo; DETALLE[sistema]="Docker y log2ram instalados"
-    elif command -v docker >/dev/null 2>&1; then
-        ESTADO[sistema]=parcial; DETALLE[sistema]="Docker si, falta log2ram"
+    if command -v docker >/dev/null 2>&1; then
+        local tiene=("Docker") falta=() lista_t lista_f
+
+        if command -v smartctl >/dev/null 2>&1; then
+            tiene+=("SMART")
+        else
+            falta+=("smartctl")
+        fi
+
+        # log2ram solo cuenta como faltante si el sistema arranca de una microSD.
+        # En un disco no tenerlo es lo correcto, y exigirlo siempre dejaba este
+        # modulo marcado como incompleto por una decision deliberada, que es la
+        # peor clase de aviso: te reprocha algo que hiciste bien.
+        if systemctl is-enabled log2ram >/dev/null 2>&1; then
+            tiene+=("log2ram")
+        else
+            case "$(findmnt -no SOURCE / 2>/dev/null)" in
+                */mmcblk*) falta+=("log2ram") ;;
+            esac
+        fi
+
+        lista_t=$(printf '%s, ' "${tiene[@]}"); lista_t=${lista_t%, }
+        if [ "${#falta[@]}" -eq 0 ]; then
+            ESTADO[sistema]=activo; DETALLE[sistema]="$lista_t instalados"
+        else
+            lista_f=$(printf '%s, ' "${falta[@]}"); lista_f=${lista_f%, }
+            ESTADO[sistema]=parcial; DETALLE[sistema]="$lista_t si, falta $lista_f"
+        fi
     else
         ESTADO[sistema]=inactivo; DETALLE[sistema]="falta Docker"
     fi
