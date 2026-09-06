@@ -690,23 +690,110 @@ instalar_sistema() {
         asegurar_docker || return 1
     fi
 
-    if ! systemctl is-enabled log2ram >/dev/null 2>&1; then
-        info "Instalando log2ram (mantiene los logs en RAM)..."
-        curl -fsSL https://azlux.fr/repo.gpg | sudo tee /usr/share/keyrings/azlux-archive-keyring.gpg >/dev/null 2>&1
-        echo "deb [signed-by=/usr/share/keyrings/azlux-archive-keyring.gpg] http://packages.azlux.fr/debian/ stable main" \
-            | sudo tee /etc/apt/sources.list.d/azlux.list >/dev/null
-        sudo apt-get update -qq 2>/dev/null
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y log2ram >/dev/null 2>&1
-        if [ ! -f /etc/log2ram.conf ]; then
-            aviso "No se pudo instalar log2ram"
-            gris "     sin el, los logs escriben directo a la tarjeta y la desgastan"
-            pendiente "Instalar log2ram: fallo la descarga, revisá la conexion"
+    configurar_log2ram
+}
+
+# ── log2ram, solo si hay una tarjeta que cuidar ───────────────────────────────
+#
+#  log2ram mantiene /var/log en RAM y lo vuelca al disco cada tanto, y sirve
+#  para una sola cosa: que la escritura constante de logs no desgaste una
+#  microSD. En este repo eso importaba de verdad, porque el proyecto nacio en
+#  una Pi 5 y ahi se murieron dos tarjetas.
+#
+#  En un SSD no aporta nada y ademas cuesta: los logs recientes viven en RAM,
+#  asi que un corte de luz se lleva justo los que explican el corte.
+#
+#  Se detecta el disco pero se pregunta igual. La deteccion mira si la raiz
+#  cuelga de un mmcblk, y eso se equivoca con lectores USB de tarjetas y con
+#  discos que se presentan raro. El que sabe que hay adentro de la maquina sos
+#  vos, asi que la deteccion elige la respuesta por defecto y nada mas.
+configurar_log2ram() {
+    local raiz tarjeta=0 quiere=0
+
+    raiz=$(findmnt -no SOURCE / 2>/dev/null)
+    case "$raiz" in
+        */mmcblk*) tarjeta=1 ;;
+    esac
+
+    echo ""
+    if [ "$tarjeta" = "1" ]; then
+        info "El sistema arranca de ${B}${raiz}${N}, que parece una ${B}microSD${N}."
+        gris "     Las tarjetas se gastan con la escritura constante de logs, y"
+        gris "     cuando se gastan no avisan: se corrompen de golpe."
+        preguntar "¿Es una microSD? La protejo con log2ram" "s" && quiere=1
+    else
+        info "El sistema arranca de ${B}${raiz}${N}, que no parece una microSD."
+        gris "     log2ram existe para cuidar tarjetas. En un SSD no aporta nada"
+        gris "     y encima perdes los logs recientes en cada corte de luz."
+        preguntar "¿Es igual una microSD y queres log2ram?" "n" && quiere=1
+    fi
+
+    # No lo quiere: si quedo de una instalacion anterior, se saca. Esto es lo
+    # que pasa al mudar de una Pi a una maquina con disco, y si no se saca el
+    # diagnostico avisa para siempre que log2ram esta apagado.
+    if [ "$quiere" = "0" ]; then
+        if systemctl is-enabled log2ram >/dev/null 2>&1; then
+            info "Lo saco, entonces, que en este disco solo molesta."
+            if sudo systemctl disable --now log2ram >/dev/null 2>&1; then
+                ok "log2ram deshabilitado"
+            else
+                aviso "No pude deshabilitarlo"
+                pendiente "Sacar log2ram a mano:  sudo systemctl disable --now log2ram"
+            fi
         else
-            sudo sed -i 's|^SIZE=.*|SIZE=512M|' /etc/log2ram.conf 2>/dev/null
-            ok "log2ram instalado"
+            ok "Sin log2ram, que en este disco no hace falta"
+        fi
+        return 0
+    fi
+
+    if systemctl is-enabled log2ram >/dev/null 2>&1; then
+        if systemctl is-active --quiet log2ram; then
+            ok "log2ram ya estaba andando"
+        else
+            ok "log2ram ya estaba instalado, pero todavia no arranco"
             pendiente "Reiniciar para que log2ram tome efecto"
         fi
+        return 0
     fi
+
+    info "Lo instalo. Son cuatro pasos y te voy diciendo como sale cada uno."
+
+    if curl -fsSL https://azlux.fr/repo.gpg 2>/dev/null | sudo tee /usr/share/keyrings/azlux-archive-keyring.gpg >/dev/null 2>&1; then
+        ok "1 de 4  ·  clave del repositorio"
+    else
+        falla "1 de 4  ·  no pude bajar la clave del repositorio"
+        gris "     sin log2ram los logs escriben directo a la tarjeta y la desgastan"
+        pendiente "Instalar log2ram: fallo la descarga de la clave, revisa la conexion"
+        return 1
+    fi
+
+    if echo "deb [signed-by=/usr/share/keyrings/azlux-archive-keyring.gpg] http://packages.azlux.fr/debian/ stable main" \
+        | sudo tee /etc/apt/sources.list.d/azlux.list >/dev/null 2>&1; then
+        ok "2 de 4  ·  repositorio agregado"
+    else
+        falla "2 de 4  ·  no pude agregar el repositorio"
+        pendiente "Instalar log2ram: no se pudo escribir /etc/apt/sources.list.d/azlux.list"
+        return 1
+    fi
+
+    if sudo apt-get update -qq 2>/dev/null; then
+        ok "3 de 4  ·  lista de paquetes actualizada"
+    else
+        aviso "3 de 4  ·  apt-get update devolvio errores, sigo igual"
+    fi
+
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y log2ram >/dev/null 2>&1
+    if [ ! -f /etc/log2ram.conf ]; then
+        falla "4 de 4  ·  no se pudo instalar log2ram"
+        gris "     sin el, los logs escriben directo a la tarjeta y la desgastan"
+        pendiente "Instalar log2ram: fallo la instalacion, revisa la conexion"
+        return 1
+    fi
+
+    sudo sed -i 's|^SIZE=.*|SIZE=512M|' /etc/log2ram.conf 2>/dev/null
+    ok "4 de 4  ·  log2ram instalado, con 512M de espacio en RAM"
+    pendiente "Reiniciar para que log2ram tome efecto"
+    return 0
 }
 
 # ── Listas de bloqueo ─────────────────────────────────────────────────────────
