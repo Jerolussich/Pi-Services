@@ -1591,6 +1591,47 @@ PY
     return 0
 }
 
+# Cuantas cuentas tiene Jellyfin, contadas en su base.
+#
+# No sirve preguntarle a /Users/Public: esa lista esconde a los usuarios
+# marcados como ocultos en la pantalla de login, asi que un servidor con
+# cuentas puede contestar vacio y nos haria pisar una instalacion sana.
+jf_usuarios() {
+    local cfg; cfg=$(ruta_config jellyfin)
+    if [ -z "$cfg" ] || ! sudo test -f "$cfg/data/jellyfin.db"; then
+        echo "-1"; return 1
+    fi
+    sudo python3 - "$cfg/data/jellyfin.db" <<'PY' 2>/dev/null || echo "-1"
+import sqlite3, sys
+c = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True)
+print(list(c.execute("SELECT count(*) FROM Users"))[0][0])
+PY
+}
+
+# Vuelve a abrir el asistente de arranque.
+#
+# Hace falta para salir de un estado del que Jellyfin no sale solo: el asistente
+# marcado como completo pero sin ninguna cuenta. Con el asistente cerrado,
+# /Startup/User contesta 401 y no queda ningun usuario con quien autenticar, asi
+# que no se entra ni reseteando la contrasena, porque no hay a quien resetearsela.
+#
+# Se para el contenedor antes de tocar el XML: Jellyfin lee la marca al arrancar
+# y reescribe el archivo entero al apagarse, o sea que editarlo en caliente se
+# pierde en el proximo stop.
+jf_reabrir_asistente() {
+    local cfg; cfg=$(ruta_config jellyfin)
+    if [ -z "$cfg" ] || ! sudo test -f "$cfg/config/system.xml"; then
+        return 1
+    fi
+    $DOCKER stop jellyfin >/dev/null 2>&1
+    sudo sed -i 's|<IsStartupWizardCompleted>true</IsStartupWizardCompleted>|<IsStartupWizardCompleted>false</IsStartupWizardCompleted>|' \
+        "$cfg/config/system.xml" 2>/dev/null
+    $DOCKER start jellyfin >/dev/null 2>&1
+    esperar_http jellyfin 8096 /System/Info/Public || return 1
+    [ "$(jf_api GET /System/Info/Public 2>/dev/null | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("StartupWizardCompleted"))' 2>/dev/null)" != "True" ]
+}
+
 cfg_jellyfin() {
     local clave="$1" listo resp
     esperar_http jellyfin 8096 /System/Info/Public || { aviso "Jellyfin no contesta"; pendiente "Configurar Jellyfin: no contestaba al instalar. Volve a correr el instalador"; return 1; }
@@ -1598,11 +1639,41 @@ cfg_jellyfin() {
     listo=$(jf_api GET /System/Info/Public 2>/dev/null | python3 -c \
         'import sys,json;print(json.load(sys.stdin).get("StartupWizardCompleted"))' 2>/dev/null)
 
+    # Asistente cerrado y cero cuentas: el servidor quedo sin forma de entrar.
+    # Reabrirlo es la unica salida, y es seguro justamente porque no hay ninguna
+    # cuenta que perder.
+    if [ "$listo" = "True" ] && [ "$(jf_usuarios)" = "0" ]; then
+        aviso "Jellyfin: el asistente figura completo pero no hay ninguna cuenta"
+        info "Reabro el asistente para crear el usuario admin."
+        if jf_reabrir_asistente; then
+            listo="False"
+        else
+            aviso "Jellyfin: no pude reabrir el asistente"
+            pendiente "Crear el usuario admin de Jellyfin en http://jellyfin.pi"
+            return 1
+        fi
+    fi
+
     if [ "$listo" != "True" ]; then
         jf_api POST /Startup/Configuration \
             '{"UICulture":"es","MetadataCountryCode":"UY","PreferredMetadataLanguage":"es"}' >/dev/null 2>&1
-        jf_api POST /Startup/User "$(CLAVE="$clave" python3 -c \
-            'import json,os;print(json.dumps({"Name":"admin","Password":os.environ["CLAVE"]}))')" >/dev/null 2>&1
+        resp=$(jf_api POST /Startup/User "$(CLAVE="$clave" python3 -c \
+            'import json,os;print(json.dumps({"Name":"admin","Password":os.environ["CLAVE"]}))')" 2>&1)
+
+        # Comprobar la cuenta ANTES de cerrar el asistente, no despues.
+        #
+        # Cerrarlo sin cuenta deja el servidor inaccesible y sin vuelta atras por
+        # la via normal, que es exactamente lo que pasaba cuando este POST fallaba
+        # en silencio. Si fallo, el asistente queda ABIERTO a proposito: es feo
+        # pero se arregla desde el navegador en un minuto.
+        if [ "$(jf_usuarios)" = "0" ]; then
+            aviso "Jellyfin: no pude crear el usuario admin"
+            [ -n "$resp" ] && gris "     respondio: $(echo "$resp" | tr -d '\n' | cut -c1-200)"
+            gris "     dejo el asistente abierto: entra a http://jellyfin.pi y crealo vos"
+            pendiente "Crear el usuario admin de Jellyfin en http://jellyfin.pi"
+            return 1
+        fi
+
         jf_api POST /Startup/RemoteAccess \
             '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' >/dev/null 2>&1
         jf_api POST /Startup/Complete >/dev/null 2>&1
