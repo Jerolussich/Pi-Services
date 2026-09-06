@@ -2778,6 +2778,7 @@ instalar_avisos() {
     escribir_var "$REPO/.env" AVISOS si
     cfg_avisos
     guia_suscripcion
+    ofrecer_prueba_avisos
 }
 
 cfg_avisos() {

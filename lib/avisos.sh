@@ -238,6 +238,89 @@ notificar() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  LA PRUEBA
+#
+#  Crear los canales es la parte facil. La otra punta, que el celular quede
+#  suscrito, es lo unico que un script no puede hacer por vos, asi que tampoco
+#  puede darla por hecha. La prueba es como se comprueba que quedo enganchada.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# probar_canal <alertas|media> <texto>
+#
+# No usa notificar() a proposito. Esa nunca falla hacia afuera, que es lo
+# correcto cuando el aviso es el efecto secundario de otra tarea, y es
+# exactamente lo que no sirve en una prueba: aca el resultado ES el punto.
+#
+# Tampoco respeta el horario de silencio: probar a las tres de la manana tiene
+# que mandar igual, o la prueba diria que algo esta roto cuando no lo esta.
+probar_canal() {
+    local canal="$1" texto="$2" tema prio tags codigo
+    case "$canal" in
+        media) tema="${NTFY_MEDIA:-}";   prio=2; tags="clapper" ;;
+        *)     tema="${NTFY_ALERTAS:-}"; prio=5; tags="rotating_light" ;;
+    esac
+    [ -n "$tema" ] || return 1
+    command -v curl >/dev/null 2>&1 || return 1
+
+    codigo=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' \
+        -H "Title: Prueba de Pi-Services" \
+        -H "Priority: $prio" \
+        -H "Tags: $tags" \
+        -d "$texto" \
+        "$NTFY_SERVIDOR/$tema" 2>/dev/null)
+    [ "$codigo" = "200" ]
+}
+
+# Un mensaje por canal, y el resultado de cada uno por separado.
+#
+# Un solo "listo" para los dos esconde justo el caso que importa: que salga el
+# de alertas y no el de media, o al reves. Son dos canales distintos y pueden
+# fallar por separado.
+probar_canales() {
+    local fallo=0
+    if probar_canal alertas "Si leiste esto, el canal de alertas funciona."; then
+        ok "alertas: mandado"
+    else
+        falla "alertas: no pude mandarlo"
+        fallo=1
+    fi
+    if [ -n "${NTFY_MEDIA:-}" ]; then
+        if probar_canal media "Este es el canal de peliculas y series."; then
+            ok "media: mandado"
+        else
+            falla "media: no pude mandarlo"
+            fallo=1
+        fi
+    fi
+    declare -F evento >/dev/null 2>&1 && evento sistema "prueba de avisos"
+    return "$fallo"
+}
+
+# Se ofrece al final de instalar los avisos, y se PREGUNTA en vez de mandarla
+# sola: un aviso que sale antes de que te suscribas no lo ve nadie, y el
+# instalador no tiene forma de saber cuando terminaste de escribir el nombre en
+# el celular. Mandarla sin preguntar seria gastar la unica prueba que sirve.
+ofrecer_prueba_avisos() {
+    [ -n "${NTFY_ALERTAS:-}" ] || return 0
+    # Sin terminal donde preguntar no hay nada que ofrecer
+    declare -F preguntar >/dev/null 2>&1 || return 0
+
+    if ! preguntar "¿Te mando un aviso de prueba a cada canal?" "s"; then
+        gris "     Cuando estes suscrito:  ./avisos.sh --probar"
+        echo ""
+        return 0
+    fi
+    echo ""
+    if probar_canales; then
+        gris "     Si no te llego, todavia no estas suscrito a esos nombres."
+    else
+        gris "     Revisa que la maquina tenga salida a internet."
+    fi
+    echo ""
+    return 0
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  EL ANTI SPAM: AVISAR POR TRANSICION, NO POR ESTADO
 #
 #  Un canal que te repite lo mismo cada hora lo silencias en una semana, y ahi
