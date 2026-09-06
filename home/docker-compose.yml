@@ -19,23 +19,31 @@ name: pi-services
 # igual que el 8181, y solo Caddy llega.
 services:
   homeassistant:
-    # CLAVADA A PROPOSITO, no actualizar a ciegas.
+    # SI VOLVES A CORRER ESTO EN UNA RASPBERRY PI 5, LEE ESTO ANTES.
     #
-    # De 2026.7.0 en adelante la imagen se construye sobre Alpine 3.24, que trae
-    # musl 1.2.6, y musl 1.2.6 no puede relocalizar sus librerias con el kernel
-    # de paginas de 16 KB de la Pi 5: el contenedor entra en bucle de reinicio
-    # con "Error relocating _ssl...: X509_up_ref: symbol not found". No es cosa
-    # de Home Assistant, se reproduce con alpine:3.24 pelado:
+    # Estuvo clavada en 2026.6.4 por un problema que es SOLO de la Pi 5, no de
+    # Home Assistant: de 2026.7.0 en adelante la imagen se construye sobre Alpine
+    # 3.24, que trae musl 1.2.6, y musl 1.2.6 no puede relocalizar sus librerias
+    # con el kernel de paginas de 16 KB de la Pi 5. El contenedor entra en bucle
+    # de reinicio con "Error relocating _ssl...: X509_up_ref: symbol not found".
+    # Se reproduce con alpine:3.24 pelado, sin Home Assistant en el medio:
     #
     #   docker run --rm alpine:3.24 /lib/ld-musl-aarch64.so.1 --list /usr/lib/libcrypto.so.3
     #
-    # 2026.6.4 es la ultima sobre Alpine 3.22 (musl 1.2.5), que anda. Los demas
-    # contenedores del repo no se ven afectados porque son binarios de Go,
-    # estaticos, que nunca usan el enlazador dinamico de musl.
+    # Nada de eso pasa en amd64, que es donde corre hoy: el enlazador es otro y
+    # las paginas son de 4 KB. Por eso vuelve a :stable.
     #
-    # Para volver a :stable, antes probar que esto de cero errores:
-    #   docker run --rm alpine:3.24 /lib/ld-musl-aarch64.so.1 --list /usr/lib/libcrypto.so.3
-    image: ghcr.io/home-assistant/home-assistant:2026.6.4
+    # El pin quedo mintiendo un tiempo, y esa es la parte que no hay que repetir:
+    # el archivo decia 2026.6.4 mientras el contenedor corria 2026.9.1, porque se
+    # habia levantado con :stable. Es peligroso justamente al reves de como
+    # suena: el que quedaba desactualizado era el archivo, y el primer
+    # "docker compose up -d" de rutina iba a BAJAR Home Assistant tres meses
+    # sobre un /config ya escrito por la version nueva. Hacia atras no migra.
+    #
+    # Si volves a arm64 con paginas de 16 KB, comproba primero que el comando de
+    # arriba de cero errores. Si los da, hay que pinear de nuevo, y esta vez
+    # levantando de verdad con el pin puesto.
+    image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
     network_mode: host
     env_file:
