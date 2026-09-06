@@ -1562,12 +1562,34 @@ resumen() {
             gris "     http://prowlarr.pi     indexers"
             gris "     http://bazarr.pi       subtitulos"
         }
-            [[ " ${SELECCION[*]} " == *" news "* ]]       && {
-            echo ""
-            info "Estos dos los creaste vos, con lo que hayas puesto:"
-            gris "     http://freshrss.pi     lector de RSS"
-            gris "     http://wallabag.pi     articulos guardados"
-        }
+        # Estos dos caen en un grupo o en el otro segun quien haya creado la
+        # cuenta, que es algo que vos elegis servicio por servicio. Antes el
+        # texto era fijo y mandaba los dos al grupo de "los creaste vos", asi
+        # que cuando el instalador acababa de crearlos con la contrasena
+        # maestra te decia que no la sabia, y te hacia buscar una contrasena
+        # que era justo la que ya tenias.
+        if [[ " ${SELECCION[*]} " == *" news "* ]]; then
+            local propias=()
+            if cuenta_automatica freshrss; then
+                gris "     http://freshrss.pi     lector de RSS"
+            else
+                propias+=("     http://freshrss.pi     lector de RSS")
+            fi
+            if cuenta_automatica wallabag; then
+                gris "     http://wallabag.pi     articulos guardados"
+            else
+                propias+=("     http://wallabag.pi     articulos guardados")
+            fi
+            if [ "${#propias[@]}" -gt 0 ]; then
+                echo ""
+                if [ "${#propias[@]}" -eq 1 ]; then
+                    info "Este lo creaste vos, con lo que hayas puesto:"
+                else
+                    info "Estos los creaste vos, con lo que hayas puesto:"
+                fi
+                for c in "${propias[@]}"; do gris "$c"; done
+            fi
+        fi
     fi
 
     echo ""
