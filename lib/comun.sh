@@ -1657,16 +1657,30 @@ cfg_jellyfin() {
     if [ "$listo" != "True" ]; then
         jf_api POST /Startup/Configuration \
             '{"UICulture":"es","MetadataCountryCode":"UY","PreferredMetadataLanguage":"es"}' >/dev/null 2>&1
+
+        # Este GET no es una comprobacion: es el que CREA la cuenta.
+        #
+        # Jellyfin arranca sin ningun usuario, y el POST de abajo no crea nada,
+        # actualiza el primero que encuentra. Sin este GET no hay ninguno que
+        # actualizar y contesta 404. El navegador lo hace solo al abrir esa
+        # pantalla del asistente, por eso a mano no falla nunca y por script si.
+        jf_api GET /Startup/User >/dev/null 2>&1
+
         resp=$(jf_api POST /Startup/User "$(CLAVE="$clave" python3 -c \
             'import json,os;print(json.dumps({"Name":"admin","Password":os.environ["CLAVE"]}))')" 2>&1)
 
-        # Comprobar la cuenta ANTES de cerrar el asistente, no despues.
+        # Comprobar ANTES de cerrar el asistente, no despues.
         #
-        # Cerrarlo sin cuenta deja el servidor inaccesible y sin vuelta atras por
-        # la via normal, que es exactamente lo que pasaba cuando este POST fallaba
-        # en silencio. Si fallo, el asistente queda ABIERTO a proposito: es feo
-        # pero se arregla desde el navegador en un minuto.
-        if [ "$(jf_usuarios)" = "0" ]; then
+        # Cerrarlo sin la cuenta lista deja el servidor inaccesible y sin vuelta
+        # atras por la via normal, que es exactamente lo que pasaba cuando este
+        # POST fallaba en silencio. Si fallo, el asistente queda ABIERTO a
+        # proposito: es feo, pero se termina desde el navegador en un minuto.
+        #
+        # Se miran las dos cosas. Que haya cuentas no alcanza, porque el GET de
+        # arriba ya dejo una creada: si el POST falla, queda esa con el nombre y
+        # sin contrasena. Y Jellyfin devuelve el error en el cuerpo, con un
+        # "status" adentro, mientras que el exito no devuelve nada.
+        if [ "$(jf_usuarios)" = "0" ] || echo "$resp" | grep -q '"status"'; then
             aviso "Jellyfin: no pude crear el usuario admin"
             [ -n "$resp" ] && gris "     respondio: $(echo "$resp" | tr -d '\n' | cut -c1-200)"
             gris "     dejo el asistente abierto: entra a http://jellyfin.pi y crealo vos"
