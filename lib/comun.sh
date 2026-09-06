@@ -2273,16 +2273,48 @@ grafana_de_fabrica() {
 # Se llama tambien cuando Pi-hole ya estaba andando: agregar un servicio nuevo
 # tiene que alcanzar con volver a correr el instalador.
 cargar_registros_dns() {
-    local H="[" h n=0
+    local H="[" h n=0 faltan=0 guardados
     for h in $(hosts_del_caddyfile); do
         H="$H\"$IP_FIJA $h\","
         n=$((n+1))
     done
     [ "$n" -eq 0 ] && { aviso "No pude leer los nombres del Caddyfile"; return 1; }
 
-    sudo pihole-FTL --config dns.hosts "${H%,}]" >/dev/null 2>&1
+    if ! sudo pihole-FTL --config dns.hosts "${H%,}]" >/dev/null 2>&1; then
+        aviso "Pi-hole no acepto los registros DNS"
+        pendiente "Cargar los registros .pi a mano en Pi-hole"
+        return 1
+    fi
+
+    # De fabrica Pi-hole atiende solo a la red local y descarta lo que llega por
+    # Tailscale, que es otra subred (100.64.0.0/10). El sintoma engana: la VPN
+    # conecta, el servidor responde por IP, y sin embargo ningun nombre .pi
+    # resuelve desde afuera de casa, como si el DNS no existiera.
+    #
+    # De paso, con ALL deja de importar dns.interface, que se queda con el nombre
+    # de placa de la maquina donde se instalo la primera vez (eth0 en la Pi) y no
+    # coincide con el de la maquina nueva.
+    sudo pihole-FTL --config dns.listeningMode ALL >/dev/null 2>&1
+
     sudo systemctl restart pihole-FTL >/dev/null 2>&1
     sleep 2
+
+    # Comprobar que quedaron guardados, no solo que el comando no dio error.
+    # Un registro que no queda no se nota hasta que abris un .pi en el navegador,
+    # mucho despues, y ahi no se parece en nada a un problema del instalador.
+    guardados=$(sudo pihole-FTL --config dns.hosts 2>/dev/null)
+    for h in $(hosts_del_caddyfile); do
+        case "$guardados" in
+            *" $h"*) ;;
+            *) faltan=$((faltan+1)) ;;
+        esac
+    done
+    if [ "$faltan" -gt 0 ]; then
+        aviso "Pi-hole acepto los registros pero faltan $faltan de $n"
+        pendiente "Revisar los registros .pi en Pi-hole"
+        return 1
+    fi
+
     ok "$n registros DNS cargados, uno por cada nombre que sirve Caddy"
 }
 
