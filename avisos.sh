@@ -153,15 +153,11 @@ probar() {
     fi
     info "Mandando uno a cada canal..."
     echo ""
-    # A proposito con nivel "mal": es el unico que ignora el horario de
-    # silencio, asi que la prueba funciona tambien de madrugada.
-    notificar mal "Prueba de Pi-Services" "Si leiste esto, el canal de alertas funciona."
-    ok "alertas"
-    if [ -n "${NTFY_MEDIA:-}" ]; then
-        notificar info "Prueba de Pi-Services" "Este es el canal de media." media
-        ok "media"
-    fi
-    evento sistema "prueba de avisos"
+    # La misma funcion que usa el instalador, y por la misma razon: aca el ok
+    # tiene que significar que ntfy lo acepto, no que se intento. notificar()
+    # nunca falla hacia afuera, asi que apoyarse en ella daba un tilde verde
+    # aunque no hubiera salido nada.
+    probar_canales
     echo ""
     info "Si no llego nada, revisa que estes suscrito a los nombres correctos:"
     gris "     ./avisos.sh --canales"
