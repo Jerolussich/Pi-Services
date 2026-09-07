@@ -141,8 +141,20 @@ Después de un reinicio **no hay nada que hacer**: Pi-hole y Tailscale son servi
 | Recrear un servicio | `docker compose up -d --force-recreate <servicio>` |
 | Reconstruir tras cambiar código | `docker compose up -d --build <servicio>` |
 | Ver el estado | `docker compose ps` |
-| Ver qué anda mal y por qué | `./diagnostico.sh` |
-| Configurar las apps del celular | `./movil.sh` |
+| Ver qué anda mal y por qué | `pi estado` |
+| Configurar las apps del celular | `pi movil` |
+| Ver qué hay de nuevo para actualizar | `pi actualizar --ver` |
+
+### Un solo comando
+
+`pi` engloba todo y funciona desde cualquier carpeta, sin tener que entrar al repo:
+
+```bash
+pi              # cómo está la casa, y qué podés hacer
+pi ayuda        # el resto de los subcomandos
+```
+
+No duplica lógica: elige el script de siempre y le pasa los argumentos tal cual. `pi avisos --probar` **es** `./avisos.sh --probar`. Lo instala el instalador como enlace en `/usr/local/bin`, así un `git pull` actualiza también el comando.
 
 El detalle está en [docs/OPERACION.md](docs/OPERACION.md).
 
@@ -184,13 +196,18 @@ pi-services/
 ├── diagnostico.sh             ← que anda, que no, y por que
 ├── avisos.sh                  ← el feed de eventos y los avisos al celular
 ├── movil.sh                   ← las apps del celular, con sus datos
+├── actualizar.sh              ← que hay de nuevo, y actualizarlo con criterio
 ├── respaldo.sh                ← respaldo diario de lo irrecuperable
 ├── setup-security.sh          ← UFW y fail2ban
+├── pi                         ← el comando que engloba todo lo de arriba
 ├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── docker-compose.yml         ← incluye todos los servicios
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
 ├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
 ├── lib/movil.sh               ← el catalogo de apps y de donde sale cada clave
+├── lib/jellyfin_plugins.sh    ← la seleccion de plugins y como se instalan
+├── lib/actualizar.sh          ← comparar huellas contra lo publicado
+├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 ├── docs/                      ← toda la documentacion transversal

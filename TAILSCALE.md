@@ -72,6 +72,28 @@ De paso, `ALL` hace que deje de importar `dns.interface`, que guarda el nombre d
 
 ---
 
+---
+
+## HTTPS de verdad, gratis
+
+Tailscale emite certificados de **Let's Encrypt** para el nombre de tu máquina dentro de la tailnet, sin abrir un puerto en el router y sin que ese nombre exista en el DNS público.
+
+Viene **apagado**. Se prende en `login.tailscale.com`, en DNS, HTTPS Certificates. Es un botón. Mientras esté apagado, `tailscale cert` contesta `your Tailscale account does not support getting TLS certs`.
+
+Con eso puesto, el instalador hace el resto solo: emite el certificado, configura Caddy, abre el 443 en el firewall, comprueba que responda y programa la renovación semanal.
+
+**Para qué sirve.** Hoy todo entra por HTTP pelado. Eso no es solo la advertencia del navegador: hay cosas que directamente **no funcionan** sin HTTPS, como las notificaciones web y parte de las capacidades de las apps instaladas desde el navegador. Los gestores de contraseñas también se portan mejor.
+
+**Lo que no resuelve.** El certificado vale para **un** nombre, el de la máquina en la tailnet. Los `.pi` de la red de casa siguen en HTTP y no hay forma de arreglarlo: `.pi` no es un dominio real y ninguna autoridad puede firmarlo. Hacerlo con una autoridad propia obligaría a instalar su certificado raíz en cada teléfono, tele y computadora, y en el que no la tenga ese servicio pasaría de "sin candado" a "sitio peligroso".
+
+Un detalle si lo probás a mano desde la propia máquina: **no va a resolver su propio nombre de tailnet**, porque Tailscale acá levanta con `--accept-dns=false` para no pisar Pi-hole. Eso hace que parezca que HTTPS no anda cuando anda perfecto. Se prueba diciéndole a curl la IP:
+
+```bash
+curl -sI --resolve "$(tailscale status --json | python3 -c 'import sys,json;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'):443:$(tailscale ip -4)" "https://$(tailscale status --json | python3 -c 'import sys,json;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))')/"
+```
+
+---
+
 ## Verificación
 
 ```bash
