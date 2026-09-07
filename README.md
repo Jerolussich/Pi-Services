@@ -142,8 +142,17 @@ Después de un reinicio **no hay nada que hacer**: Pi-hole y Tailscale son servi
 | Reconstruir tras cambiar código | `docker compose up -d --build <servicio>` |
 | Ver el estado | `docker compose ps` |
 | Ver qué anda mal y por qué | `./diagnostico.sh` |
+| Configurar las apps del celular | `./movil.sh` |
 
 El detalle está en [docs/OPERACION.md](docs/OPERACION.md).
+
+### Desde el celular
+
+`./movil.sh` te ofrece solo las apps que sirven para lo que tenés **corriendo**, de a una, y te muestra los datos ya resueltos: cada clave sale de donde la guarda su servicio, sin que tengas que ir a buscarla. Después pregunta si te quedó funcionando y lo anota, así la próxima vez no te vuelve a ofrecer lo que ya tenés. El instalador ofrece esto mismo al terminar.
+
+Todas las direcciones que te da van por Caddy, con el nombre `.pi` y sin puerto. La IP con el puerto interno del servicio es lo que dicen los tutoriales y lo que **no** funciona acá, porque esos puertos están cerrados a la red de casa a propósito.
+
+El detalle está en [docs/INDICE.md](docs/INDICE.md#desde-el-celular).
 
 ---
 
@@ -174,12 +183,14 @@ pi-services/
 ├── instalador.sh              ← levanta y configura, por modulos
 ├── diagnostico.sh             ← que anda, que no, y por que
 ├── avisos.sh                  ← el feed de eventos y los avisos al celular
+├── movil.sh                   ← las apps del celular, con sus datos
 ├── respaldo.sh                ← respaldo diario de lo irrecuperable
 ├── setup-security.sh          ← UFW y fail2ban
 ├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── docker-compose.yml         ← incluye todos los servicios
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
 ├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
+├── lib/movil.sh               ← el catalogo de apps y de donde sale cada clave
 ├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 ├── docs/                      ← toda la documentacion transversal
