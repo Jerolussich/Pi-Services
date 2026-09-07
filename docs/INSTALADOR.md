@@ -356,6 +356,22 @@ Es la forma normal de usarlo, no una excepción.
 
 Todo esto salió de reconstruir el Pi desde cero y chocarse con cada uno. Están resueltos adentro del script.
 
+**Ningún paso canta éxito sin haberlo comprobado.** Durante mucho tiempo el patrón fue: ejecutar mandando la salida a `/dev/null` y después imprimir el tilde verde. Los dieciséis lugares que lo hacían ahora verifican, y verifican el **efecto**, releyendo el estado del servicio, no el código de salida del comando.
+
+Esa distinción es la clave: `curl` sale con `0` aunque el servidor conteste `400`, así que el código de salida de una llamada a una API **no dice absolutamente nada**. Y `sqlite3` sale con `0` aunque el `INSERT` no entre.
+
+Tres de esos casos no eran cosméticos, dejaban algo abierto en silencio:
+
+| Paso | Qué pasaba si fallaba y nadie miraba |
+|---|---|
+| Contraseña de Radarr, Sonarr y Prowlarr | el servicio seguía abierto **sin contraseña**, y el instalador te decía que le había puesto una |
+| Reseteo de la clave de Jellyfin | la cuenta quedaba **sin ninguna contraseña**, porque así la deja el paso anterior a propósito |
+| Cierre del asistente de Jellyfin | se lo seguía mostrando a cualquiera de la casa, con el usuario `admin` ya creado |
+
+El caso que le dio origen a todo esto fue peor: los cuatro `POST` del asistente de Jellyfin iban a `/dev/null`, así que cuando `/Startup/User` fallaba, `/Startup/Complete` se ejecutaba igual y el servidor quedaba con el asistente cerrado y cero cuentas. Un estado sin salida, porque con el asistente cerrado ese endpoint devuelve 401 y no hay ningún usuario a quien resetearle la contraseña.
+
+Los demás rompen cosas que después no se parecen en nada a su causa: sin la biblioteca de series, Seerr nunca marca un pedido como disponible y el síntoma es que la lista de pedidos no se vacía nunca; sin el enlace de Prowlarr, los indexers no se sincronizan y Radarr no encuentra nada aunque Prowlarr los tenga todos.
+
 **La red de Docker tiene que existir antes del primer `up`.** Tres composes declaran `pi-services` como externa, porque están pensados para poder correr sueltos. En un equipo nuevo no existe, y el `up` construye las seis imágenes propias durante más de una hora para recién al final fallar con `network declared as external but could not be found`, sin levantar nada. El instalador la crea primero.
 
 **Las imágenes se bajan de a una.** En paralelo saturan la tarjeta SD y el proceso se cuelga sin dar error. Peor: deja capas escritas a medias que después rompen contenedores de formas difíciles de rastrear. A Jellyfin le faltaba una librería de ffmpeg y a dos servicios propios les quedaron archivos de Python corruptos.
