@@ -14,8 +14,8 @@ Qué hay adentro del Pi, cómo se conecta, y por qué está armado así.
                   └────┬────┘
                        │
               ┌────────┴────────┐
-              │   Raspberry Pi 5 │  192.168.68.66
-              └────────┬─────────┘
+              │   El servidor   │  192.168.68.66
+              └────────┬────────┘
                        │
    ┌───────────────────┼───────────────────┐
    │                   │                   │
@@ -39,6 +39,10 @@ Qué hay adentro del Pi, cómo se conecta, y por qué está armado así.
                                           │ 2 discos│  │   host   │
                                           └─────────┘  └──────────┘
 ```
+
+**Sobre qué corre el servidor.** Nada de lo de acá abajo depende del hardware: el proyecto nació en una **Raspberry Pi 5** con Raspberry Pi OS y también corre en **x86_64 con Ubuntu Server**. Donde sí cambia algo es en el desgaste del almacenamiento, y por eso el instalador pregunta antes de poner `log2ram`: sobre una microSD hace falta, sobre un disco no aporta y encima deja los logs recientes en RAM.
+
+Varias explicaciones más abajo hablan de "la tarjeta". Son ciertas y siguen valiendo en una Pi; si arrancás desde un disco, leelas como el contexto en el que se tomó cada decisión.
 
 ---
 
