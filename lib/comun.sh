@@ -43,6 +43,10 @@ GATEWAY="192.168.68.1"
 # shellcheck source=jellyfin_plugins.sh
 . "$REPO/lib/jellyfin_plugins.sh"
 
+# Comparar lo instalado contra lo publicado, y actualizar con criterio.
+# shellcheck source=actualizar.sh
+. "$REPO/lib/actualizar.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
