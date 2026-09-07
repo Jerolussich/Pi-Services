@@ -956,8 +956,25 @@ print(json.dumps(d))' 2>/dev/null)
     [ -n "$nuevo" ] || { aviso "$svc: no pude armar la configuracion"; return 1; }
     id=$(echo "$nuevo" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
     arr_api "$svc" "$puerto" "$ver" PUT "/config/host/$id" "$nuevo" >/dev/null 2>&1
-    ok "$svc: usuario ${B}admin${N} con tu contrasena"
-    [ "$actual" = "none" ] && gris "     antes se entraba sin ninguna"
+
+    # Se relee la configuracion. curl sale con 0 aunque el servicio conteste
+    # 400, asi que el codigo de salida no dice absolutamente nada.
+    #
+    # Y esto no es cosmetico: si no quedo, el servicio sigue abierto SIN
+    # contrasena y el instalador te habria dicho que le puso una. Creer que
+    # algo esta protegido cuando no lo esta es peor que saber que no lo esta.
+    local quedo_auth
+    quedo_auth=$(arr_api "$svc" "$puerto" "$ver" GET /config/host 2>/dev/null \
+        | python3 -c 'import sys,json;print(json.load(sys.stdin).get("authenticationRequired",""))' 2>/dev/null)
+    if [ "$quedo_auth" = "enabled" ]; then
+        ok "$svc: usuario ${B}admin${N} con tu contrasena"
+        [ "$actual" = "none" ] && gris "     antes se entraba sin ninguna"
+    else
+        aviso "$svc: no pude ponerle usuario y contrasena"
+        gris "     sigue entrando cualquiera de la casa sin credenciales"
+        pendiente "Poner contrasena en $svc: Settings, General, Security"
+        return 1
+    fi
     return 0
 }
 
@@ -1004,7 +1021,15 @@ cfg_arr() {
         mm2=$(echo "$mm" | python3 -c 'import sys,json;d=json.load(sys.stdin);d["copyUsingHardlinks"]=True;print(json.dumps(d))' 2>/dev/null)
         mmid=$(echo "$mm" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",1))' 2>/dev/null)
         arr_api "$svc" "$puerto" v3 PUT "/config/mediamanagement/$mmid" "$mm2" >/dev/null 2>&1
-        ok "$nombre: hardlinks activados"
+        if [ "$(arr_api "$svc" "$puerto" v3 GET /config/mediamanagement 2>/dev/null \
+                | python3 -c 'import sys,json;print(json.load(sys.stdin).get("copyUsingHardlinks"))' 2>/dev/null)" = "True" ]; then
+            ok "$nombre: hardlinks activados"
+        else
+            aviso "$nombre: no pude activar los hardlinks"
+            gris "     cada importacion va a copiar el archivo en vez de enlazarlo,"
+            gris "     o sea el doble de espacio por cada pelicula y una espera"
+            gris "     larga en cada importacion"
+        fi
     fi
 
     # ── Cliente de descargas ──
@@ -1127,6 +1152,14 @@ print(json.dumps(d))' 2>/dev/null)
     fi
 
     resp=$(arr_api "$svc" "$puerto" v3 POST /qualityprofile "$cuerpo" 2>/dev/null)
+    # Una respuesta vacia no trae errorMessage, asi que sin esto pasaba el
+    # filtro de abajo y se anunciaba un perfil que no existe. Es el caso de
+    # que el servicio no haya contestado, no el de que haya dicho que no.
+    if [ -z "$resp" ]; then
+        aviso "$nombre: no hubo respuesta al crear el perfil"
+        pendiente "Crear el perfil $PERFIL_CALIDAD en http://$svc.pi, Settings, Profiles"
+        return 1
+    fi
     if echo "$resp" | grep -q '"errorMessage"'; then
         aviso "$nombre: no se pudo crear el perfil"
         gris "     $(echo "$resp" | python3 -c \
@@ -1189,8 +1222,19 @@ print(json.dumps({
   ], "tags": []}))' 2>/dev/null)
 
     arr_api prowlarr 9696 v1 POST /applications "$cuerpo" >/dev/null 2>&1
-    ok "Prowlarr: enlazado con $nombre"
-    gris "     los indexers que cargues se le sincronizan solos"
+
+    # Se relee la lista de aplicaciones. Sin este enlace, Prowlarr anda, los
+    # indexers que cargues quedan cargados, y $nombre no encuentra nada: tres
+    # cosas que por separado parecen sanas.
+    if arr_api prowlarr 9696 v1 GET /applications 2>/dev/null | grep -q "\"$nombre\""; then
+        ok "Prowlarr: enlazado con $nombre"
+        gris "     los indexers que cargues se le sincronizan solos"
+    else
+        aviso "Prowlarr: no pude enlazarlo con $nombre"
+        gris "     los indexers no se le van a sincronizar, y $nombre no va a"
+        gris "     encontrar nada aunque Prowlarr los tenga todos"
+        pendiente "Enlazar $nombre en Prowlarr: Settings, Apps, Add Application"
+    fi
 }
 
 # ── Sin DAS, las descargas van a la tarjeta ───────────────────────────────────
@@ -1618,9 +1662,29 @@ PY
 
     jf_api POST "/Users/$uid/Password" "$(CLAVE="$nueva" python3 -c \
         'import json,os;print(json.dumps({"CurrentPw":"","NewPw":os.environ["CLAVE"]}))')" >/dev/null 2>&1
-    ok "Jellyfin: contrasena reseteada y puesta en la nueva"
-    gris "     respaldo de la base en jellyfin.db.previo"
-    return 0
+
+    # Se comprueba entrando con la contrasena nueva, que es lo unico que
+    # demuestra que quedo puesta.
+    #
+    # Si este POST falla, la cuenta queda SIN contrasena, porque asi la dejo el
+    # paso anterior a proposito. Anunciar que quedo la nueva en ese caso es lo
+    # peor de los dos mundos: el servidor abierto y vos convencido de que no.
+    resp=$(jf_api POST /Users/AuthenticateByName "$(CLAVE="$nueva" python3 -c \
+        'import json,os;print(json.dumps({"Username":"admin","Pw":os.environ["CLAVE"]}))')" 2>/dev/null)
+    JF_TOKEN=$(echo "$resp" | python3 -c \
+        'import sys,json;print(json.load(sys.stdin).get("AccessToken",""))' 2>/dev/null)
+
+    if [ -n "$JF_TOKEN" ]; then
+        ok "Jellyfin: contrasena reseteada y puesta en la nueva"
+        gris "     respaldo de la base en jellyfin.db.previo"
+        return 0
+    fi
+
+    aviso "Jellyfin: le saque la contrasena pero no pude ponerle la nueva"
+    gris "     la cuenta quedo SIN contrasena: entra a http://jellyfin.pi con"
+    gris "     usuario admin, sin clave, y ponesela vos ahora"
+    pendiente "Ponerle contrasena al usuario admin de Jellyfin, quedo sin ninguna"
+    return 1
 }
 
 # Cuantas cuentas tiene Jellyfin, contadas en su base.
@@ -1723,7 +1787,17 @@ cfg_jellyfin() {
         jf_api POST /Startup/RemoteAccess \
             '{"EnableRemoteAccess":true,"EnableAutomaticPortMapping":false}' >/dev/null 2>&1
         jf_api POST /Startup/Complete >/dev/null 2>&1
-        ok "Jellyfin: asistente completado, usuario ${B}admin${N}"
+        # Se relee la marca. Si el asistente no cerro, Jellyfin se lo sigue
+        # mostrando a cualquiera que entre, con el usuario admin ya creado:
+        # cualquiera de la casa puede terminarlo y quedarse con el servidor.
+        if [ "$(jf_api GET /System/Info/Public 2>/dev/null | python3 -c \
+                'import sys,json;print(json.load(sys.stdin).get("StartupWizardCompleted"))' 2>/dev/null)" = "True" ]; then
+            ok "Jellyfin: asistente completado, usuario ${B}admin${N}"
+        else
+            aviso "Jellyfin: cree el usuario pero el asistente no cerro"
+            gris "     se lo sigue mostrando a cualquiera que entre. Terminalo vos"
+            pendiente "Terminar el asistente de Jellyfin en http://jellyfin.pi"
+        fi
     else
         gris "     el asistente ya estaba completo"
     fi
@@ -1774,7 +1848,18 @@ cfg_jellyfin() {
         mkdir -p "$(das_ruta)/media/$(basename "$ruta")" 2>/dev/null
         jf_api POST "/Library/VirtualFolders?name=$nombre&collectionType=$tipo&refreshLibrary=true" \
             "{\"LibraryOptions\":{\"PathInfos\":[{\"Path\":\"$ruta\"}],\"EnableRealtimeMonitor\":true}}" >/dev/null 2>&1
-        ok "Jellyfin: biblioteca ${B}$nombre${N} en $ruta"
+
+        # Se relee la lista de bibliotecas. Es la que mas importa de todas:
+        # sin la de series, Seerr nunca marca una serie como disponible, y el
+        # sintoma es que todo parece andar salvo que la lista de pedidos no se
+        # vacia nunca. Nada en ese sintoma apunta a una biblioteca faltante.
+        if jf_api GET /Library/VirtualFolders 2>/dev/null | grep -q "\"$ruta\""; then
+            ok "Jellyfin: biblioteca ${B}$nombre${N} en $ruta"
+        else
+            aviso "Jellyfin: no pude crear la biblioteca $nombre"
+            gris "     sin ella Seerr no ve lo que ya tenes y te lo vuelve a ofrecer"
+            pendiente "Crear la biblioteca $nombre en http://jellyfin.pi, Dashboard, Libraries"
+        fi
     done
 
     # La Pi 5 decodifica por hardware pero NO codifica: activamos VAAPI solo
@@ -2007,7 +2092,27 @@ except Exception:
     print("")' 2>/dev/null)
     if [ -n "$ids" ]; then
         seerr_api GET "/settings/jellyfin/library?enable=$ids" "" "$key" >/dev/null 2>&1
-        ok "Seerr: $(echo "$ids" | tr ',' '\n' | wc -l) bibliotecas de Jellyfin habilitadas"
+
+        # Se relee y se cuentan las que quedaron habilitadas, no las que
+        # pedimos habilitar. Aca no verificar sale especialmente caro: como
+        # explica el comentario de arriba, este mismo endpoint llamado mal las
+        # DESHABILITA todas, o sea que el paso que las prende es el que puede
+        # dejarlas apagadas.
+        local habilitadas
+        habilitadas=$(seerr_api GET /settings/jellyfin/library "" "$key" 2>/dev/null | python3 -c '
+import sys, json
+try:
+    print(sum(1 for x in json.load(sys.stdin) if x.get("enabled")))
+except Exception:
+    print(0)' 2>/dev/null)
+        if [ "${habilitadas:-0}" -gt 0 ] 2>/dev/null; then
+            ok "Seerr: $habilitadas $(plural "$habilitadas" "biblioteca de Jellyfin habilitada" "bibliotecas de Jellyfin habilitadas")"
+        else
+            aviso "Seerr: no quedo ninguna biblioteca de Jellyfin habilitada"
+            gris "     sin esto no sabe que tenes ya bajado y te lo vuelve a ofrecer,"
+            gris "     y los pedidos no se marcan como disponibles nunca"
+            pendiente "Habilitar las bibliotecas en http://seerr.pi, Settings, Jellyfin"
+        fi
     fi
 
     # ── Radarr y Sonarr, con el perfil de calidad ya elegido ──
@@ -2016,7 +2121,18 @@ except Exception:
 
     # ── Cerrar el asistente ──
     seerr_api POST /settings/initialize "" "$key" >/dev/null 2>&1
-    ok "Seerr listo en ${B}http://seerr.pi${N}"
+
+    # /settings/public dice si el asistente quedo cerrado. Si no cerro, Seerr
+    # se lo vuelve a mostrar al que entre, y su arranque NO es repetible: el
+    # POST de bootstrap falla la segunda vez, asi que quedaria trabado.
+    if [ "$(seerr_api GET /settings/public "" "$key" 2>/dev/null | python3 -c \
+            'import sys,json;print(json.load(sys.stdin).get("initialized"))' 2>/dev/null)" = "True" ]; then
+        ok "Seerr listo en ${B}http://seerr.pi${N}"
+    else
+        aviso "Seerr: no pude cerrar el asistente"
+        gris "     te lo va a mostrar al entrar, y hay que terminarlo a mano"
+        pendiente "Terminar el arranque de Seerr en http://seerr.pi"
+    fi
 }
 
 # ── Bazarr ────────────────────────────────────────────────────────────────────
