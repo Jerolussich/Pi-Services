@@ -38,6 +38,11 @@ GATEWAY="192.168.68.1"
 # shellcheck source=movil.sh
 . "$REPO/lib/movil.sh"
 
+# La seleccion de plugins de Jellyfin, aparte porque es un tema en si mismo y
+# porque este archivo ya es demasiado largo.
+# shellcheck source=jellyfin_plugins.sh
+. "$REPO/lib/jellyfin_plugins.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
@@ -1882,6 +1887,10 @@ print(json.dumps(d))' 2>/dev/null)
         ok "Jellyfin: decodificacion por hardware (VAAPI)"
         gris "     la codificacion queda en CPU: la Pi 5 no tiene codificador"
     fi
+
+    # Los plugins van al final y no antes: si algo de arriba fallo, ya te
+    # avisamos y no tiene sentido hacerte elegir extras sobre algo roto.
+    configurar_plugins_jellyfin
 }
 
 # ── Seerr ─────────────────────────────────────────────────────────────────────
