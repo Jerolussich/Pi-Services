@@ -53,4 +53,32 @@ SystemMaxUse=100M
 RuntimeMaxUse=50M
 ```
 
-Los dos límites juntos, más `log2ram` manteniendo `/var/log` en RAM, cierran las tres vías por las que los logs pueden llenar la tarjeta.
+Los dos límites juntos, más `log2ram` manteniendo `/var/log` en RAM cuando corrés desde una microSD, cierran las tres vías por las que los logs pueden llenar el disco.
+
+---
+
+## `init: true`, y de dónde salen los procesos zombie
+
+Ubuntu avisa **"There is 1 zombie process"** en el mensaje de bienvenida y no dice de dónde sale. Sale de un contenedor.
+
+Un proceso zombie es uno que ya terminó pero que nadie recogió: cuando un proceso muere, su padre tiene que leer su código de salida para que el sistema borre la entrada. Si el padre no lo hace, queda ahí. No consume memoria ni CPU, solo un número de proceso, pero señala que alguien no está haciendo su trabajo.
+
+En Docker, el PID 1 del contenedor hereda a todos los procesos que quedan huérfanos, y tiene la obligación de recolectarlos. El problema es que casi ningún PID 1 de contenedor está escrito para eso: son el servidor de la aplicación, no un init.
+
+Acá se juntaron las dos condiciones en **homepage**: su healthcheck corre un `wget` cada diez segundos y su PID 1 es `next-server`, o sea Next.js, que no recolecta nada. El resultado fue un `wget` en estado `Z` durante 22 minutos.
+
+La solución es una línea en el `docker-compose.yml` del servicio:
+
+```yaml
+init: true
+```
+
+Docker mete `tini` como PID 1 y `tini` sí recolecta. Está puesto en **homepage** y en **jellyfin**, los dos que tienen healthcheck y un PID 1 que no hace de init.
+
+**No está en wallabag**, que también tiene healthcheck, porque ese arranca con `s6-svscan`, que ya recolecta bien. Ponerlo ahí sería ruido.
+
+Para ver si hay zombies y de quién son:
+
+```bash
+ps -eo pid,ppid,stat,etime,comm --no-headers | awk '$3 ~ /^Z/'
+```
