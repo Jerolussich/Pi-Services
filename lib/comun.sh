@@ -47,6 +47,10 @@ GATEWAY="192.168.68.1"
 # shellcheck source=actualizar.sh
 . "$REPO/lib/actualizar.sh"
 
+# HTTPS de verdad con el certificado que emite Tailscale.
+# shellcheck source=https.sh
+. "$REPO/lib/https.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
