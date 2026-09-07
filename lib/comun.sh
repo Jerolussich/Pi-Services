@@ -3167,7 +3167,7 @@ instalar_automatismos() {
     _instalar_si_cambio "$REPO/systemd/pi-services.tmpfiles" /etc/tmpfiles.d/pi-services.conf && cambio=1
     sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-services.conf >/dev/null 2>&1
 
-    for u in pi-estado pi-respaldo pi-media; do
+    for u in pi-estado pi-respaldo pi-media pi-cert; do
         _instalar_si_cambio "$REPO/systemd/$u.service" "/etc/systemd/system/$u.service" && cambio=1
         _instalar_si_cambio "$REPO/systemd/$u.timer"   "/etc/systemd/system/$u.timer"   && cambio=1
     done
@@ -3195,10 +3195,20 @@ instalar_automatismos() {
         sudo systemctl disable --now pi-media.timer >/dev/null 2>&1
     fi
 
+    # El de certificados, solo si HTTPS quedo configurado. Sin eso seria un
+    # temporizador semanal para no hacer nada, y peor: si algun dia HTTPS se
+    # desconfigura, este queda dando vueltas sin que nadie se acuerde de por que.
+    if [ -f "$REPO/caddy/extra/tailscale.caddy" ]; then
+        sudo systemctl enable --now pi-cert.timer >/dev/null 2>&1 && prendidos=$((prendidos+1))
+    else
+        sudo systemctl disable --now pi-cert.timer >/dev/null 2>&1
+    fi
+
     if [ "$prendidos" -gt 0 ]; then
         ok "$prendidos $(plural "$prendidos" "tarea programada" "tareas programadas")"
         gris "     diagnostico cada $DIAGNOSTICO_CADA  ·  respaldo a las ${HORA_RESPALDO}:00"
         avisos_configurados && gris "     avisos de peliculas y series cada ${MEDIA_CADA_MIN} min"
+        [ -f "$REPO/caddy/extra/tailscale.caddy" ] && gris "     renovacion del certificado HTTPS, los domingos"
         gris "     Los horarios se cambian en ${B}ajustes.conf${N} y se aplican al volver a correr esto."
     else
         aviso "No pude programar las tareas automaticas"
