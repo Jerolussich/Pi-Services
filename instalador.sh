@@ -678,10 +678,20 @@ instalar_sistema() {
     [ "${ESTADO[sistema]}" = "activo" ] && { ok "Ya estaba listo"; return; }
 
     sudo timedatectl set-timezone "$(timedatectl show -p Timezone --value)" 2>/dev/null
-    sudo tune2fs -c 30 "$(findmnt -no SOURCE /)" >/dev/null 2>&1
-    ok "Chequeo del disco cada 30 arranques"
-    gris "     Viene desactivado de fabrica, y por eso un sistema de archivos"
-    gris "     danado puede degradarse meses sin que nadie se entere."
+    # Se comprueba releyendo el valor, no por el codigo de salida: tune2fs
+    # devuelve 0 tambien cuando la raiz no es ext y no hizo nada, que es justo
+    # el caso en que uno creeria que quedo puesto.
+    local raiz_fs; raiz_fs=$(findmnt -no SOURCE / 2>/dev/null)
+    sudo tune2fs -c 30 "$raiz_fs" >/dev/null 2>&1
+    if [ "$(sudo tune2fs -l "$raiz_fs" 2>/dev/null | awk -F': *' '/Maximum mount count/{print $2}')" = "30" ]; then
+        ok "Chequeo del disco cada 30 arranques"
+        gris "     Viene desactivado de fabrica, y por eso un sistema de archivos"
+        gris "     danado puede degradarse meses sin que nadie se entere."
+    else
+        aviso "No pude programar el chequeo periodico del disco"
+        gris "     pasa si la raiz no es ext4: btrfs, xfs y zfs no usan tune2fs"
+        gris "     y tienen su propio mecanismo"
+    fi
 
     if command -v docker >/dev/null 2>&1 && systemctl is-active --quiet docker; then
         DOCKER_LISTO=1
@@ -813,7 +823,13 @@ configurar_log2ram() {
     fi
 
     sudo sed -i 's|^SIZE=.*|SIZE=512M|' /etc/log2ram.conf 2>/dev/null
-    ok "4 de 4  ·  log2ram instalado, con 512M de espacio en RAM"
+    if sudo grep -q '^SIZE=512M' /etc/log2ram.conf 2>/dev/null; then
+        ok "4 de 4  ·  log2ram instalado, con 512M de espacio en RAM"
+    else
+        ok "4 de 4  ·  log2ram instalado"
+        aviso "no pude ponerle el tamano, queda el de fabrica"
+        gris "     si los logs no entran, log2ram los descarta en silencio"
+    fi
     pendiente "Reiniciar para que log2ram tome efecto"
     return 0
 }
@@ -909,8 +925,17 @@ elegir_blocklists() {
 
         printf "INSERT OR IGNORE INTO adlist (address, enabled, comment) VALUES ('%s', 1, '%s');\n" "$url" "$nombre" \
             | sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 2>/dev/null
-        ok "Agregada: $nombre"
-        agregadas=$((agregadas+1))
+        # Se relee de la base: sqlite sale con 0 aunque el INSERT no entre, y
+        # una lista que no quedo no se nota hasta que falta el bloqueo, meses
+        # despues y sin ninguna pista de que fue esto.
+        if [ "$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db \
+                "SELECT COUNT(*) FROM adlist WHERE address='$url';" 2>/dev/null)" = "1" ]; then
+            ok "Agregada: $nombre"
+            agregadas=$((agregadas+1))
+        else
+            aviso "No pude agregar la lista $nombre"
+            pendiente "Agregar la lista $nombre en http://pihole.pi, Lists"
+        fi
     done
 
     # Dominios sueltos que quieras bloquear a mano
@@ -956,14 +981,35 @@ elegir_blocklists() {
         # bloqueo no vale hasta el proximo arranque.
         if [ "$bloqueados" -gt 0 ]; then
             sudo pihole reloaddns >/dev/null 2>&1
-            ok "$bloqueados $(plural "$bloqueados" "dominio bloqueado" "dominios bloqueados") y en vigencia"
+            # Si la recarga se llevo puesto a FTL, no es que el bloqueo no este
+            # en vigencia: es que toda la casa se quedo sin DNS. Es lo primero
+            # que hay que mirar, y en silencio no se nota hasta que nada carga.
+            if systemctl is-active --quiet pihole-FTL; then
+                ok "$bloqueados $(plural "$bloqueados" "dominio bloqueado" "dominios bloqueados") y en vigencia"
+            else
+                falla "Pi-hole no volvio a levantar despues de recargar"
+                gris "     sin el no resuelve nada en la casa, ni los nombres .pi"
+                pendiente "Revisar Pi-hole:  sudo systemctl status pihole-FTL"
+            fi
         fi
     fi
 
     if [ "$agregadas" -gt 0 ] || [ "${dominios:-0}" -lt 1000 ]; then
         info "Descargando las listas, tarda unos minutos..."
         sudo pihole -g >/dev/null 2>&1
-        ok "$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null) dominios bloqueados"
+        # El numero ES la verificacion: si la descarga fallo, gravity queda casi
+        # vacia y Pi-hole sigue andando igual, sin bloquear nada. El sintoma es
+        # que "no bloquea", que no se parece a un error de descarga.
+        local total_bloq
+        total_bloq=$(sudo pihole-FTL sqlite3 /etc/pihole/gravity.db 'SELECT COUNT(*) FROM gravity;' 2>/dev/null)
+        if [ "${total_bloq:-0}" -gt 1000 ] 2>/dev/null; then
+            ok "$total_bloq dominios bloqueados"
+        else
+            aviso "Las listas quedaron en ${total_bloq:-0} dominios"
+            gris "     con tan pocos, Pi-hole anda pero practicamente no bloquea"
+            gris "     suele ser falta de internet o una lista que no responde"
+            pendiente "Volver a descargar las listas:  sudo pihole -g"
+        fi
     fi
 }
 
@@ -1158,7 +1204,16 @@ levantar_modulo() {
     # que levantes dos modulos hoy y tres el mes que viene.
     if ! $DOCKER network ls --format '{{.Name}}' 2>/dev/null | grep -qx "pi-services"; then
         $DOCKER network create pi-services >/dev/null 2>&1
-        ok "Red 'pi-services' creada"
+        # Sin esta red no se levanta nada, asi que conviene enterarse aca y no
+        # en el primer contenedor que no arranca por un motivo que no menciona
+        # la red.
+        if $DOCKER network ls --format '{{.Name}}' 2>/dev/null | grep -qx "pi-services"; then
+            ok "Red 'pi-services' creada"
+        else
+            falla "No pude crear la red 'pi-services'"
+            gris "     sin ella los contenedores no se ven entre si ni los alcanza Caddy"
+            return 1
+        fi
     fi
 
     # Los que ya estan corriendo no se tocan
@@ -1519,7 +1574,13 @@ guia_cuentas() {
         echo ""
         info "Ya estan las credenciales del filtro de noticias. Lo recreo para que las tome."
         $DOCKER compose up -d --force-recreate news-filter >/dev/null 2>&1
-        ok "news-filter recreado"
+        if esta_arriba news-filter; then
+            ok "news-filter recreado"
+        else
+            aviso "news-filter no volvio a levantar"
+            gris "     las credenciales quedaron guardadas, pero no las esta usando"
+            pendiente "Revisar el filtro de noticias:  docker logs news-filter"
+        fi
     fi
 }
 
