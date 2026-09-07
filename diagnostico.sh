@@ -782,7 +782,15 @@ rev_red() {
 #  corrida anterior sale gratis del archivo de estado de los avisos.
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Los discos reales, sin la tarjeta del sistema ni los loop de Docker.
+# Los discos que pueden reportar salud, sin los loop de Docker ni la microSD.
+#
+# La microSD se excluye porque no reporta SMART: preguntarle da un error, no un
+# dato. El disco del sistema SI entra cuando es un SSD o un disco duro, y eso
+# esta bien aunque no sea "externo": es el que te puede dejar sin nada, y es
+# justo lo que no se pudo vigilar en la Pi.
+#
+# El nombre y el "sin discos externos" de mas abajo quedaron de cuando el
+# sistema vivia en una tarjeta y todo lo demas era, por definicion, externo.
 discos_fisicos() {
     lsblk -dn -o NAME,TYPE 2>/dev/null | awk '$2=="disk"{print $1}' | grep -vE '^(mmcblk|loop|zram)'
 }
