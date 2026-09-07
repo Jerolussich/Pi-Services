@@ -6,11 +6,15 @@ Punto de entrada del repositorio. Desde acá llegás a cualquier cosa sin tener 
 
 ## Empezar de cero
 
-Grabá Raspberry Pi OS **Lite de 64 bits**, entrá por SSH, cloná el repo y corré:
+Instalá el sistema operativo, entrá por SSH, cloná el repo y corré:
 
 ```bash
 ./instalador.sh
 ```
+
+**Dónde corre.** El proyecto nació en una **Raspberry Pi 5** con Raspberry Pi OS Lite de 64 bits, y también corre en una **máquina x86_64 con Ubuntu Server**. El instalador detecta la diferencia donde importa: `log2ram` solo tiene sentido si arrancás desde una microSD, y te pregunta antes de instalarlo.
+
+Buena parte de esta documentación explica decisiones tomadas en la Pi, y las menciones a "la tarjeta" hay que leerlas en ese contexto: son ciertas ahí y no aplican si arrancás desde un disco.
 
 Te muestra el estado de cada módulo, elegís cuáles querés (y hasta qué servicios sueltos dentro de cada uno), te pide los datos que necesita explicándote de dónde sacarlos, y levanta todo. Lo que no tengas a mano lo salteás y al final te dice exactamente qué quedó sin completar.
 
@@ -103,6 +107,31 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 | Node Exporter | Métricas del sistema para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
 | Pi-hole Exporter | Métricas de Pi-hole para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
 
+### Fuera de servicio
+
+| Servicio | Qué hacía | Documentación |
+|---|---|---|
+| Calibre | Biblioteca de libros. Se desinstaló el 20 de agosto de 2026 | [../calibre/README.md](../calibre/README.md) |
+
+---
+
+## Desde el celular
+
+Todo se puede usar desde el navegador, pero para el día a día conviene tener las apps. Instalarlas nunca fue el problema: el problema es que cada una pide una dirección y una clave distinta, guardadas en cinco lugares distintos y ninguna a la vista.
+
+```bash
+./movil.sh           # te va preguntando de a una, como en el instalador
+./movil.sh --todo    # todos los datos de una, sin preguntar
+```
+
+Te ofrece solo las apps que sirven para lo que tenés **corriendo**, te dice para qué sirve cada una y, si la querés, te muestra los datos ya resueltos: la clave de Radarr sale de su XML, la de Bazarr de su YAML, la de Seerr de su JSON, la de Pi-hole del `.env` de monitoring. Nunca se copian a ningún lado, se leen en el momento.
+
+Después pregunta si te quedó funcionando y lo anota con la fecha en `datos/movil-estado`. Con eso la próxima corrida no te vuelve a ofrecer lo que ya tenés andando, y lo que quedó a medias se vuelve a ofrecer solo. Si insistís con una que figura como lista, te dice de cuándo es esa anotación.
+
+El instalador ofrece esto mismo al terminar, justo después de decirte las direcciones de cada servicio.
+
+**Siempre el nombre, nunca la IP con el puerto.** Las direcciones que te da van por Caddy, en el puerto 80 y con el nombre `.pi`. La IP con el puerto interno es lo que dice cualquier tutorial de internet y lo que **no** funciona acá: esos puertos están cerrados a la red de casa a propósito, y el síntoma de equivocarse es un tiempo de espera agotado que parece culpa de la app.
+
 ---
 
 ## Lo que corre solo
@@ -149,7 +178,7 @@ cd ~/pi-services && ./respaldo.sh        # uno ahora mismo
 cd ~/pi-services && ./respaldo.sh --listar   # qué capturaría
 ```
 
-**Falta un paso que es tuyo:** bajarte una copia. Mientras viva en la misma tarjeta, no es un respaldo.
+**Falta un paso que es tuyo:** bajarte una copia. Mientras viva en el mismo disco que lo generó, no es un respaldo.
 
 ```bash
 scp jlussich@192.168.68.66:~/respaldos/pi-respaldo-*.tar.gz .
@@ -163,7 +192,7 @@ Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuand
 
 ### Límite a los logs
 
-Docker guarda los logs de cada contenedor **sin ningún límite de fábrica**. Un contenedor en bucle de reinicio puede escribir toda la noche y llenar la tarjeta, y una tarjeta llena corrompe bases de datos al escribir.
+Docker guarda los logs de cada contenedor **sin ningún límite de fábrica**. Un contenedor en bucle de reinicio puede escribir toda la noche y llenar el disco, y un disco lleno corrompe bases de datos al escribir.
 
 Está acotado en [`docker/daemon.json`](../docker/daemon.json): 5 MB por archivo, 3 archivos, o sea 15 MB por contenedor y unos 315 MB de techo entre todos. El journal de systemd tiene su propio tope de 100 MB.
 
@@ -214,9 +243,11 @@ pi-services/
 ├── respaldo.sh                ← respaldo diario de lo irrecuperable
 ├── diagnostico.sh             ← que anda, que no, y por que
 ├── avisos.sh                  ← el feed de eventos y los avisos al celular
+├── movil.sh                   ← las apps del celular, con sus datos
 ├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
 ├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
+├── lib/movil.sh               ← el catalogo de apps y de donde sale cada clave
 ├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
@@ -229,6 +260,7 @@ pi-services/
 ├── finance/                   ← lector de mails del banco
 ├── fitbit-exporter/           ← datos de salud
 ├── ofelia/                    ← programador de tareas
+├── calibre/                   ← fuera de servicio desde el 20/8/2026
 ```
 
 Cada carpeta de servicio sigue el mismo patrón:
