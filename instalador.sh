@@ -1633,6 +1633,136 @@ resumen() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  ANTES DE EMPEZAR
+#
+#  Cinco cosas que, si faltan, no rompen nada ahora: rompen mucho mas adelante y
+#  con un error que no se parece en nada a la causa.
+#
+#  Sin internet, la primera imagen de Docker falla a los diez minutos de haber
+#  contestado todas las preguntas. Con el reloj corrido fallan los certificados
+#  y varias APIs, y el error habla de TLS. Sin espacio, las imagenes se bajan a
+#  medias y dejan capas escritas por la mitad que despues rompen contenedores de
+#  formas dificiles de rastrear.
+#
+#  No se aborta por todo. Se aborta por lo que hace imposible seguir, y lo demas
+#  se avisa y se sigue: es tu maquina y sabes cosas que este script no.
+# ══════════════════════════════════════════════════════════════════════════════
+
+chequeo_previo() {
+    local abortar=0 libre_gb mem_mb
+
+    echo ""
+    echo "  ${B}${C}Antes de empezar${N}"
+    echo ""
+
+    # ── sudo ──
+    # Todo lo que sigue lo necesita. Sin esto no se llega ni al primer paso.
+    if sudo -n true 2>/dev/null; then
+        ok "sudo, sin contrasena"
+    elif [ -t 0 ] && sudo -v 2>/dev/null; then
+        ok "sudo"
+    else
+        falla "no tengo sudo"
+        gris "     el instalador instala paquetes y configura servicios del sistema"
+        abortar=1
+    fi
+
+    # ── espacio ──
+    # Las imagenes de todo el stack pesan varios GB, y Docker no avisa antes:
+    # baja hasta que no entra.
+    libre_gb=$(( $(df -Pk / | awk 'NR==2{print $4}') / 1024 / 1024 ))
+    if [ "$libre_gb" -ge 10 ]; then
+        ok "espacio libre: ${B}${libre_gb} GB${N}"
+    elif [ "$libre_gb" -ge 5 ]; then
+        aviso "espacio libre: ${libre_gb} GB, justo"
+        gris "     las imagenes de todo el stack pesan varios GB"
+    else
+        falla "espacio libre: ${libre_gb} GB, muy poco"
+        gris "     las imagenes se bajarian a medias y dejarian capas rotas"
+        abortar=1
+    fi
+
+    # ── memoria ──
+    mem_mb=$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+    if [ "$mem_mb" -ge 2000 ]; then
+        ok "memoria: ${B}${mem_mb} MB${N}"
+    else
+        aviso "memoria: ${mem_mb} MB"
+        gris "     alcanza para arrancar, pero con todo levantado a la vez"
+        gris "     puede quedar corto. Elegi menos modulos si se pone lento."
+    fi
+
+    # ── internet ──
+    # Se prueba contra el mismo servidor del que sale Docker, no contra un ping
+    # a 8.8.8.8: lo que hace falta es HTTPS saliente, y una red puede tener
+    # ICMP abierto y HTTPS bloqueado.
+    if ! command -v curl >/dev/null 2>&1; then
+        aviso "no esta curl, no puedo comprobar la salida a internet"
+    elif curl -fsS --max-time 10 -o /dev/null https://get.docker.com 2>/dev/null; then
+        ok "salida a internet"
+    else
+        falla "sin salida a internet"
+        gris "     las imagenes y los paquetes se bajan de internet"
+        abortar=1
+    fi
+
+    # ── reloj ──
+    # No aborta: la instalacion arranca igual y el sintoma aparece despues, al
+    # validar un certificado o al hablar con una API que firma por tiempo.
+    case "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" in
+        yes) ok "reloj sincronizado" ;;
+        no)  aviso "el reloj no esta sincronizado"
+             gris "     con la hora corrida fallan certificados y varias APIs, y"
+             gris "     el error te habla de TLS y no de la hora"
+             gris "     ${B}sudo timedatectl set-ntp true${N}" ;;
+        *)   gris "     no pude comprobar el reloj" ;;
+    esac
+
+    if [ "$abortar" = "1" ]; then
+        echo ""
+        falla "No puedo seguir con esto sin resolver."
+        info "Nada fue modificado. Arregla lo de arriba y volve a correrme."
+        echo ""
+        return 1
+    fi
+
+    echo ""
+    return 0
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LA VERIFICACION FINAL
+#
+#  El instalador terminaba diciendo "listo" sin comprobar una sola de las cosas
+#  que acababa de hacer. Cuando algo quedaba mal te enterabas al otro dia, en el
+#  cartel de bienvenida, y ahi ya no habia forma de saber si habia sido el
+#  instalador o algo que paso despues.
+#
+#  Corre el diagnostico, que es la herramienta que ya sabe mirar todo esto y
+#  explicarlo. No se duplica ni un chequeo: si el diagnostico aprende algo
+#  nuevo, esto lo aprende solo.
+# ══════════════════════════════════════════════════════════════════════════════
+
+verificacion_final() {
+    [ -x "$REPO/diagnostico.sh" ] || return 0
+
+    echo ""
+    echo "  ${B}${C}Como quedo de verdad${N}"
+    echo ""
+    info "En vez de darte por bueno lo que acabo de hacer, lo reviso."
+    info "Si algo no quedo, es mejor saberlo ahora y no manana."
+    echo ""
+
+    "$REPO/diagnostico.sh" --breve || true
+
+    gris "     Todo el detalle, incluido lo que SI quedo bien:  ${B}./diagnostico.sh${N}"
+    gris "     Hay revisiones que corren cada varias horas, como la de los"
+    gris "     discos, y pueden no haber entrado en esta pasada."
+    echo ""
+    return 0
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1710,6 +1840,10 @@ trap al_salir EXIT
 trap 'exit 130' INT TERM
 
 paso "revisando el equipo";        portada
+# Lo que hace imposible instalar se comprueba ANTES de hacerte contestar nada.
+# Quedarse sin internet o sin espacio despues de veinte preguntas es la peor
+# forma de fallar: perdiste el tiempo y ademas quedo todo a medias.
+chequeo_previo || exit 1
 info "Revisando el estado del equipo..."
 detectar
 # La tabla de estado se muestra UNA vez, en el menu, que ya la trae con los
@@ -1730,3 +1864,4 @@ paso "programando lo automatico";  configurar_automatico
 paso "guiando las cuentas";        guia_cuentas
 paso ""
 resumen
+verificacion_final
