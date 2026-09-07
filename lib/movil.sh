@@ -241,24 +241,44 @@ movil_datos() {
     esac
 }
 
+# ── Que quedo hecho y que no ──────────────────────────────────────────────────
+#
+#  Se anota si conseguiste configurar cada app, y sirve para dos cosas.
+#
+#  La primera es no hacerte perder el tiempo: volver a correr el instalador no
+#  tiene que volver a ofrecerte las cinco apps que ya tenes andando.
+#
+#  La segunda importa mas. Mostrar unos datos en pantalla no es lo mismo que
+#  que la app quede funcionando, y hasta ahora la unica forma de saberlo era
+#  acordarse. Preguntando queda la diferencia entre "te lo dije" y "te funciono",
+#  y lo que no funciono queda como pendiente en vez de perderse.
+#
+#  Es una anotacion tuya, no una verdad del sistema: si decis que anduvo, se
+#  cree. Comprobar de verdad exigiria hablar con tu telefono, que no se puede.
+#  Se guarda con la fecha, no solo el si o el no. Un "ya la configuraste" pelado
+#  no se puede discutir: si la app no anda hoy, querés saber de cuando es esa
+#  afirmacion, porque una anotacion de hace ocho meses y un cambio de telefono
+#  en el medio explican bastante.
+MOVIL_ESTADO="$DATOS/movil-estado"
+
+_movil_marcar()    { _av_escribir "$MOVIL_ESTADO" "$1" "$2|$(date '+%Y-%m-%d %H:%M')" 2>/dev/null; }
+_movil_estado_de() { _av_leer "$MOVIL_ESTADO" "$1" 2>/dev/null | cut -d'|' -f1; }
+_movil_cuando_de() { _av_leer "$MOVIL_ESTADO" "$1" 2>/dev/null | cut -s -d'|' -f2-; }
+
 # ── El recorrido ──────────────────────────────────────────────────────────────
 #
 #  De a una y preguntando. Escupir las ocho juntas seria mas corto de programar
 #  y peor de usar: son treinta lineas de claves que nadie lee, y las dos que te
 #  servian quedan enterradas entre las seis que no.
-_movil_seguir() {
-    [ -t 0 ] || return 0
-    local _r
-    read -r -p "  ${G}Enter para seguir${N} " _r </dev/tty || true
-    echo ""
-}
-
 configurar_movil() {
-    local app clave nombre plataforma para n=0 mostradas=0
+    local app clave nombre plataforma para estado cuando
+    local n=0 ya=0 nuevas=0 fallaron=0
 
     for app in "${MOVIL_APPS[@]}"; do
         IFS='|' read -r clave nombre plataforma para <<< "$app"
-        movil_aplica "$clave" && n=$((n+1))
+        movil_aplica "$clave" || continue
+        n=$((n+1))
+        [ "$(_movil_estado_de "$clave")" = "listo" ] && ya=$((ya+1))
     done
 
     if [ "$n" -eq 0 ]; then
@@ -269,33 +289,54 @@ configurar_movil() {
     echo ""
     echo "  ${B}${C}Desde el celular${N}"
     echo ""
-    info "Hay ${B}$n${N} $(plural "$n" "app que te sirve" "apps que te sirven") para lo"
-    info "que tenes instalado. Te las paso de a una, con los datos listos"
-    info "para copiar. Podes decir que no a todas y verlas despues con"
-    info "${B}./movil.sh${N}."
+    info "Hay ${B}$n${N} $(plural "$n" "app que te sirve" "apps que te sirven") para lo que"
+    info "tenes instalado. Van de a una: te digo para que sirve cada una y,"
+    info "si la queres, te paso los datos listos para copiar."
+    if [ "$ya" -gt 0 ]; then
+        gris "     $ya $(plural "$ya" "ya la tenias configurada" "ya las tenias configuradas"), esas las paso rapido."
+    fi
     echo ""
 
     for app in "${MOVIL_APPS[@]}"; do
         IFS='|' read -r clave nombre plataforma para <<< "$app"
         movil_aplica "$clave" || continue
+        estado=$(_movil_estado_de "$clave")
 
-        echo "  ${B}$nombre${N}  ${G}·  $plataforma${N}"
-        gris "     $para"
-        if preguntar "     ¿Te paso los datos?" "s"; then
-            echo ""
-            movil_datos "$clave"
-            mostradas=$((mostradas+1))
-            _movil_seguir
+        cuando=$(_movil_cuando_de "$clave")
+
+        if [ "$estado" = "listo" ]; then
+            ok "${B}$nombre${N}  ${G}ya la configuraste${N}"
+            gris "     Tengo anotado que te funcionaba${cuando:+ el $cuando}."
+            preguntar "     ¿Te la paso igual?" "n" || { echo ""; continue; }
         else
-            echo ""
+            echo "  ${B}$nombre${N}  ${G}·  $plataforma${N}"
+            gris "     $para"
+            [ "$estado" = "no" ] && \
+                gris "     Quedo a medias${cuando:+ el $cuando}, asi que la vuelvo a ofrecer."
+            preguntar "     ¿Te paso los datos?" "s" || { echo ""; continue; }
         fi
+
+        echo ""
+        movil_datos "$clave"
+        echo ""
+
+        if preguntar "     ¿Te quedo funcionando?" "s"; then
+            [ "$estado" = "listo" ] || nuevas=$((nuevas+1))
+            _movil_marcar "$clave" listo
+            ok "Anotado"
+        else
+            fallaron=$((fallaron+1))
+            _movil_marcar "$clave" no
+            gris "     Queda anotado. Retomas donde quedaste con ${B}./movil.sh${N}."
+            declare -F pendiente >/dev/null 2>&1 && \
+                pendiente "Terminar de configurar $nombre en el celular: ./movil.sh"
+        fi
+        echo ""
     done
 
-    if [ "$mostradas" -gt 0 ]; then
-        gris "     Para volver a ver todo esto:  ${B}./movil.sh${N}"
-    else
-        gris "     Cuando quieras:  ${B}./movil.sh${N}"
-    fi
+    [ "$nuevas" -gt 0 ]   && ok "$nuevas $(plural "$nuevas" "app nueva andando" "apps nuevas andando")"
+    [ "$fallaron" -gt 0 ] && aviso "$fallaron $(plural "$fallaron" "quedo pendiente" "quedaron pendientes")"
+    gris "     Para retomar esto cuando quieras:  ${B}./movil.sh${N}"
     echo ""
     return 0
 }
