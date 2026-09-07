@@ -11,6 +11,10 @@ services:
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
+    # Por lo mismo que homepage: tiene healthcheck y su PID 1 es el propio
+    # Jellyfin, que tampoco hace de init. Hoy no acumula zombies, pero es el
+    # mismo patron y la linea no cuesta nada.
+    init: true
     env_file:
       - .env
     volumes:

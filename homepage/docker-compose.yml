@@ -3,6 +3,16 @@ services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
     container_name: homepage
+    # Pone tini como PID 1 del contenedor, y con eso se terminan los zombies.
+    #
+    # El healthcheck corre un wget cada 10 segundos. Cuando alguno queda
+    # huerfano lo adopta el PID 1, que aca es next-server: Next.js no esta
+    # escrito para hacer de init y nunca lo recolecta, asi que el wget queda en
+    # estado Z para siempre. El sintoma es el aviso "There is 1 zombie process"
+    # en el cartel de bienvenida de Ubuntu, que no explica de donde sale.
+    #
+    # No hace falta en todos: wallabag arranca con s6-svscan, que ya recolecta.
+    init: true
     # Sin esto, las HOMEPAGE_VAR_* del .env no entran al contenedor.
     #
     # Es una confusion facil de tener: Compose lee el .env de al lado para
