@@ -71,6 +71,10 @@ Es un **módulo del menú del instalador**, como Pi-hole o Tailscale, y no algo 
 
 Si lo elegís, el instalador te explica qué hace y qué resignás, pregunta, y recién ahí crea los canales. Después te deja los pasos con los nombres a la vista, porque suscribirse desde el celular es la única parte que un script no puede hacer por vos.
 
+Y ahí mismo te ofrece **mandar un aviso de prueba a cada canal**, uno por canal y con el resultado de cada uno por separado. Son dos canales independientes y pueden fallar por separado, así que un único "listo" para los dos escondería justo el caso que importa. Se pregunta en vez de mandarlo solo, porque un aviso que sale antes de que te suscribas no lo ve nadie y el instalador no tiene forma de saber cuándo terminaste de escribir el nombre en el celular.
+
+La prueba no se apoya en `notificar()`: esa función está hecha para **nunca** fallar hacia afuera, que es lo correcto cuando el aviso es el efecto secundario de un respaldo o un diagnóstico, y es exactamente lo que no sirve acá, donde el resultado es el punto. La prueba mira que ntfy haya aceptado el mensaje.
+
 Y se prende y se apaga cuando quieras, sin perder los nombres:
 
 ```bash
