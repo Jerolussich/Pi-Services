@@ -30,6 +30,14 @@ GATEWAY="192.168.68.1"
 # shellcheck source=avisos.sh
 . "$REPO/lib/avisos.sh"
 
+# El catalogo de apps del celular con los datos para configurarlas.
+#
+# Tambien aparte, y por la misma razon que avisos.sh: asi el instalador y el
+# ./movil.sh de la raiz dicen exactamente lo mismo, en vez de tener dos copias
+# del mismo texto que en tres meses ya no coinciden.
+# shellcheck source=movil.sh
+. "$REPO/lib/movil.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 

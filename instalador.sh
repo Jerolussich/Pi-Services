@@ -1614,6 +1614,13 @@ resumen() {
         fi
     fi
 
+    # Las apps del celular, ofrecidas de a una.
+    #
+    # Va justo aca y no al final del todo porque es la continuacion natural del
+    # bloque de arriba: recien terminamos de decirte las direcciones de cada
+    # servicio, y esto es como no tener que volver a escribirlas nunca mas.
+    configurar_movil
+
     echo ""
     echo "  ${B}Documentacion${N}"
     gris "     docs/INDICE.md       ·  mapa de todo"
