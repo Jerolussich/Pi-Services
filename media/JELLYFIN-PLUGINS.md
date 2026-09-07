@@ -4,6 +4,18 @@ Lo que pediste no es todo del mismo tipo, y eso cambia cómo se instala cada cos
 
 ---
 
+## Los del catálogo oficial los ofrece el instalador
+
+Al configurar Jellyfin, el instalador te ofrece de a uno una selección de plugins del catálogo oficial, con la explicación de para qué te sirve cada uno, y te pregunta. Los instala, verifica que hayan quedado y reinicia Jellyfin **una sola vez** al final.
+
+La lista no está escrita en el instalador: le pregunta al propio Jellyfin qué tiene disponible y ofrece la intersección con su selección. Eso resuelve solo el problema de las versiones, porque cada plugin declara para qué versión de Jellyfin es y el servidor no ofrece los que no le sirven. Con una lista fija, el instalador ofrecería plugins que no cargan y el síntoma sería un plugin instalado que simplemente no aparece.
+
+Los que ofrece: **DLNA** (para teles sin app de Jellyfin), **Playback Reporting**, **TMDb Box Sets**, **Subtitle Extract**, **Transcode Killer**, **Reports**, **Webhook**, **Trakt**, **Session Cleaner** y **Open Subtitles**. La selección vive en [`lib/jellyfin_plugins.sh`](../lib/jellyfin_plugins.sh).
+
+**Lo que el instalador no hace es agregar repositorios externos**, y es a propósito. Los manifiestos de la comunidad se mudan: el de Intro Skipper, sin ir más lejos, hoy redirige a una página de GitHub y ya no sirve JSON. Un repositorio muerto clavado en el instalador falla en silencio y no hay forma de que te enteres. Por eso los de acá abajo siguen siendo a mano.
+
+---
+
 ## Resumen
 
 | Qué | Tipo real | Dónde se instala |
