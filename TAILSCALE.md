@@ -38,7 +38,7 @@ Te va a imprimir una URL para autenticar desde el navegador.
 
 Dos aclaraciones sobre esos parámetros:
 
-- `--advertise-routes` publica tu red de casa. **Hay que aprobar la ruta a mano** en la consola de Tailscale, en `Machines → raspberrypi → Edit route settings`. Hasta que la apruebes, no funciona.
+- `--advertise-routes` publica tu red de casa. **Hay que aprobar la ruta a mano** en la consola de Tailscale, en `Machines → <el nombre de esta máquina> → Edit route settings`. Hasta que la apruebes, no funciona.
 - `--accept-dns=false` evita que Tailscale te pise el DNS del Pi. Como este Pi **es** tu servidor DNS con Pi-hole, dejarlo en `true` genera un conflicto donde el resolvedor se apunta a sí mismo.
 
 ---
@@ -46,6 +46,29 @@ Dos aclaraciones sobre esos parámetros:
 ## Pi-hole desde afuera
 
 Una vez aprobada la ruta, en la consola de Tailscale poné el Pi como **nameserver global** con su IP `192.168.68.66`. Con eso tenés el bloqueo de publicidad de Pi-hole en el celular estando en la calle, sin VPN aparte.
+
+### El paso que falta, y que no da ningún error
+
+Con lo anterior solo no alcanza. Pi-hole viene con `dns.listeningMode` en **`LOCAL`**, que quiere decir que atiende a los equipos de tu red de casa y **descarta en silencio** las consultas que llegan desde otra subred. Tailscale es otra subred (`100.64.0.0/10`), así que sus consultas se caen sin respuesta.
+
+El síntoma engaña bastante: la VPN conecta, `tailscale status` muestra todo verde, llegás al servidor por IP, y sin embargo ningún nombre `.pi` resuelve, como si el DNS no existiera. Nada dice que el problema sea Pi-hole.
+
+Lo arregla el instalador junto con los registros, pero si lo estás haciendo a mano:
+
+```bash
+sudo pihole-FTL --config dns.listeningMode ALL
+sudo systemctl restart pihole-FTL
+```
+
+Para comprobarlo, preguntale a Pi-hole por su **IP de Tailscale**, no por la de la red de casa, que es lo que va a hacer tu celular:
+
+```bash
+dig @$(tailscale ip -4) homepage.pi +short
+```
+
+Con `ALL`, Pi-hole responde en todas sus interfaces. En esta configuración no queda expuesto a internet porque no hay ningún puerto redirigido en el router, pero es algo a tener presente si algún día lo hubiera.
+
+De paso, `ALL` hace que deje de importar `dns.interface`, que guarda el nombre de la placa de red de la máquina donde instalaste la primera vez. Si mudás el servidor de hardware, ese nombre no coincide y es una fuente silenciosa de problemas.
 
 ---
 
