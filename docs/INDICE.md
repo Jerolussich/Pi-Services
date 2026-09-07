@@ -34,6 +34,27 @@ Si preferís entender antes de ejecutar, o hacerlo a mano:
 | Diagnosticar un problema | `./diagnostico.sh`, ver abajo |
 | Respaldos y logs | la sección de acá abajo |
 
+## El comando `pi`
+
+Todo lo de esta máquina, desde cualquier carpeta y sin acordarte de qué script era cuál.
+
+```bash
+pi              # cómo está la casa, y qué podés hacer
+pi estado       # qué anda, qué no, y por qué
+pi instalar     # agregar o completar servicios
+pi movil        # las apps del celular, con sus datos
+pi avisos       # el feed de eventos y los avisos al celular
+pi respaldo     # guardar lo irrecuperable
+pi actualizar   # qué hay de nuevo, y actualizarlo
+pi seguridad    # firewall y fail2ban
+```
+
+No duplica lógica: resuelve dónde vive el repo, elige el script de siempre y le pasa los argumentos tal cual, así que `pi avisos --probar` **es** `./avisos.sh --probar`. Todo lo que aprenda cualquiera de esos scripts queda disponible ahí sin tocar nada.
+
+`pi` a secas **no corre un diagnóstico nuevo**: lee el que el timer dejó en `/run` y te dice de cuándo es. Un diagnóstico completo tarda unos doce segundos, y el comando que uno tipea apenas entra tiene que contestar ya.
+
+Lo instala el instalador como un enlace en `/usr/local/bin`, temprano en el flujo para que siga estando aunque la instalación se corte. Es un enlace y no una copia, así un `git pull` actualiza también el comando.
+
 ## Uso diario
 
 Después de un reinicio **no hay nada que hacer**: Pi-hole y Tailscale son servicios del sistema y arrancan solos, y los contenedores tienen `restart: unless-stopped`.
@@ -186,6 +207,14 @@ scp jlussich@192.168.68.66:~/respaldos/pi-respaldo-*.tar.gz .
 
 Adentro de cada `.tar.gz` hay un `MANIFIESTO.txt` con los pasos de restauración. El detalle completo está en [OPERACION.md](OPERACION.md).
 
+### Renovación del certificado HTTPS
+
+Si tu tailnet tiene los certificados habilitados, el instalador deja HTTPS de verdad en `https://<tu-máquina>.ts.net`, con candado y sin advertencias. El certificado lo emite Tailscale (es de Let's Encrypt), dura 90 días, y el timer `pi-cert` lo renueva los domingos.
+
+Caddy se recarga **solo si el certificado cambió**, comparando su huella. Como Tailscale devuelve el mismo mientras le quede validez, la mayoría de las semanas no pasa nada, que es lo correcto.
+
+**Lo que resuelve y lo que no.** El certificado vale para **un** nombre, el de la máquina en la tailnet. Los `.pi` de la red de casa siguen en HTTP, y no hay forma de arreglarlo: `.pi` no es un dominio real y ninguna autoridad puede firmarlo. Hacerlo con una autoridad propia obligaría a instalar su certificado raíz en cada teléfono, tele y computadora, y en el dispositivo que no la tenga ese servicio pasaría de "sin candado" a "sitio peligroso", que es peor. El detalle está en [../TAILSCALE.md](../TAILSCALE.md).
+
 ### Aviso al entrar por SSH
 
 Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuando entrás por SSH, si hay algo mal te lo muestra; si está todo bien, no molesta. Lo dispara el timer `pi-estado`, el mismo que manda los avisos y publica las métricas.
@@ -244,10 +273,15 @@ pi-services/
 ├── diagnostico.sh             ← que anda, que no, y por que
 ├── avisos.sh                  ← el feed de eventos y los avisos al celular
 ├── movil.sh                   ← las apps del celular, con sus datos
+├── actualizar.sh              ← que hay de nuevo, y actualizarlo con criterio
+├── pi                         ← el comando que engloba todo lo de arriba
 ├── ajustes.conf               ← horarios y umbrales, el unico lugar donde se tocan
 ├── lib/comun.sh               ← lo que el instalador y el diagnostico saben en comun
 ├── lib/avisos.sh              ← las cuatro salidas de un hallazgo
 ├── lib/movil.sh               ← el catalogo de apps y de donde sale cada clave
+├── lib/jellyfin_plugins.sh    ← la seleccion de plugins y como se instalan
+├── lib/actualizar.sh          ← comparar huellas contra lo publicado
+├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
