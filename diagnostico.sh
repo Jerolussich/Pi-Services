@@ -265,6 +265,17 @@ rev_equipo() {
     fi
 
     # ── log2ram ──
+    #
+    # Solo se reclama si el sistema arranca de una microSD, que es lo unico que
+    # log2ram protege. En un disco no aporta nada y encima cuesta, porque los
+    # logs recientes viven en RAM y un corte de luz se lleva justo los que
+    # explicaban el corte. Avisar ahi seria reprochar una decision correcta,
+    # una vez por hora, para siempre.
+    local raiz_en_tarjeta=0
+    case "$(findmnt -no SOURCE / 2>/dev/null)" in
+        */mmcblk*) raiz_en_tarjeta=1 ;;
+    esac
+
     if systemctl is-active log2ram >/dev/null 2>&1; then
         if mountpoint -q /var/log 2>/dev/null; then
             bien "log2ram" "activo, /var/log en RAM"
@@ -273,9 +284,15 @@ rev_equipo() {
             implica "sin el montaje no sirve: los logs siguen desgastando la tarjeta"
             arreglo "reiniciarlo" "rep_reiniciar_servicio" "log2ram"
         fi
-    else
+    elif [ "$raiz_en_tarjeta" = "1" ]; then
         ojo "log2ram" "apagado"
         implica "los logs escriben directo a la tarjeta y la desgastan"
+        # Instalado y habilitado pero sin arrancar no es lo mismo que no
+        # tenerlo, y el arreglo tampoco: uno es reiniciar, el otro instalarlo.
+        systemctl is-enabled log2ram >/dev/null 2>&1 && \
+            implica "esta instalado y habilitado: le falta un reinicio para arrancar"
+    else
+        bien "log2ram" "no hace falta, el sistema no arranca de una microSD"
     fi
 }
 
