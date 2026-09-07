@@ -176,13 +176,15 @@ sqlite3 rota.db ".recover" | sqlite3 nueva.db
 
 ## Reducir el desgaste de la SD
 
+> Esto aplica **solo si arrancás desde una microSD**. Si el sistema vive en un SSD o un disco duro, saltealo: no tenés este problema, y lo que sí conviene mirar es la salud del disco con `smartctl`, que el instalador ahora deja instalado. Es la única forma de enterarse de que un disco se está muriendo **antes** de que pase, y es justamente lo que no se pudo hacer con las tarjetas.
+
 La SD se muere por escrituras. Cuantas menos haya, menos ventanas hay para que un corte te agarre en el peor momento.
 
 **El escritorio ya se sacó.** `lightdm`, `cups`, `chromium`, `vlc`, `xserver` y `labwc` fueron removidos: eran gigas de superficie inútil en un servidor headless, y varios de los servicios que fallaban eran justamente esos.
 
-**log2ram** mantiene los logs en RAM y los baja a disco una vez por día. Es la mejora más grande que queda pendiente. Requiere agregar un repositorio externo, así que hace falta tu autorización explícita.
+**log2ram** mantiene los logs en RAM y los baja a disco una vez por día. **Lo instala el instalador**, pero preguntando primero: agrega un repositorio externo, y además solo tiene sentido sobre una tarjeta. En un disco no aporta nada y tiene un costo real, porque los logs recientes pasan a vivir en RAM y un corte de luz se lleva justo los que explicaban el corte.
 
-**Arrancar desde SSD por USB** es el salto de calidad más grande. El Pi 5 lo soporta, y mejora robustez y velocidad a la vez.
+**Arrancar desde un disco y no desde una tarjeta** es el salto de calidad más grande, y es lo que terminó pasando: después de perder dos microSD (ver [INCIDENTE-2026-08-20.md](INCIDENTE-2026-08-20.md)) el proyecto se mudó a una máquina con SSD. Si querés quedarte en la plataforma, el Pi 5 también arranca desde SSD por USB.
 
 ---
 
