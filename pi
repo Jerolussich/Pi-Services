@@ -123,6 +123,15 @@ case "$sub" in
     respaldo|backup)      correr respaldo.sh "$@" ;;
     actualizar|update)    correr actualizar.sh "$@" ;;
     seguridad|firewall)   correr setup-security.sh "$@" ;;
+    # Interno: lo llama el timer pi-cert una vez por semana. No se lista en la
+    # ayuda porque no es algo que uno tipee. Es el unico subcomando que carga
+    # las librerias en vez de delegar en un script, porque renovar un
+    # certificado no da para un script suelto mas en la raiz.
+    renovar-https)
+        # shellcheck source=lib/comun.sh
+        source "$REPO/lib/comun.sh" >/dev/null 2>&1
+        https_renovar_silencioso
+        ;;
     ayuda|help|-h|--help) ayuda ;;
     "")                   portada ;;
     *)

@@ -1,0 +1,16 @@
+[Unit]
+Description=Renovacion semanal del certificado HTTPS
+
+[Timer]
+# Una vez por semana alcanza y sobra. El certificado dura 90 dias y se pide la
+# renovacion cuando le quedan menos de 30, o sea que hay cuatro semanas de
+# margen para que alguna corrida falle sin que pase nada.
+OnCalendar=Sun *-*-* 04:30:00
+# Si el equipo estaba apagado a esa hora, corre al prender. Un certificado que
+# no se renueva porque el equipo estaba apagado vence igual.
+Persistent=true
+# Un margen al azar para no arrancar junto con todo lo demas de la madrugada.
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

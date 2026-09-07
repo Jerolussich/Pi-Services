@@ -1,0 +1,22 @@
+[Unit]
+# Renueva el certificado HTTPS que emite Tailscale y recarga Caddy solo si el
+# certificado cambio.
+#
+# Va como servicio del host y no como tarea de Ofelia porque tailscale corre en
+# el host, no en un contenedor, y Ofelia solo sabe ejecutar cosas adentro de
+# contenedores.
+#
+# __REPO__ y __USUARIO__ los reemplaza el instalador. No se copia a mano.
+Description=Renovar el certificado HTTPS de Pi-Services
+Documentation=file:__REPO__/lib/https.sh
+After=tailscaled.service docker.service
+Wants=tailscaled.service
+
+[Service]
+Type=oneshot
+User=__USUARIO__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/pi renovar-https
+# Que no compita con nada: esto puede esperar sin ningun problema.
+Nice=10
+IOSchedulingClass=idle

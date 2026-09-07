@@ -80,6 +80,39 @@ except Exception:
     sys.exit(1)" 2>/dev/null
 }
 
+# ── La renovacion ─────────────────────────────────────────────────────────────
+#
+#  Lo llama el timer pi-cert una vez por semana. Sin esto, el certificado dura
+#  90 dias y despues HTTPS deja de andar un martes cualquiera, sin que nada lo
+#  haya tocado.
+#
+#  Callado por diseno: corre solo y nadie lo esta mirando. Lo unico que deja
+#  rastro es la renovacion de verdad, en el feed de eventos.
+https_renovar_silencioso() {
+    local nombre antes despues
+
+    # Sin el bloque de Caddy, HTTPS no esta configurado y no hay nada que
+    # renovar. No es un error.
+    [ -f "$REPO/caddy/extra/tailscale.caddy" ] || return 0
+
+    nombre=$(https_nombre_tailnet)
+    [ -n "$nombre" ] || return 0
+
+    antes=$(sudo sha256sum "$HTTPS_CERT_DIR/tailnet.crt" 2>/dev/null | cut -d' ' -f1)
+    https_emitir "$nombre" || return 1
+    despues=$(sudo sha256sum "$HTTPS_CERT_DIR/tailnet.crt" 2>/dev/null | cut -d' ' -f1)
+
+    # Caddy solo se recarga si el certificado es OTRO. Como Tailscale devuelve
+    # el mismo mientras le quede validez, la mayoria de las semanas esto no
+    # hace nada, que es lo que corresponde: recargar Caddy cada siete dias para
+    # nada seria cortar el trafico sin motivo.
+    if [ -n "$despues" ] && [ "$antes" != "$despues" ]; then
+        (cd "$REPO" && $DOCKER compose restart caddy) >/dev/null 2>&1
+        declare -F evento >/dev/null 2>&1 && evento sistema "certificado HTTPS renovado"
+    fi
+    return 0
+}
+
 # ── El bloque de Caddy ────────────────────────────────────────────────────────
 #
 #  Va en un archivo aparte que el Caddyfile importa con un comodin. Asi el
@@ -176,10 +209,27 @@ configurar_https() {
         return 1
     fi
 
-    # La prueba de verdad: pedirle la pagina por HTTPS y que el certificado
-    # valide contra las autoridades del sistema, sin --insecure.
-    local codigo
-    codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$nombre/" 2>/dev/null)
+    # La prueba de verdad: pedir la pagina por HTTPS y que el certificado valide
+    # contra las autoridades del sistema. Sin --insecure, que seria hacer trampa.
+    #
+    # El --resolve no es un atajo, hace falta: esta maquina levanta Tailscale con
+    # --accept-dns=false para no pisar su propio Pi-hole, asi que NO resuelve su
+    # nombre de tailnet. Sin esto la verificacion falla por DNS y parece que
+    # HTTPS no anda cuando anda perfecto. Le decimos a curl la IP y listo; el
+    # certificado se sigue validando contra el nombre, que es lo que importa.
+    local codigo ip intento
+    ip=$(tailscale ip -4 2>/dev/null | head -1)
+
+    for intento in 1 2; do
+        codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            ${ip:+--resolve "$nombre:443:$ip"} "https://$nombre/" 2>/dev/null)
+        case "$codigo" in 200|401) break ;; esac
+        # Caddy lee el bloque nuevo al arrancar. Si el archivo aparecio justo
+        # mientras arrancaba, se queda con la configuracion vieja y no escucha
+        # el 443. Una recarga lo resuelve.
+        [ "$intento" = "1" ] && { $DOCKER compose restart caddy >/dev/null 2>&1; sleep 5; }
+    done
+
     case "$codigo" in
         200|401)
             ok "HTTPS andando en ${B}https://$nombre${N}"
