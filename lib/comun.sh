@@ -2319,7 +2319,7 @@ grafana_de_fabrica() {
 # Se llama tambien cuando Pi-hole ya estaba andando: agregar un servicio nuevo
 # tiene que alcanzar con volver a correr el instalador.
 cargar_registros_dns() {
-    local H="[" h n=0 faltan=0 guardados
+    local H="[" h n=0 faltan=0 guardados modo_previo
     for h in $(hosts_del_caddyfile); do
         H="$H\"$IP_FIJA $h\","
         n=$((n+1))
@@ -2340,7 +2340,30 @@ cargar_registros_dns() {
     # De paso, con ALL deja de importar dns.interface, que se queda con el nombre
     # de placa de la maquina donde se instalo la primera vez (eth0 en la Pi) y no
     # coincide con el de la maquina nueva.
-    sudo pihole-FTL --config dns.listeningMode ALL >/dev/null 2>&1
+    #
+    # Se ANUNCIA en vez de hacerse callado. Es un cambio en como escucha un
+    # servicio de red, o sea de seguridad: enterarse por accidente tres meses
+    # despues es peor que leer tres lineas ahora. Con el comando para volver
+    # atras, que es la unica forma honesta de contar un cambio asi.
+    modo_previo=$(sudo pihole-FTL --config dns.listeningMode 2>/dev/null | tr -d '"')
+    if [ "$modo_previo" != "ALL" ]; then
+        echo ""
+        info "Pi-hole atiende solo a la red de casa (${B}${modo_previo:-LOCAL}${N}), asi que"
+        info "descarta lo que llega por Tailscale, que es otra subred."
+        gris "     Sin esto, desde afuera la VPN conecta y el servidor responde"
+        gris "     por IP, pero ningun nombre .pi resuelve. Lo paso a ALL."
+        if sudo pihole-FTL --config dns.listeningMode ALL >/dev/null 2>&1; then
+            ok "Pi-hole ahora tambien responde por la VPN"
+            gris "     No queda abierto a internet: eso depende de que haya un"
+            gris "     puerto redirigido en el router, y no lo hay."
+            gris "     Para volver atras:  ${B}sudo pihole-FTL --config dns.listeningMode LOCAL${N}"
+        else
+            aviso "No pude cambiarle el modo de escucha a Pi-hole"
+            gris "     los nombres .pi van a resolver en casa pero no por la VPN"
+            pendiente "Correr:  sudo pihole-FTL --config dns.listeningMode ALL"
+        fi
+        echo ""
+    fi
 
     sudo systemctl restart pihole-FTL >/dev/null 2>&1
     sleep 2
