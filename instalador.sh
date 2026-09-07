@@ -1264,6 +1264,47 @@ instalar_tailscale() {
     info "3. DNS, activar 'Override DNS servers'"
     info "Sin eso, el celular no usa Pi-hole cuando estas fuera de casa."
     pendiente "Aprobar la ruta y el DNS en login.tailscale.com (3 pasos)"
+
+    revisar_https_tailscale
+}
+
+# ── HTTPS gratis, si lo habilitas ─────────────────────────────────────────────
+#
+#  Tailscale emite certificados de verdad, de Let's Encrypt, para el nombre de
+#  tu maquina dentro de la tailnet. Gratis y sin abrir un puerto.
+#
+#  Pero viene APAGADO y se prende en la consola, no desde aca. Se detecta y se
+#  avisa en vez de intentarlo y fallar en silencio, que era el patron que
+#  estuvimos sacando de todo el resto del script.
+#
+#  Para que sirve: hoy todo entra por HTTP pelado. Eso te da la advertencia del
+#  navegador, y ademas hay cosas que directamente NO funcionan sin HTTPS, como
+#  las notificaciones web y varias capacidades de las apps instaladas desde el
+#  navegador. Los gestores de contrasenas tambien se portan mejor.
+revisar_https_tailscale() {
+    local dns salida
+
+    command -v tailscale >/dev/null 2>&1 || return 0
+    dns=$(tailscale status --json 2>/dev/null \
+        | python3 -c 'import sys,json;print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' 2>/dev/null)
+    [ -n "$dns" ] || return 0
+
+    # Se pregunta por un certificado que ya exista, con validez de un segundo:
+    # si la tailnet no tiene HTTPS habilitado contesta el error sin emitir nada,
+    # y si lo tiene no gasta una emision nueva.
+    salida=$(sudo tailscale cert --min-validity 1s --cert-file /dev/null --key-file /dev/null "$dns" 2>&1)
+
+    if echo "$salida" | grep -qi "does not support getting TLS certs"; then
+        echo ""
+        aviso "Tu tailnet no tiene HTTPS habilitado, y es gratis"
+        gris "     Con eso tendrias certificados de verdad para ${B}$dns${N},"
+        gris "     sin abrir ningun puerto. Hoy todo entra por HTTP pelado, y hay"
+        gris "     cosas que no funcionan sin HTTPS: las notificaciones del"
+        gris "     navegador y parte de las apps instaladas desde el navegador."
+        info "Se prende en ${B}login.tailscale.com${N}, en DNS, HTTPS Certificates."
+        pendiente "Habilitar HTTPS Certificates en login.tailscale.com (es un boton)"
+    fi
+    return 0
 }
 
 instalar_seguridad() {
