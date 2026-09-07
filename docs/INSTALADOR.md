@@ -261,9 +261,11 @@ Te muestra cómo quedó cada módulo elegido, y después tres listas:
 
 **Datos que salteaste.** Cada uno con su archivo, su variable y de dónde sacarlo. Para cargarlos volvés a correr el instalador y te pide solo esos.
 
-**Tareas pendientes.** Cosas que quedaron a medias, como reiniciar para activar log2ram o aprobar la ruta en la consola de Tailscale.
+**Tareas pendientes.** Cosas que quedaron a medias, como aprobar la ruta en la consola de Tailscale, reiniciar para activar log2ram si lo instalaste, o terminar de configurar una app del celular que no te salió.
 
-**Con qué entrás a cada cosa.** La lista de URLs de lo que instalaste, con el recordatorio de que el usuario es `admin` en todas y la contraseña es la que elegiste. FreshRSS y Wallabag van aparte, porque esas cuentas las creaste vos.
+**Con qué entrás a cada cosa.** La lista de URLs de lo que instalaste, con el recordatorio de que el usuario es `admin` en todas y la contraseña es la que elegiste. FreshRSS y Wallabag van en ese grupo o aparte según quién haya creado la cuenta: si la creó el instalador entran con la misma contraseña, y solo si la creaste vos se listan aparte.
+
+**Las apps del celular.** Cierra ofreciéndote las apps que sirven para lo que quedó corriendo, de a una y con los datos ya resueltos. Es la continuación natural de la lista de arriba: acabás de ver las direcciones, y esto es cómo no volver a escribirlas. Se puede retomar después con `./movil.sh`, y está explicado en [INDICE.md](INDICE.md#desde-el-celular).
 
 ---
 
@@ -309,7 +311,7 @@ Es la forma normal de usarlo, no una excepción.
 
 | Módulo | Qué levanta |
 |---|---|
-| Base del sistema | zona horaria, chequeo periódico del disco, Docker, log2ram |
+| Base del sistema | zona horaria, chequeo periódico del disco, Docker, `smartmontools` para la salud del disco, y log2ram si arrancás desde una microSD |
 | Pi-hole | nativo: DNS, listas de bloqueo, los 15 registros `*.pi` |
 | Caddy y Homepage | `caddy`, `homepage` |
 | Monitoreo | `grafana`, `prometheus`, `node-exporter`, `pihole-exporter` |
