@@ -184,3 +184,14 @@ http:// {
         respond "Access denied" 403
     }
 }
+
+# ── Configuracion generada ────────────────────────────────────────────────────
+#
+# Lo que el instalador escribe segun lo que encuentre en ESTA maquina, y que por
+# eso no puede estar versionado aca. Hoy es un solo archivo: el bloque de HTTPS
+# con el certificado de Tailscale, cuyo nombre de host es distinto en cada
+# instalacion.
+#
+# El comodin no falla si no hay nada, asi que sin esos archivos Caddy levanta
+# igual y esta linea no molesta.
+import /etc/caddy/extra/*.caddy

@@ -5,8 +5,18 @@ services:
     container_name: caddy
     ports:
       - 80:80
+      # HTTPS con el certificado que emite Tailscale para el nombre de esta
+      # maquina en la tailnet. Se publica siempre aunque no haya certificado:
+      # sin el archivo en extra/ no hay ningun bloque que escuche el 443, y un
+      # puerto publicado sin nadie detras no hace nada.
+      - 443:443
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      # Lo que el instalador genera segun esta maquina. El Caddyfile lo importa
+      # con un comodin, que no falla si la carpeta esta vacia.
+      - ./extra:/etc/caddy/extra:ro
+      # Los certificados de Tailscale, de solo lectura
+      - /var/lib/pi-services/certs:/certs:ro
       - caddy-data:/data
       - caddy-config:/config
       # Log de acceso en ruta fija del host, para que fail2ban no dependa
