@@ -1,0 +1,131 @@
+#!/bin/bash
+# ==============================================================================
+#  pi  ·  El comando de todo
+#
+#      pi                  como esta la casa, y que podes hacer
+#      pi estado           que anda, que no, y por que
+#      pi instalar         agregar o completar servicios
+#      pi movil            las apps del celular, con sus datos
+#      pi avisos           el feed de eventos y los avisos al celular
+#      pi respaldo         guardar lo irrecuperable
+#      pi seguridad        firewall y fail2ban
+#      pi ayuda            esto mismo, con el detalle de cada uno
+#
+#  ── Por que existe ───────────────────────────────────────────────────────────
+#
+#  Los scripts de siempre estan bien y no se tocan. El problema es que son seis,
+#  hay que acordarse de cual era cual, y todos exigen estar parado adentro de la
+#  carpeta del repo. Eso ultimo es lo que mas molesta: entras por SSH, queres
+#  ver como esta todo, y lo primero que tenes que hacer es un cd.
+#
+#  Esto no duplica ni una linea de logica. Resuelve donde vive el repo, elige el
+#  script y le pasa los argumentos tal cual, asi que todo lo que aprenda
+#  cualquiera de ellos queda disponible aca sin tocar nada.
+# ==============================================================================
+
+set -uo pipefail
+
+# Donde vive el repo, aunque te hayan llamado desde /usr/local/bin por un enlace
+# y desde cualquier carpeta. readlink -f sigue el enlace hasta el archivo real;
+# el command -v cubre el caso de que te invoquen por el PATH, sin ninguna barra
+# en el nombre, y ahi BASH_SOURCE no alcanza para ubicarse.
+ORIGEN="${BASH_SOURCE[0]}"
+[[ "$ORIGEN" == */* ]] || ORIGEN="$(command -v -- "$ORIGEN" 2>/dev/null || echo "$ORIGEN")"
+REPO="$(cd "$(dirname "$(readlink -f "$ORIGEN")")" && pwd)"
+cd "$REPO" || { echo "No encuentro el repo"; exit 1; }
+
+V=$'\e[0;32m'; A=$'\e[1;33m'; C=$'\e[0;36m'
+G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
+
+ESTADO_GUARDADO="/run/pi-services/estado"
+
+# ── El menu ───────────────────────────────────────────────────────────────────
+
+ayuda() {
+    echo ""
+    echo "  ${B}${C}pi${N}  ${G}·  todo lo de esta maquina, desde cualquier carpeta${N}"
+    echo ""
+    printf "  ${B}%-12s${N} %s\n" "pi"          "como esta la casa, y que podes hacer"
+    printf "  ${B}%-12s${N} %s\n" "pi estado"   "que anda, que no, y por que"
+    printf "  ${B}%-12s${N} %s\n" "pi instalar" "agregar o completar servicios"
+    printf "  ${B}%-12s${N} %s\n" "pi movil"    "las apps del celular, con sus datos"
+    printf "  ${B}%-12s${N} %s\n" "pi avisos"   "el feed de eventos y los avisos al celular"
+    printf "  ${B}%-12s${N} %s\n" "pi respaldo" "guardar lo irrecuperable"
+    printf "  ${B}%-12s${N} %s\n" "pi seguridad" "firewall y fail2ban"
+    echo ""
+    echo "  ${G}Cada uno acepta sus propias opciones y se las paso tal cual:${N}"
+    printf "  ${G}%-28s %s${N}\n" "pi estado --breve"   "solo lo que esta mal"
+    printf "  ${G}%-28s %s${N}\n" "pi estado --arreglar" "y ofrece arreglarlo"
+    printf "  ${G}%-28s %s${N}\n" "pi avisos --probar"  "un aviso de prueba a cada canal"
+    printf "  ${G}%-28s %s${N}\n" "pi avisos --canales" "a que suscribirte desde la app"
+    printf "  ${G}%-28s %s${N}\n" "pi movil --todo"     "todos los datos de una"
+    printf "  ${G}%-28s %s${N}\n" "pi respaldo --listar" "que capturaria, sin hacer nada"
+    echo ""
+}
+
+# ── Sin argumentos: como esta la casa ─────────────────────────────────────────
+#
+#  Se lee el resultado que el diagnostico dejo en /run, no se corre uno nuevo.
+#  Un diagnostico completo tarda unos doce segundos, y el comando que uno tipea
+#  apenas entra tiene que contestar ya. El de /run lo escribe el timer cada
+#  hora, asi que siempre hay uno fresco, y si te quedan dudas de cuan fresco es,
+#  ahi abajo dice de cuando es.
+portada() {
+    echo ""
+    echo "  ${B}${C}Pi-Services${N}"
+
+    local arriba total
+    if command -v docker >/dev/null 2>&1; then
+        arriba=$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')
+        total=$(docker ps -aq 2>/dev/null | wc -l | tr -d ' ')
+        echo "  ${G}  $arriba de $total contenedores arriba${N}"
+    fi
+    echo ""
+
+    if [ -s "$ESTADO_GUARDADO" ]; then
+        cat "$ESTADO_GUARDADO"
+        local cuando
+        cuando=$(date -r "$ESTADO_GUARDADO" '+%d/%m %H:%M' 2>/dev/null)
+        echo "  ${G}   ultima revision: ${cuando:-desconocida}  ·  una nueva:  ${B}pi estado${N}${N}"
+    else
+        echo "  ${G}   Todavia no hay ninguna revision guardada.${N}"
+        echo "  ${G}   La primera:  ${B}pi estado${N}${N}"
+    fi
+
+    ayuda
+}
+
+# ── El despacho ───────────────────────────────────────────────────────────────
+#
+#  exec en vez de llamar y volver: el script destino pasa a ser este proceso, y
+#  con eso hereda la terminal tal cual. Sin exec, las preguntas que leen de
+#  /dev/tty y los Ctrl+C se comportan distinto segun quien te llamo.
+correr() {
+    local script="$1"; shift
+    if [ ! -x "$REPO/$script" ]; then
+        echo "  ${A}!${N} No encuentro $script, o no es ejecutable."
+        echo "  ${G}    Probá:  chmod +x $REPO/$script${N}"
+        exit 1
+    fi
+    exec "$REPO/$script" "$@"
+}
+
+sub="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$sub" in
+    estado|diagnostico)   correr diagnostico.sh "$@" ;;
+    instalar|instalador)  correr instalador.sh "$@" ;;
+    movil|celular)        correr movil.sh "$@" ;;
+    avisos|feed)          correr avisos.sh "$@" ;;
+    respaldo|backup)      correr respaldo.sh "$@" ;;
+    seguridad|firewall)   correr setup-security.sh "$@" ;;
+    ayuda|help|-h|--help) ayuda ;;
+    "")                   portada ;;
+    *)
+        echo ""
+        echo "  ${A}!${N} No conozco ${B}$sub${N}."
+        ayuda
+        exit 1
+        ;;
+esac

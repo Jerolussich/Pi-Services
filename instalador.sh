@@ -1709,6 +1709,47 @@ resumen() {
 #  se avisa y se sigue: es tu maquina y sabes cosas que este script no.
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  EL COMANDO pi
+#
+#  Un enlace en /usr/local/bin para poder correr todo desde cualquier carpeta.
+#
+#  Es un ENLACE y no una copia a proposito: asi un git pull actualiza tambien el
+#  comando, sin que nadie tenga que acordarse de reinstalarlo. Una copia se
+#  queda vieja en silencio, que es la peor forma de quedarse vieja.
+# ══════════════════════════════════════════════════════════════════════════════
+
+instalar_comando_pi() {
+    local destino=/usr/local/bin/pi origen="$REPO/pi"
+
+    [ -f "$origen" ] || return 0
+    [ -x "$origen" ] || chmod +x "$origen" 2>/dev/null
+
+    if [ "$(readlink -f "$destino" 2>/dev/null)" = "$(readlink -f "$origen" 2>/dev/null)" ]; then
+        gris "     el comando ${B}pi${N} ya estaba"
+        return 0
+    fi
+
+    # Un archivo que no es un enlace nuestro no se pisa. Puede ser cualquier
+    # cosa de otro programa, y borrarla sin avisar seria imperdonable.
+    if [ -e "$destino" ] && [ ! -L "$destino" ]; then
+        aviso "Ya hay algo en $destino que no puse yo, no lo toco"
+        pendiente "Instalar el comando pi a mano:  sudo ln -sf $origen $destino"
+        return 1
+    fi
+
+    sudo ln -sf "$origen" "$destino" 2>/dev/null
+
+    if [ "$(readlink -f "$destino" 2>/dev/null)" = "$(readlink -f "$origen" 2>/dev/null)" ]; then
+        ok "Comando ${B}pi${N} disponible desde cualquier carpeta"
+        gris "     ${B}pi${N} te dice como esta todo, y ${B}pi ayuda${N} lista el resto"
+    else
+        aviso "No pude instalar el comando pi"
+        gris "     seguis teniendo los scripts sueltos, pero hay que estar en la carpeta"
+        pendiente "Instalar el comando pi:  sudo ln -sf $origen $destino"
+    fi
+}
+
 chequeo_previo() {
     local abortar=0 libre_gb mem_mb
 
@@ -1905,6 +1946,9 @@ paso "revisando el equipo";        portada
 # Quedarse sin internet o sin espacio despues de veinte preguntas es la peor
 # forma de fallar: perdiste el tiempo y ademas quedo todo a medias.
 chequeo_previo || exit 1
+# Temprano y no al final: si la instalacion se corta a la mitad, el comando ya
+# quedo puesto y podes usarlo para ver que paso.
+instalar_comando_pi
 info "Revisando el estado del equipo..."
 detectar
 # La tabla de estado se muestra UNA vez, en el menu, que ya la trae con los
