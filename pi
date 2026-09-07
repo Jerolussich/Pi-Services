@@ -51,6 +51,7 @@ ayuda() {
     printf "  ${B}%-12s${N} %s\n" "pi movil"    "las apps del celular, con sus datos"
     printf "  ${B}%-12s${N} %s\n" "pi avisos"   "el feed de eventos y los avisos al celular"
     printf "  ${B}%-12s${N} %s\n" "pi respaldo" "guardar lo irrecuperable"
+    printf "  ${B}%-12s${N} %s\n" "pi actualizar" "que hay de nuevo, y actualizarlo"
     printf "  ${B}%-12s${N} %s\n" "pi seguridad" "firewall y fail2ban"
     echo ""
     echo "  ${G}Cada uno acepta sus propias opciones y se las paso tal cual:${N}"
@@ -60,6 +61,7 @@ ayuda() {
     printf "  ${G}%-28s %s${N}\n" "pi avisos --canales" "a que suscribirte desde la app"
     printf "  ${G}%-28s %s${N}\n" "pi movil --todo"     "todos los datos de una"
     printf "  ${G}%-28s %s${N}\n" "pi respaldo --listar" "que capturaria, sin hacer nada"
+    printf "  ${G}%-28s %s${N}\n" "pi actualizar --ver"  "que hay de nuevo, sin tocar nada"
     echo ""
 }
 
@@ -119,6 +121,7 @@ case "$sub" in
     movil|celular)        correr movil.sh "$@" ;;
     avisos|feed)          correr avisos.sh "$@" ;;
     respaldo|backup)      correr respaldo.sh "$@" ;;
+    actualizar|update)    correr actualizar.sh "$@" ;;
     seguridad|firewall)   correr setup-security.sh "$@" ;;
     ayuda|help|-h|--help) ayuda ;;
     "")                   portada ;;
