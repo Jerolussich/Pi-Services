@@ -18,7 +18,23 @@ Y no se queda en levantar contenedores: **también los configura**. Deja a Jelly
 
 ---
 
-## Los ocho pasos
+## Los pasos
+
+### 0. Antes de empezar
+
+Comprueba cinco cosas **antes de hacerte contestar nada**: `sudo`, espacio libre, memoria, salida a internet y que el reloj esté sincronizado.
+
+No están ahí por prolijidad. Ninguna de las cinco rompe nada en el momento: rompen mucho más adelante y con un error que no se parece a la causa.
+
+| Si falta | Cuándo lo notarías |
+|---|---|
+| Internet | la primera imagen de Docker falla, diez minutos después de que contestaste todas las preguntas |
+| Espacio | las imágenes se bajan a medias y dejan capas escritas por la mitad, que después rompen contenedores de formas difíciles de rastrear |
+| Reloj en hora | fallan certificados y APIs que firman por tiempo, y el error te habla de TLS |
+
+La salida a internet se prueba con **HTTPS contra el mismo servidor del que sale Docker**, no con un `ping`: una red puede tener ICMP abierto y HTTPS bloqueado, y el ping te diría que todo está bien.
+
+**Solo aborta por lo que hace imposible seguir** (sin `sudo`, sin internet, sin espacio). La memoria justa y el reloj desincronizado se avisan y la instalación sigue: es tu máquina y sabés cosas que el script no. Y cuando aborta, muestra igual el resultado de los cinco, para que veas de una todo lo que falta en vez de arreglar uno y volver a chocar con el siguiente.
 
 ### 1. Diagnóstico
 
@@ -266,6 +282,16 @@ Te muestra cómo quedó cada módulo elegido, y después tres listas:
 **Con qué entrás a cada cosa.** La lista de URLs de lo que instalaste, con el recordatorio de que el usuario es `admin` en todas y la contraseña es la que elegiste. FreshRSS y Wallabag van en ese grupo o aparte según quién haya creado la cuenta: si la creó el instalador entran con la misma contraseña, y solo si la creaste vos se listan aparte.
 
 **Las apps del celular.** Cierra ofreciéndote las apps que sirven para lo que quedó corriendo, de a una y con los datos ya resueltos. Es la continuación natural de la lista de arriba: acabás de ver las direcciones, y esto es cómo no volver a escribirlas. Se puede retomar después con `./movil.sh`, y está explicado en [INDICE.md](INDICE.md#desde-el-celular).
+
+### 9. Cómo quedó de verdad
+
+Antes terminaba acá, diciendo "listo" sin haber comprobado **una sola** de las cosas que acababa de hacer. Cuando algo quedaba mal te enterabas al otro día, en el cartel de bienvenida, y para entonces ya no había forma de saber si había sido el instalador o algo que pasó después.
+
+Ahora corre `./diagnostico.sh --breve` y te muestra lo que quedó mal, en el momento y con el contexto fresco.
+
+**Delega en el diagnóstico en vez de repetir sus chequeos.** Eso importa por dos razones. La primera es que el diagnóstico ya sabe explicar cada hallazgo: qué implica, qué lo frena y qué te toca hacer a vos. La segunda es que si el diagnóstico aprende a mirar algo nuevo, la verificación lo hereda sola, sin que nadie tenga que acordarse de actualizar dos lugares.
+
+Tené en cuenta que hay revisiones que corren cada varias horas, como la de los discos, y pueden no entrar en esa pasada.
 
 ---
 
