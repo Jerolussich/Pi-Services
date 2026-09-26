@@ -589,6 +589,23 @@ recolectar() {
         gris "        archivo: $arch  ·  variable: $v"
         [ -n "$ayuda" ] && echo "        ${A}$ayuda${N}"
 
+        # DAS_ROOT es el unico de estos datos que el sistema puede averiguar
+        # solo. Si el disco ya esta montado y se puede escribir, preguntar la
+        # ruta es pedirle a la persona algo que ya sabemos.
+        #
+        # Y no preguntarlo arregla algo peor: apretar Enter lo mandaba a la
+        # lista de "datos que salteaste" aunque unas lineas antes el propio
+        # instalador hubiera impreso "DAS montado en /mnt/das, 3.6T libres".
+        # El modulo quedaba marcado como incompleto por un dato que estaba
+        # resuelto, y el resumen final terminaba contradiciendo su chequeo.
+        if [ "$v" = "DAS_ROOT" ] && das_montado; then
+            escribir_var "$arch" "$v" "$(das_ruta)"
+            ok "Detectado solo: ${B}$(das_ruta)${N}, $(das_libre) libres"
+            echo ""
+            i=$((i+1))
+            continue
+        fi
+
         local valor=""
         case "$tipo" in
             clave|hash)
