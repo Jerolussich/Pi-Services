@@ -74,6 +74,29 @@ except Exception:
     pass' 2>/dev/null
 }
 
+# Lo mismo pero con el Id, que es lo que hace falta para desinstalar.
+# Formato: Id|Nombre
+jf_plugins_detalle() {
+    jf_api GET /Plugins 2>/dev/null | python3 -c '
+import sys, json
+try:
+    for p in json.load(sys.stdin):
+        i = p.get("Id") or p.get("id")
+        n = p.get("Name") or p.get("name")
+        if i and n: print(f"{i}|{n}")
+except Exception:
+    pass' 2>/dev/null
+}
+
+# Desinstalar. Igual que al instalar, no alcanza con que el DELETE no falle:
+# se relee la lista, porque desaparecer de ahi es lo que significa que salio.
+jf_plugin_quitar() {
+    local id="$1" nombre="$2"
+    jf_api DELETE "/Plugins/$id" >/dev/null 2>&1
+    sleep 2
+    ! jf_plugins_instalados | grep -qxF "$nombre"
+}
+
 # ── Instalar uno ──────────────────────────────────────────────────────────────
 #
 #  Jellyfin lo baja e instala en segundo plano y no queda activo hasta
@@ -110,6 +133,40 @@ configurar_plugins_jellyfin() {
     fi
     instalados=$(jf_plugins_instalados)
 
+    # Mostrar lo que YA esta puesto, y dar la opcion de sacarlo.
+    #
+    # Antes estos se saltaban en silencio: el instalador solo ofrecia los que
+    # faltaban, asi que volver a correrlo no dejaba ver que tenias instalado ni
+    # forma de deshacer nada. Si te arrepentias de uno, la unica salida era el
+    # panel de Jellyfin.
+    if [ -n "$instalados" ]; then
+        local cuantos; cuantos=$(echo "$instalados" | grep -c .)
+        echo ""
+        info "Jellyfin ya tiene ${B}$cuantos${N} $(plural "$cuantos" "complemento" "complementos"):"
+        echo "$instalados" | sed 's/^/       · /'
+        echo ""
+        if preguntar "     ¿Queres sacar alguno?" "n"; then
+            local linea pid pnombre sacados=0
+            while IFS='|' read -r pid pnombre; do
+                [ -n "$pid" ] || continue
+                echo "  ${B}$pnombre${N}"
+                preguntar "     ¿Lo saco?" "n" || { echo ""; continue; }
+                if jf_plugin_quitar "$pid" "$pnombre"; then
+                    ok "$pnombre desinstalado"
+                    sacados=$((sacados+1))
+                    hay_nuevos=1     # tambien hay que reiniciar para que se vaya
+                else
+                    aviso "$pnombre: no pude desinstalarlo"
+                    pendiente "Sacar el complemento $pnombre en http://jellyfin.pi, Dashboard, Plugins"
+                fi
+                echo ""
+            done < <(jf_plugins_detalle)
+            [ "$sacados" -gt 0 ] && instalados=$(jf_plugins_instalados)
+        else
+            echo ""
+        fi
+    fi
+
     # Cuantos tiene sentido ofrecerte: los de la seleccion que el servidor
     # tenga y que no esten ya puestos.
     for par in "${JF_PLUGINS[@]}"; do
@@ -120,6 +177,15 @@ configurar_plugins_jellyfin() {
     done
 
     if [ "$ofrecidos" -eq 0 ]; then
+        # Ojo con volver aca sin reiniciar: si se desinstalo algo arriba, el
+        # plugin sigue cargado en memoria hasta que Jellyfin arranque de nuevo,
+        # y la interfaz lo muestra como si nada hubiera pasado.
+        if [ "$hay_nuevos" = "1" ]; then
+            info "Reinicio Jellyfin para que el cambio tome efecto..."
+            $DOCKER restart jellyfin >/dev/null 2>&1
+            esperar_http jellyfin 8096 /System/Info/Public \
+                || pendiente "Revisar Jellyfin:  docker logs jellyfin"
+        fi
         gris "     los plugins que valen la pena ya estan puestos"
         return 0
     fi

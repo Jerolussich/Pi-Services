@@ -57,6 +57,15 @@ GATEWAY="192.168.68.1"
 # shellcheck source=discos.sh
 . "$REPO/lib/discos.sh"
 
+# Los dos catalogos que antes eran pasos manuales: que indexers cargar y de
+# donde bajar subtitulos. Van aparte por el mismo motivo que los plugins de
+# Jellyfin: son listas curadas con una descripcion por entrada, y eso se lee y
+# se corrige mejor en su propio archivo.
+# shellcheck source=indexers.sh
+. "$REPO/lib/indexers.sh"
+# shellcheck source=subtitulos.sh
+. "$REPO/lib/subtitulos.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
@@ -3666,10 +3675,17 @@ configurar_servicios() {
             # Despues de Prowlarr y no antes: FlareSolverr se da de alta
             # DENTRO de Prowlarr, asi que primero tiene que existir y contestar.
             cfg_flaresolverr
+            # Y los indexers al final, porque los que van detras de Cloudflare
+            # necesitan que el proxy ya este dado de alta para poder etiquetarlos.
+            configurar_indexers
         fi
         if esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]]; then
             cfg_bazarr "$(clave_para 'Bazarr')"
             cfg_bazarr_idiomas
+            # Los proveedores van despues del perfil de idiomas: sin perfil no
+            # hay a que aplicarlos, y activarlos antes deja a Bazarr un rato en
+            # el estado que justamente queremos evitar.
+            configurar_proveedores_subtitulos
         fi
         if esta_arriba jellyfin && [[ " $elegidos_media " == *" jellyfin "* ]]; then
             if cuenta_automatica jellyfin; then
