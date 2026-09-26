@@ -42,6 +42,23 @@ services:
       - ${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}/udp
     restart: unless-stopped
 
+  # Varios indexers -1337x, TorrentGalaxy, DonTorrent- estan detras de
+  # Cloudflare, y Prowlarr solo no los puede consultar: la busqueda falla con
+  # "blocked by CloudFlare Protection" aunque el indexer este bien configurado.
+  # FlareSolverr resuelve ese desafio con un navegador headless y le devuelve
+  # la cookie a Prowlarr.
+  #
+  # No expone puerto al host ni necesita volumen: Prowlarr le habla por la red
+  # interna del compose, en http://flaresolverr:8191.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    env_file:
+      - .env
+    environment:
+      - LOG_LEVEL=info
+    restart: unless-stopped
+
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
@@ -49,6 +66,8 @@ services:
       - .env
     volumes:
       - prowlarr-config:/config
+    depends_on:
+      - flaresolverr
     restart: unless-stopped
 
   radarr:
