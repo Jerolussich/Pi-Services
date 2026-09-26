@@ -131,6 +131,26 @@ respaldar_fstab() {
     sudo cp /etc/fstab "$copia" && info "Copia del fstab en $copia"
 }
 
+# Un punto de montaje vacio es una trampa. /mnt/disk2 sin el disco montado es
+# una carpeta comun en la tarjeta del sistema, y mergerfs -que toma las ramas
+# por el glob /mnt/disk*- la tomaria como un disco mas con terabytes libres.
+# Con category.create=mfs escribe donde hay mas espacio, asi que las descargas
+# irian derecho a la tarjeta hasta llenarla. Lo mismo vale para /mnt/das: si el
+# conjunto no monta, qBittorrent escribiria en la tarjeta sin que nada avise.
+#
+# El flag +i hace que escribir ahi falle mientras no haya nada montado encima.
+# Montar sobre un directorio inmutable funciona igual, y una vez montado el
+# flag queda debajo sin molestar: se escribe normal en el disco real.
+blindar_punto() {
+    local p="$1"
+    # Si ya esta montado, el flag iria al filesystem de adentro y no al de abajo
+    mountpoint -q "$p" && return 0
+    sudo mkdir -p "$p"
+    sudo chattr +i "$p" 2>/dev/null \
+        && gris "   $p blindado: si el disco no esta, escribir ahi falla en vez de ir a la tarjeta"
+    return 0
+}
+
 # ── Explicaciones ─────────────────────────────────────────────────────────────
 #
 #  Van en funciones y no sueltas en el flujo porque la misma explicacion se usa
@@ -207,8 +227,17 @@ formatear_disco() {
     [ -n "$particion" ] || { falla "No aparecio la particion despues de crearla"; return 1; }
     particion="/dev/$particion"
 
+    # -T largefile: un inodo por MB en vez de uno cada 16 KB. El default asume
+    # archivos chicos y en 4 TB reserva 244 millones de inodos que ocupan 62 GB
+    # de tablas, para un disco que va a tener unos pocos miles de peliculas.
+    # Quedan 3,8 millones, de sobra contando subtitulos, caratulas y .nfo.
+    # De paso el fsck tarda muchisimo menos, que se agradece despues de un corte.
+    #
+    # -m 1 y no 0: el 5% por defecto son 200 GB tirados, pero dejar 1% le da a
+    # ext4 lugar para asignar contiguo cuando el disco se acerca al limite, y la
+    # fragmentacion es justo lo que arruina la lectura secuencial de un video.
     info "Formateando en ext4 (puede tardar un minuto)..."
-    sudo mkfs.ext4 -q -m 1 -L "$etiqueta" "$particion" \
+    sudo mkfs.ext4 -q -m 1 -T largefile -L "$etiqueta" "$particion" \
         || { falla "No pude formatear $particion"; return 1; }
 
     uuid=$(sudo blkid -s UUID -o value "$particion" 2>/dev/null)
@@ -223,13 +252,17 @@ formatear_disco() {
 montar_disco() {
     local uuid="$1" punto="$2"
 
-    sudo mkdir -p "$punto"
+    blindar_punto "$punto"
 
+    # noatime: sin esto cada LECTURA de un archivo dispara una escritura de
+    # metadatos para anotar cuando se leyo. Jellyfin escaneando la biblioteca y
+    # qBittorrent leyendo piezas para sembrar hacen miles de lecturas, y ninguna
+    # parte del stack usa el atime para nada.
     if grep -q "UUID=$uuid" /etc/fstab 2>/dev/null; then
         info "El UUID ya estaba en el fstab, no lo duplico"
     else
         respaldar_fstab
-        printf '\n# DAS · disco montado por el instalador el %s\nUUID=%s  %s  ext4  defaults,nofail,x-systemd.device-timeout=10  0  2\n' \
+        printf '\n# DAS · disco montado por el instalador el %s\nUUID=%s  %s  ext4  defaults,noatime,nofail,x-systemd.device-timeout=10  0  2\n' \
             "$(date +%F)" "$uuid" "$punto" | sudo tee -a /etc/fstab >/dev/null
         ok "Agregado al fstab: $punto"
     fi
@@ -254,8 +287,17 @@ armar_conjunto() {
     puntos=$(puntos_disco_en_fstab)
     [ -n "$puntos" ] || { falla "No hay ningun /mnt/diskN en el fstab"; return 1; }
 
+    # cache.files=auto-full y dropcacheonclose=false van juntos y son la decision
+    # de velocidad mas importante de todo esto. Con 'partial' la pagina cacheada
+    # se tira al cerrar el archivo, asi que adelantar un video o volver a abrirlo
+    # vuelve a pegarle al disco. Con auto-full el contenido queda en el page
+    # cache del kernel y el seek es inmediato.
+    #
+    # Cuesta RAM, pero es cache reclamable: el kernel la suelta sola cuando algo
+    # la necesita de verdad. Con 7 GB en la maquina, que el video este en memoria
+    # vale mas que tener el numero de "libre" mas alto.
     requiere=$(echo "$puntos" | sed 's/^/x-systemd.requires=/' | paste -sd, -)
-    opciones="defaults,allow_other,use_ino,cache.files=partial,dropcacheonclose=true"
+    opciones="defaults,allow_other,use_ino,cache.files=auto-full,dropcacheonclose=false"
     opciones="$opciones,category.create=mfs,moveonenospc=true,minfreespace=20G,fsname=das,$requiere"
 
     local deseada; deseada="/mnt/disk*  $raiz  fuse.mergerfs  $opciones  0  0"
@@ -269,7 +311,7 @@ armar_conjunto() {
         return 0
     fi
 
-    sudo mkdir -p "$raiz"
+    blindar_punto "$raiz"
 
     # Hay que remontar. Si hay contenedores usando el DAS, avisar antes.
     if mountpoint -q "$raiz" && [ -n "$($DOCKER ps --filter status=running -q 2>/dev/null)" ]; then
@@ -285,9 +327,21 @@ armar_conjunto() {
     printf '%s\n' "$deseada" | sudo tee -a /etc/fstab >/dev/null
 
     sudo systemctl daemon-reload 2>/dev/null
-    mountpoint -q "$raiz" && sudo umount "$raiz" 2>/dev/null
-    sudo mount "$raiz" 2>/dev/null || sudo mount -a 2>/dev/null
 
+    # Si el desmontaje falla hay que PARAR, no seguir. Montar arriba de un
+    # montaje que sigue vivo apila uno sobre otro: mountpoint diria que si, la
+    # funcion cantaria exito, y los contenedores quedarian escribiendo en el
+    # de abajo mientras uno mira el de arriba y lo ve vacio.
+    if mountpoint -q "$raiz"; then
+        if ! sudo umount "$raiz" 2>/dev/null; then
+            falla "No pude desmontar $raiz: hay algo usandolo"
+            info "Para los contenedores y volve a correr esto:"
+            gris "   cd $REPO && sudo docker compose down"
+            return 1
+        fi
+    fi
+
+    sudo mount "$raiz" 2>/dev/null || sudo mount -a 2>/dev/null
     mountpoint -q "$raiz" || { falla "El conjunto no quedo montado en $raiz"; return 1; }
     ok "Conjunto mergerfs montado en $raiz ($(df -h --output=size "$raiz" | tail -1 | tr -d ' '))"
 }

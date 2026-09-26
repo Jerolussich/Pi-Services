@@ -41,6 +41,14 @@ sudo apt install mergerfs
 Formateá **los dos** en ext4. Evitá NTFS y exFAT: no soportan hardlinks ni permisos POSIX, y sin hardlinks cada película ocuparía el doble.
 
 ```bash
+sudo mkfs.ext4 -m 1 -T largefile -L disk1 /dev/sdX1
+```
+
+`-T largefile` reserva un inodo por MB en vez de uno cada 16 KB. El default asume archivos chicos: en 4 TB crea 244 millones de inodos que ocupan **62 GB** de tablas, para un disco que va a tener unos pocos miles de películas. Con esto quedan 3,8 millones, de sobra contando subtítulos, carátulas y `.nfo`, y el `fsck` tarda muchísimo menos después de un corte de luz.
+
+`-m 1` en lugar del 5% por defecto libera 160 GB en un disco de 4 TB. No se baja a 0 a propósito: ese 1% le da a ext4 lugar para asignar bloques contiguos cuando el disco se acerca al límite, y la fragmentación es justo lo que arruina la lectura secuencial de un video.
+
+```bash
 lsblk -f
 ```
 
@@ -48,7 +56,12 @@ Anotá el `UUID` de cada uno. Creá los puntos de montaje individuales y el conj
 
 ```bash
 sudo mkdir -p /mnt/disk1 /mnt/disk2 /mnt/das
+sudo chattr +i /mnt/disk1 /mnt/disk2 /mnt/das
 ```
+
+Ese `chattr +i` no es opcional y es la protección más importante de toda esta página. Un punto de montaje vacío es una trampa: `/mnt/disk2` sin el disco montado es una carpeta común **en la tarjeta del sistema**, y mergerfs —que toma las ramas por el glob `/mnt/disk*`— la tomaría como un disco más con terabytes libres. Con `category.create=mfs` las descargas irían derecho a la tarjeta hasta llenarla, que es exactamente la falla que corrompe el sistema.
+
+Con el flag de inmutable, escribir ahí falla mientras no haya nada montado encima. Montar sobre un directorio inmutable funciona igual, y una vez montado el flag queda debajo sin molestar.
 
 ---
 
@@ -57,14 +70,16 @@ sudo mkdir -p /mnt/disk1 /mnt/disk2 /mnt/das
 En `/etc/fstab`, primero los discos reales y después el conjunto:
 
 ```
-UUID=uuid-del-disco-1  /mnt/disk1  ext4  defaults,nofail,x-systemd.device-timeout=10  0  2
-UUID=uuid-del-disco-2  /mnt/disk2  ext4  defaults,nofail,x-systemd.device-timeout=10  0  2
+UUID=uuid-del-disco-1  /mnt/disk1  ext4  defaults,noatime,nofail,x-systemd.device-timeout=10  0  2
+UUID=uuid-del-disco-2  /mnt/disk2  ext4  defaults,noatime,nofail,x-systemd.device-timeout=10  0  2
 
-/mnt/disk*  /mnt/das  fuse.mergerfs  defaults,allow_other,use_ino,cache.files=partial,dropcacheonclose=true,category.create=mfs,moveonenospc=true,minfreespace=20G,fsname=das,x-systemd.requires=/mnt/disk1,x-systemd.requires=/mnt/disk2  0  0
+/mnt/disk*  /mnt/das  fuse.mergerfs  defaults,allow_other,use_ino,cache.files=auto-full,dropcacheonclose=false,category.create=mfs,moveonenospc=true,minfreespace=20G,fsname=das,x-systemd.requires=/mnt/disk1,x-systemd.requires=/mnt/disk2  0  0
 ```
 
 Qué hace cada opción que importa:
 
+- `noatime` en los discos reales: sin esto cada **lectura** dispara una escritura de metadatos para anotar cuándo se leyó. Jellyfin escaneando la biblioteca y qBittorrent leyendo piezas para sembrar hacen miles de lecturas, y nada del stack usa el `atime`.
+- `cache.files=auto-full` con `dropcacheonclose=false` es la decisión de velocidad más importante. Con `partial` la página cacheada se tira al cerrar el archivo, así que adelantar un video o volver a abrirlo vuelve a pegarle al disco. Con `auto-full` el contenido queda en el page cache del kernel y el seek es inmediato. Cuesta RAM, pero es caché reclamable: el kernel la suelta sola cuando algo la necesita.
 - `use_ino` hace que los archivos reporten el mismo inodo que en el disco real. **Sin esto los hardlinks no se detectan bien** y Radarr terminaría copiando en vez de enlazar.
 - `category.create=mfs` escribe cada archivo nuevo en el disco con **más espacio libre**, así se reparten solos sin que tengas que decidir nada.
 - `moveonenospc=true`: si un disco se llena a mitad de una escritura, mueve el archivo al otro en vez de fallar.
