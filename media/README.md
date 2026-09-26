@@ -67,8 +67,11 @@ Dos cosas sostienen todo el diseño:
 | `prowlarr` | `lscr.io/linuxserver/prowlarr` | `9696` | `prowlarr.pi` | Gestor central de indexers |
 | `bazarr` | `lscr.io/linuxserver/bazarr` | `6767` | `bazarr.pi` | Descarga automática de subtítulos |
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
+| `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr` | `8191` | — | Resuelve el Cloudflare de los indexers que lo usan |
 
 Ningún contenedor publica su interfaz web al host: todo entra por Caddy, igual que el resto del repo. La única excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares.
+
+`flaresolverr` no tiene hostname porque no es para vos: no tiene interfaz que visitar. Solo le habla Prowlarr, por la red interna del compose, en `http://flaresolverr:8191`.
 
 ---
 
@@ -223,6 +226,34 @@ Quedan afuera dos calidades a propósito: **BR-DISK** y **Raw-HD**, que son la i
 
 **Ojo con el espacio.** Este perfil pide lo mejor que exista, y lo mejor que existe pesa: un remux 2160p son entre 40 y 80 GB. Con la mejora automática además baja de nuevo lo que ya tenías. Si estás corto de disco, en `Settings → Profiles` bajá el corte a `Bluray-1080p` y la cosa se vuelve mucho más razonable.
 
+### Con varios indexers, ¿cuál se usa?
+
+Los cuatro. La pregunta natural es "cuál elige", pero el modelo mental correcto es otro: **Radarr no elige un indexer, elige un release.** El indexer es nada más de dónde salió cada candidato.
+
+Cuando pedís algo, Radarr le pregunta **en paralelo a todos los que tenga habilitados**, junta los resultados de todos en una sola lista, los puntúa y se queda con el mejor. Seerr no participa de esta decisión: él solo entrega el pedido y se olvida. Nunca ve un indexer.
+
+Qué pesa, en orden:
+
+**1. El perfil de calidad, que manda sobre todo lo demás.** Cualquier release cuya calidad no esté aceptada en el perfil se descarta sin más análisis. Entre los que pasan, gana el que esté más arriba en el orden del perfil. Por eso un indexer que publica x265 comprimido —YTS es el caso típico— casi nunca gana aunque conteste primero: su calidad queda abajo en la escala. Sirve de red para cuando no hay nada mejor.
+
+**2. Tamaño y seeders.** El release tiene que entrar en los límites de tamaño de esa calidad, y superar el mínimo de seeders configurado para su indexer.
+
+**3. La prioridad del indexer, y solo para desempatar.** Todos arrancan en **25**, el valor por defecto. Ese número entra en juego únicamente cuando dos releases son equivalentes en todo lo anterior: misma calidad, tamaño parecido. Ahí gana el del número más bajo.
+
+Si querés que ante un empate prefiera uno sobre otro —razonable, por ejemplo, entre un indexer con metadatos limpios y otro con metadatos sucios— se cambia **en Prowlarr**, en el indexer, y se sincroniza solo a Radarr y Sonarr. No hay que tocarlos a ellos.
+
+**Más indexers no es más rápido ni mejor.** Es más candidatos para elegir el mismo ganador. Lo que mejora de verdad es la probabilidad de encontrar algo raro que los otros no tengan. El costo es que cada búsqueda espera a que contesten todos, así que a partir del quinto o sexto sumás latencia sin ganar casi nada.
+
+### Indexers detrás de Cloudflare
+
+Varios —1337x, TorrentGalaxy, DonTorrent— están protegidos por Cloudflare y Prowlarr no los puede consultar solo: la búsqueda falla con `blocked by CloudFlare Protection` aunque el indexer esté perfectamente configurado. El error no dice que falte nada, así que parece que el indexer está roto.
+
+Para eso está el contenedor **FlareSolverr**, que resuelve el desafío con un navegador headless. El instalador lo levanta y lo da de alta en Prowlarr solo.
+
+Hay un detalle que cuesta descubrir: **el proxy solo se aplica a los indexers que llevan su misma etiqueta.** Dar de alta FlareSolverr no alcanza; hay que ponerle la etiqueta `flaresolverr` a cada indexer que lo necesite, en su campo Tags. Un proxy sin etiquetar no lo usa nadie, y el síntoma es idéntico a no tenerlo instalado.
+
+Y al revés: **no se lo pongas a los que no lo necesitan.** Un indexer etiquetado de más pasa cada búsqueda por el navegador headless para nada, y le agrega varios segundos.
+
 ### Contraseñas
 
 Los cuatro `*arr` salen de fábrica **sin contraseña ninguna**, con `authenticationMethod: none`. Y Caddy tampoco les pone la suya, porque se asume que traen login propio. O sea que hasta que les pongas una, `radarr.pi`, `sonarr.pi`, `prowlarr.pi` y `bazarr.pi` están abiertos a cualquiera en tu red. El instalador se las configura; si lo hacés a mano, es en `Settings → General → Security`.
@@ -247,6 +278,10 @@ Si alguna app de TV no resuelve los nombres `.pi`, la alternativa es publicar el
 ## Uso diario
 
 **Lo normal es no abrir Radarr ni Sonarr nunca.** Entrás a `http://seerr.pi`, buscás lo que querés, apretás el botón, y listo. Seerr se da cuenta solo de si es película o serie y se lo manda al que corresponde. Además te muestra lo que ya tenés en Jellyfin, así no pedís dos veces lo mismo.
+
+**En Seerr se pide, en Jellyfin se mira.** Son dos lugares distintos y cada uno hace una sola cosa. Seerr es un catálogo para buscar y pedir: no reproduce nada, y lo que te muestra sale de una base de datos de películas de internet, no de tu disco. Por eso ahí vas a ver títulos que no tenés — justamente para poder pedirlos. Lo único que Seerr sabe de tu biblioteca es qué está ya disponible, para marcarlo y no dejarte pedir dos veces lo mismo.
+
+Jellyfin es el reproductor y es el que tiene **tu** biblioteca: solo lo que está bajado y listo. Es a donde entrás para ver algo, desde el navegador, el celular o la tele.
 
 Por dentro pasa esto: el que recibe el pedido le pregunta a Prowlarr dónde encontrarlo, manda la descarga a qBittorrent, y al terminar la importa por hardlink a su carpeta, `movies` o `tv`. Bazarr le engancha los subtítulos y Jellyfin la muestra.
 

@@ -282,6 +282,7 @@ pi-services/
 ├── lib/jellyfin_plugins.sh    ← la seleccion de plugins y como se instalan
 ├── lib/actualizar.sh          ← comparar huellas contra lo publicado
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
+├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
 ├── systemd/                   ← los timers, que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
