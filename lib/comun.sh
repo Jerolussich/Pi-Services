@@ -1723,6 +1723,24 @@ print(d.get("save_path", ""), d.get("add_stopped_enabled", d.get("start_paused_e
 
 JF_TOKEN=""
 
+# Le pregunta al chip si sabe CODIFICAR por hardware, en vez de suponerlo por
+# el equipo. vainfo lista los perfiles que soporta la GPU: los que traen
+# VAEntrypointEncSlice son los de codificacion. Una Pi 5 no tiene ninguno; un
+# Intel con Quick Sync, si.
+#
+# La salida se guarda en una variable antes de mirarla. Con `vainfo | grep -q`,
+# grep sale al primer match, el SIGPIPE mata a vainfo, y el set -o pipefail de
+# este archivo convierte eso en un pipeline fallido: daria que no codifica
+# aunque codifique.
+jf_codifica_por_hardware() {
+    esta_arriba jellyfin || return 1
+    [ -e /dev/dri/renderD128 ] || return 1
+    local perfiles
+    perfiles=$($DOCKER exec jellyfin sh -c \
+        '/usr/lib/jellyfin-ffmpeg/vainfo --display drm --device /dev/dri/renderD128 2>/dev/null' 2>/dev/null)
+    echo "$perfiles" | grep -q "VAEntrypointEncSlice"
+}
+
 jf_api() {
     local metodo="$1" ruta="$2" cuerpo="${3:-}" auth
     auth="MediaBrowser Client=\"instalador\", Device=\"pi\", DeviceId=\"instalador-pi\", Version=\"1.0.0\""
@@ -2028,25 +2046,43 @@ cfg_jellyfin() {
         fi
     done
 
-    # La Pi 5 decodifica por hardware pero NO codifica: activamos VAAPI solo
-    # para decodificar. Dejar la codificacion por hardware prendida la haria
-    # fallar en cada transcodificacion.
-    local enc nuevo
+    # Antes esto asumia una Pi 5 y dejaba EnableHardwareEncoding en false
+    # SIEMPRE, con el comentario "la Pi 5 no tiene codificador". Cierto para la
+    # Pi, pero este repo tambien corre en mini PCs con Quick Sync, y ahi la
+    # suposicion deja la GPU a medio usar: decodifica por hardware y despues
+    # codifica con la CPU, que es la mitad cara de la transcodificacion.
+    #
+    # Ahora se le pregunta al chip. Y la comprobacion de "ya estaba activa"
+    # mira TAMBIEN el flag de codificacion: antes, con vaapi ya puesto, cortaba
+    # ahi y no habia forma de corregirlo volviendo a correr el instalador.
+    local enc nuevo codifica=False estado
+    jf_codifica_por_hardware && codifica=True
+
     enc=$(jf_api GET /System/Configuration/encoding 2>/dev/null)
-    if echo "$enc" | grep -q '"HardwareAccelerationType":"vaapi"'; then
-        gris "     la aceleracion por hardware ya estaba activa"
-    elif [ -n "$enc" ] && [ -e /dev/dri/renderD128 ]; then
-        nuevo=$(echo "$enc" | python3 -c '
-import sys, json
+    estado=$(echo "$enc" | python3 -c \
+        'import sys,json;d=json.load(sys.stdin);print(d.get("HardwareAccelerationType",""),d.get("EnableHardwareEncoding"))' 2>/dev/null)
+
+    if [ -z "$enc" ] || [ ! -e /dev/dri/renderD128 ]; then
+        :
+    elif [ "$estado" = "vaapi $codifica" ]; then
+        gris "     la aceleracion por hardware ya estaba como corresponde"
+    else
+        nuevo=$(CODIFICA="$codifica" python3 -c '
+import sys, json, os
 d = json.load(sys.stdin)
 d["HardwareAccelerationType"] = "vaapi"
 d["VaapiDevice"] = "/dev/dri/renderD128"
-d["EnableHardwareEncoding"] = False
+d["EnableHardwareEncoding"] = os.environ["CODIFICA"] == "True"
 d["HardwareDecodingCodecs"] = ["h264", "hevc", "vc1"]
-print(json.dumps(d))' 2>/dev/null)
+print(json.dumps(d))' <<< "$enc" 2>/dev/null)
         [ -n "$nuevo" ] && jf_api POST /System/Configuration/encoding "$nuevo" >/dev/null 2>&1
-        ok "Jellyfin: decodificacion por hardware (VAAPI)"
-        gris "     la codificacion queda en CPU: la Pi 5 no tiene codificador"
+        if [ "$codifica" = "True" ]; then
+            ok "Jellyfin: decodificacion ${B}y codificacion${N} por hardware (VAAPI)"
+            gris "     el chip tiene codificador, asi que transcodificar no usa la CPU"
+        else
+            ok "Jellyfin: decodificacion por hardware (VAAPI)"
+            gris "     la codificacion queda en CPU: este chip no tiene codificador"
+        fi
     fi
 
     # Los plugins van al final y no antes: si algo de arriba fallo, ya te
@@ -2320,9 +2356,89 @@ api_key_bazarr() {
 # subtitulo nunca. Nada avisa.
 #
 # Que idiomas queres es una eleccion tuya, asi que el instalador no adivina:
-# deja Espanol e Ingles, que es lo que sirve aca, y te dice donde cambiarlo.
+# propone Espanol e Ingles, que es lo que sirve aca, y te pregunta ANTES de
+# crear el perfil si queres sumar alguno mas.
+#
+# Antes esto se creaba en silencio y recien despues te decia donde cambiarlo.
+# El problema de ese orden es que uno no sabe que existe un perfil de idiomas
+# hasta que lee la linea, y para entonces ya esta hecho: hay que ir a buscarlo
+# a una pantalla que todavia no conoce.
 BAZARR_IDIOMAS="es en"
 BAZARR_PERFIL="Espanol e Ingles"
+
+bazarr_nombre_idioma() {
+    case "$1" in
+        es) echo "espanol" ;; en) echo "ingles" ;;  pt) echo "portugues" ;;
+        fr) echo "frances" ;; it) echo "italiano" ;; de) echo "aleman" ;;
+        ja) echo "japones" ;; ko) echo "coreano" ;;  zh) echo "chino" ;;
+        ru) echo "ruso" ;;    ca) echo "catalan" ;;  gl) echo "gallego" ;;
+        *)  echo "$1" ;;
+    esac
+}
+
+bazarr_nombres_idiomas() {
+    local c salida=""
+    for c in $1; do salida="$salida, $(bazarr_nombre_idioma "$c")"; done
+    echo "${salida#, }"
+}
+
+# Mostrar que se va a crear y dar la chance de sumar idiomas, antes de crearlo.
+# Modifica BAZARR_IDIOMAS y BAZARR_PERFIL si la persona agrega alguno.
+bazarr_elegir_idiomas() {
+    local extra c limpios=""
+
+    echo ""
+    info "Bazarr va a buscar subtitulos en: ${B}$(bazarr_nombres_idiomas "$BAZARR_IDIOMAS")${N}"
+    gris "     Es un perfil que se le aplica solo a cada pelicula y serie que"
+    gris "     entre. Sin el, Bazarr corre, se ve sano y no baja ningun subtitulo."
+    echo ""
+
+    preguntar "¿Agregar algun idioma mas?" "n" || return 0
+
+    info "Codigos de dos letras separados por espacio. Por ejemplo: ${B}pt fr it${N}"
+    read -r -p "        idiomas: " extra </dev/tty
+    echo ""
+
+    # Se filtra lo que no sea un codigo: un dedazo tipo "portugues" haria que
+    # Bazarr guarde un idioma inexistente y despues no encuentre nada para el.
+    for c in $extra; do
+        if [[ "$c" =~ ^[a-z]{2,3}$ ]]; then
+            [[ " $BAZARR_IDIOMAS $limpios " == *" $c "* ]] || limpios="$limpios $c"
+        else
+            aviso "Ignoro '$c': no parece un codigo de idioma"
+        fi
+    done
+
+    [ -n "$limpios" ] || return 0
+    BAZARR_IDIOMAS="$BAZARR_IDIOMAS$limpios"
+    BAZARR_PERFIL=$(bazarr_nombres_idiomas "$BAZARR_IDIOMAS")
+    ok "Perfil: ${B}$BAZARR_PERFIL${N}"
+}
+
+# Crear el perfil no alcanza: hay que dejarlo como PREDETERMINADO. Bazarr se lo
+# aplica a lo que ya tiene cargado, pero a cada pelicula nueva que le importe
+# Radarr no le asigna ninguno, y sin perfil asignado no busca subtitulos.
+#
+# El sintoma es el peor de todos: proveedores puestos, idiomas habilitados,
+# perfil creado, ningun error en ningun lado, y cero subtitulos para siempre.
+# Nada en la interfaz te dice que falta este paso.
+bazarr_asignar_perfil_por_defecto() {
+    local ip="$1" key="$2" perfiles="$3" id code
+    id=$(echo "$perfiles" | python3 -c \
+        'import sys,json;d=json.load(sys.stdin);print(d[0]["profileId"] if d else "")' 2>/dev/null)
+    [ -n "$id" ] || return 1
+
+    # Los booleanos van en minuscula. Con "True" -que es lo que uno escribe
+    # viniendo de Python- Bazarr contesta 406 con este mensaje:
+    #   general.serie_default_enabled must is_type_of <class 'bool'> but it is True
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST -H "X-API-KEY: $key" \
+        --data-urlencode "settings-general-serie_default_enabled=true" \
+        --data-urlencode "settings-general-serie_default_profile=$id" \
+        --data-urlencode "settings-general-movie_default_enabled=true" \
+        --data-urlencode "settings-general-movie_default_profile=$id" \
+        "http://$ip:6767/api/system/settings" 2>/dev/null)
+    case "$code" in 200|204) return 0 ;; *) return 1 ;; esac
+}
 
 cfg_bazarr_idiomas() {
     esta_arriba bazarr || return 0
@@ -2333,9 +2449,21 @@ cfg_bazarr_idiomas() {
     previos=$(curl -s --max-time 25 -H "X-API-KEY: $key" \
         "http://$ip:6767/api/system/languages/profiles" 2>/dev/null)
     if [ -n "$previos" ] && [ "$previos" != "[]" ]; then
-        gris "     Bazarr ya tenia un perfil de idiomas"
+        # Tenia perfil, pero eso no dice nada sobre si esta asignado. Antes se
+        # cortaba aca, y una instalacion con el perfil creado en una corrida
+        # anterior se quedaba sin predeterminado para siempre.
+        if bazarr_asignar_perfil_por_defecto "$ip" "$key" "$previos"; then
+            gris "     Bazarr ya tenia perfil de idiomas, lo dejo como predeterminado"
+        else
+            gris "     Bazarr ya tenia un perfil de idiomas"
+            pendiente "Marcar el perfil por defecto en http://bazarr.pi, Settings, Languages"
+        fi
         return 0
     fi
+
+    # Recien aca se pregunta: si ya habia perfil, arriba se volvio y no tiene
+    # sentido hacerte elegir idiomas para algo que no se va a crear.
+    bazarr_elegir_idiomas
 
     local cuerpo idioma args=()
     cuerpo=$(IDIOMAS="$BAZARR_IDIOMAS" NOMBRE="$BAZARR_PERFIL" python3 -c '
@@ -2374,8 +2502,15 @@ print(json.dumps([{"profileId": 1, "name": os.environ["NOMBRE"], "items": items,
         return 1
     fi
 
-    ok "Bazarr: perfil de idiomas ${B}$BAZARR_PERFIL${N} creado"
-    gris "     sin perfil no baja ningun subtitulo; cambialo en Settings, Languages"
+    if bazarr_asignar_perfil_por_defecto "$ip" "$key" "$previos"; then
+        ok "Bazarr: perfil de idiomas ${B}$BAZARR_PERFIL${N} creado y puesto por defecto"
+        gris "     se le aplica solo a cada pelicula y serie que entre"
+    else
+        ok "Bazarr: perfil de idiomas ${B}$BAZARR_PERFIL${N} creado"
+        aviso "Bazarr: no pude dejarlo como predeterminado"
+        gris "     sin eso, a lo que entre no se le asigna perfil y no baja subtitulos"
+        pendiente "Marcar el perfil por defecto en http://bazarr.pi, Settings, Languages"
+    fi
 }
 
 cfg_bazarr() {
