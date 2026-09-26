@@ -1215,6 +1215,90 @@ print(len(mejor), q.get("name") or mejor[-1].get("name", "?") if mejor else "?")
     gris "     mejora sola cuando aparece una version mejor"
 }
 
+# ── FlareSolverr ──────────────────────────────────────────────────────────────
+#
+#  Varios indexers -1337x, TorrentGalaxy, DonTorrent- estan detras de
+#  Cloudflare. Sin FlareSolverr, agregarlos falla con "Unable to access X,
+#  blocked by CloudFlare Protection" aunque esten perfectamente configurados, y
+#  el error no dice que falta un contenedor: parece que el indexer esta roto.
+#
+#  Levantar el contenedor no alcanza. En Prowlarr hay que darlo de alta como
+#  proxy Y etiquetarlo, porque un proxy solo se aplica a los indexers que
+#  llevan su misma etiqueta. Un proxy sin tag no lo usa nadie, y el sintoma es
+#  identico a no tenerlo instalado.
+cfg_flaresolverr() {
+    local tag_id cuerpo resp
+
+    esta_arriba flaresolverr || {
+        aviso "FlareSolverr no esta arriba: los indexers con Cloudflare van a fallar"
+        pendiente "Levantar FlareSolverr:  cd $REPO && docker compose up -d flaresolverr"
+        return 1
+    }
+    esperar_http prowlarr 9696 /api/v1/system/status || {
+        aviso "Prowlarr no contesta, no puedo configurarle FlareSolverr"
+        return 1
+    }
+
+    # La respuesta se guarda en una variable ANTES de mirarla, y no se le
+    # encadena un grep directo. Con `arr_api ... | grep -q`, grep sale apenas
+    # encuentra el match, eso le manda SIGPIPE a curl, y como este archivo
+    # corre con `set -o pipefail` el pipeline entero termina en error: el if
+    # daba falso aunque el proxy estuviera. El sintoma era que se anunciaba
+    # "FlareSolverr conectado" en cada corrida, incluso cuando ya estaba.
+    resp=$(arr_api prowlarr 9696 v1 GET /indexerproxy 2>/dev/null)
+    if echo "$resp" | grep -q '"FlareSolverr"'; then
+        gris "     FlareSolverr ya estaba dado de alta en Prowlarr"
+        return 0
+    fi
+
+    # La etiqueta va primero: es lo que despues conecta el proxy con cada
+    # indexer. Si ya existe se reusa, para no llenar Prowlarr de duplicadas
+    # cada vez que se corre el instalador.
+    tag_id=$(arr_api prowlarr 9696 v1 GET /tag 2>/dev/null | python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: d = []
+print(next((t["id"] for t in d if t.get("label") == "flaresolverr"), ""))' 2>/dev/null)
+
+    if [ -z "$tag_id" ]; then
+        tag_id=$(arr_api prowlarr 9696 v1 POST /tag '{"label":"flaresolverr"}' 2>/dev/null \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+    fi
+    [ -n "$tag_id" ] || { aviso "No pude crear la etiqueta flaresolverr en Prowlarr"; return 1; }
+
+    # El host es el nombre del contenedor, no localhost: Prowlarr le habla por
+    # la red interna del compose. Con localhost se buscaria a si mismo.
+    cuerpo=$(TAG="$tag_id" python3 -c '
+import json, os
+print(json.dumps({
+  "name": "FlareSolverr",
+  "implementation": "FlareSolverr",
+  "implementationName": "FlareSolverr",
+  "configContract": "FlareSolverrSettings",
+  "fields": [
+    {"name": "host", "value": "http://flaresolverr:8191/"},
+    {"name": "requestTimeout", "value": 60}
+  ],
+  "tags": [int(os.environ["TAG"])]}))' 2>/dev/null)
+    [ -n "$cuerpo" ] || { aviso "No pude armar la configuracion de FlareSolverr"; return 1; }
+
+    arr_api prowlarr 9696 v1 POST /indexerproxy "$cuerpo" >/dev/null 2>&1
+
+    # Se relee en vez de creer en la respuesta del POST: curl sale con 0 aunque
+    # Prowlarr conteste 400, asi que el codigo de salida no dice nada.
+    resp=$(arr_api prowlarr 9696 v1 GET /indexerproxy 2>/dev/null)
+    if ! echo "$resp" | grep -q '"FlareSolverr"'; then
+        aviso "Prowlarr no acepto el proxy de FlareSolverr"
+        pendiente "Configurarlo a mano en Prowlarr, Settings, Indexer Proxies"
+        return 1
+    fi
+
+    ok "FlareSolverr conectado a Prowlarr, con la etiqueta ${B}flaresolverr${N}"
+    gris "     Poneles esa etiqueta a los indexers con Cloudflare (1337x,"
+    gris "     TorrentGalaxy, DonTorrent) o no la van a usar."
+    return 0
+}
+
 cfg_prowlarr() {
     local clave="$1"
     esperar_http prowlarr 9696 /api/v1/system/status || {
@@ -3425,8 +3509,12 @@ configurar_servicios() {
         # carpeta: es lo que Seerr va a elegir al pedir algo.
         cfg_perfil_calidad radarr 7878 Radarr
         cfg_perfil_calidad sonarr 8989 Sonarr
-        esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]] && \
+        if esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]]; then
             cfg_prowlarr "$(clave_para 'Prowlarr')"
+            # Despues de Prowlarr y no antes: FlareSolverr se da de alta
+            # DENTRO de Prowlarr, asi que primero tiene que existir y contestar.
+            cfg_flaresolverr
+        fi
         if esta_arriba bazarr && [[ " $elegidos_media " == *" bazarr "* ]]; then
             cfg_bazarr "$(clave_para 'Bazarr')"
             cfg_bazarr_idiomas
