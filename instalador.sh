@@ -1457,6 +1457,21 @@ guia_cuentas() {
             [[ " $(servicios_elegidos "$m") " == *" $srv "* ]] || continue
             esta_arriba "$srv" || continue
         fi
+
+        # No anotar como pendiente algo que ya esta hecho. Esta lista salia del
+        # array CUENTAS sin preguntarle a nadie, asi que el resumen final te
+        # pedia instalar los complementos de Jellyfin cuando el instalador
+        # acababa de dejar ocho instalados, y elegir proveedores en Bazarr
+        # cuando ya estaban elegidos.
+        #
+        # No es cosmetico: una lista de pendientes con cosas ya hechas ensena a
+        # ignorarla entera, y el dia que aparezca un pendiente de verdad va a
+        # pasar desapercibido entre el ruido.
+        case "$srv" in
+            jellyfin) jellyfin_sin_plugins   || continue ;;
+            bazarr)   bazarr_sin_proveedores || continue ;;
+        esac
+
         pendientes+=("$linea")
     done
 

@@ -701,6 +701,23 @@ bazarr_sin_perfil() {
     ! $DOCKER exec bazarr sh -c 'grep -q "enabled_languages" /config/config/config.yaml' 2>/dev/null
 }
 
+# Bazarr con perfil de idiomas pero sin un solo proveedor tampoco baja nada:
+# sabe que subtitulo quiere y no tiene de donde sacarlo.
+bazarr_sin_proveedores() {
+    esta_arriba bazarr || return 1
+    $DOCKER exec bazarr sh -c 'grep -qE "^ *enabled_providers: *\[\] *$" /config/config/config.yaml' 2>/dev/null
+}
+
+# Se mira la carpeta y no la API: es mas barato y no necesita la clave. La
+# subcarpeta configurations la crea Jellyfin solo, asi que no cuenta como
+# plugin.
+jellyfin_sin_plugins() {
+    esta_arriba jellyfin || return 1
+    local n
+    n=$($DOCKER exec jellyfin sh -c 'ls /config/plugins 2>/dev/null | grep -vc "^configurations$"' 2>/dev/null)
+    [ "${n:-0}" -eq 0 ] 2>/dev/null
+}
+
 freshrss_sin_instalar() {
     esta_arriba freshrss || return 1
     ! $DOCKER exec freshrss sh -c 'test -f /var/www/FreshRSS/data/config.php' 2>/dev/null
