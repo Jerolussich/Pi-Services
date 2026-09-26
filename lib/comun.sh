@@ -544,7 +544,24 @@ pedir_clave_maestra() {
         gris "     Enter en cualquiera y usa la general."
     fi
     echo ""
-}
+# TODO lo que esta funcion imprime va a /dev/tty y NO a stdout, y esto no es
+# cosmetico.
+#
+# clave_para() devuelve la contrasena por echo, asi que siempre se la llama
+# dentro de $( ). Con la salida en stdout, la sustitucion se tragaba el cartel
+# entero -titulo, explicacion, el "Guardada"- y se lo pegaba adelante a la
+# contrasena. Lo que terminaba en Radarr, Sonarr, qBittorrent, Prowlarr y
+# Bazarr no era lo que la persona habia escrito sino ese bloque de texto con la
+# clave al final, y despues no entraba a ninguno.
+#
+# Costaba verlo porque los prompts de `read -p` salen por stderr y si se veian
+# en pantalla: parecia que estaba todo bien y lo unico raro era que preguntaba
+# de mas.
+#
+# Con la salida en /dev/tty, la sustitucion solo puede capturar el echo final
+# de clave_para. La contrasena no se puede volver a ensuciar aunque alguien
+# agregue un mensaje aca adentro.
+} > /dev/tty
 
 # Devuelve la contrasena que corresponde a un servicio. Con la opcion de
 # contrasenas separadas activada, la pregunta; si no, devuelve la general.
@@ -3341,6 +3358,8 @@ configurar_servicios() {
     # quien la genera es Pi-hole. Va despues de ponerle la contrasena del
     # panel, porque para generarla hay que entrar con ella.
     if [[ " ${SELECCION[*]} " == *" monitoring "* ]]; then
+        # Igual que en multimedia: pedirla en el padre, no adentro del $( ).
+        pedir_clave_maestra
         cfg_pihole_api "$(clave_para 'Pi-hole')"
     fi
 
@@ -3379,6 +3398,18 @@ configurar_servicios() {
     fi
 
     if [[ " ${SELECCION[*]} " == *" media "* ]] && [ "$MEDIA_MODO" != "no" ]; then
+        # La contrasena se pide ACA, en el shell padre, antes del primer
+        # $(clave_para ...). Cada una de esas sustituciones abre un subshell, y
+        # lo que ahi adentro se le asigne a CLAVE_MAESTRA se pierde al volver:
+        # sin esta linea el guard de "preguntar una sola vez" nunca ve nada y
+        # los cinco servicios de multimedia la preguntan de nuevo, uno por uno.
+        #
+        # Va sin mirar TOCAR_CLAVES a proposito. Aunque se haya elegido no
+        # cambiar las contrasenas, cfg_arr necesita una para conectar Radarr y
+        # Sonarr contra qBittorrent, y arr_autenticacion la usa si despues se
+        # acepta unificarlas. Con la variable vacia les pondria una en blanco.
+        pedir_clave_maestra
+
         # El orden importa y sigue el flujo de los datos: qBittorrent primero,
         # porque Radarr y Sonarr necesitan su contrasena para conectarse.
         # Despues los dos *arr, porque Prowlarr y Bazarr se enganchan contra
