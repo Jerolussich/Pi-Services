@@ -51,6 +51,12 @@ GATEWAY="192.168.68.1"
 # shellcheck source=https.sh
 . "$REPO/lib/https.sh"
 
+# Preparar el disco del DAS: detectar, formatear si hace falta, montar y unir
+# con mergerfs. Aparte porque es lo unico del instalador que puede borrar datos
+# y conviene poder leerlo entero sin buscarlo entre tres mil lineas.
+# shellcheck source=discos.sh
+. "$REPO/lib/discos.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
@@ -1277,7 +1283,27 @@ decidir_das() {
     info "Ademas se pierden los hardlinks: cada pelicula ocuparia el doble,"
     info "una vez en descargas y otra en la biblioteca."
     echo ""
-    echo "     ${B}1${N})  configurar todo, pero con las descargas ${B}en pausa${N}   ${G}(recomendado)${N}"
+    # Si hay un disco conectado y sin usar, prepararlo le gana a las tres
+    # salidas de abajo: resuelve el problema en vez de convivir con el. Se
+    # ofrece primero y como recomendada, pero solo cuando existe de verdad:
+    # un menu que ofrece preparar un disco que no esta conectado es peor que
+    # no ofrecer nada.
+    local hay_libre=0 d opciones="1/2/3"
+    while read -r d; do
+        [ -n "$d" ] || continue
+        disco_en_uso "$d" || hay_libre=1
+    done < <(discos_candidatos)
+
+    if [ "$hay_libre" = "1" ]; then
+        opciones="1/2/3/4"
+        echo "     ${B}4${N})  ${B}preparar ahora el disco que esta conectado${N}   ${G}(recomendado)${N}"
+        gris "         lo formatea si hace falta, lo monta y lo deja andando."
+        gris "         Antes de borrar nada te explica que implica y te pide"
+        gris "         que escribas la confirmacion."
+        echo ""
+    fi
+
+    echo "     ${B}1${N})  configurar todo, pero con las descargas ${B}en pausa${N}$([ "$hay_libre" = "1" ] || echo "   ${G}(recomendado)${N}")"
     gris "         queda listo para cuando conectes el disco, y mientras tanto"
     gris "         nada baja solo. Se despausa desde qbit.pi cuando quieras."
     echo "     ${B}2${N})  configurar todo y bajar igual"
@@ -1286,8 +1312,17 @@ decidir_das() {
     echo ""
 
     local r
-    read -r -p "     ${B}Que hago${N} [1/2/3]: " r </dev/tty 2>/dev/null || r=1
+    read -r -p "     ${B}Que hago${N} [$opciones]: " r </dev/tty 2>/dev/null || r=1
     case "$r" in
+        4) if [ "$hay_libre" = "1" ] && preparar_das && das_montado; then
+               MEDIA_MODO="igual"
+               ok "DAS listo en $(das_ruta), $(das_libre) libres"
+               echo ""
+               return 0
+           fi
+           MEDIA_MODO="pausa"
+           aviso "El disco no quedo usable. Sigo con las descargas en pausa."
+           pendiente "Montar el DAS (ver media/DAS.md) y despausar en http://qbit.pi" ;;
         2) MEDIA_MODO="igual"
            aviso "Bajando a la tarjeta. Vigila el espacio con: df -h /"
            pendiente "Conectar el DAS: las descargas estan yendo a la tarjeta" ;;

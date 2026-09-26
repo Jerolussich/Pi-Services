@@ -2,6 +2,10 @@
 
 Tenés dos discos sin RAID y querés que se vean como un único espacio, que Jellyfin escanee todo junto y que cualquiera de los dos pueda tener películas. La herramienta para eso es **mergerfs**.
 
+> **El instalador ya hace todo esto.** Cuando detecta que el DAS no está usable y hay un disco conectado sin usar, ofrece la opción `4) preparar ahora el disco que está conectado`, que ejecuta los pasos de abajo: formatea si hace falta, monta por UUID, arma el conjunto y prueba los hardlinks. Antes de borrar nada explica qué implica y pide que escribas `FORMATEAR`.
+>
+> Esta página queda como referencia de **qué** hace y **por qué**, y para el caso en que prefieras hacerlo a mano. La implementación vive en [`lib/discos.sh`](../lib/discos.sh).
+
 ---
 
 ## Qué hace mergerfs
@@ -56,7 +60,7 @@ En `/etc/fstab`, primero los discos reales y después el conjunto:
 UUID=uuid-del-disco-1  /mnt/disk1  ext4  defaults,nofail,x-systemd.device-timeout=10  0  2
 UUID=uuid-del-disco-2  /mnt/disk2  ext4  defaults,nofail,x-systemd.device-timeout=10  0  2
 
-/mnt/disk*  /mnt/das  fuse.mergerfs  defaults,nonempty,allow_other,use_ino,cache.files=partial,dropcacheonclose=true,category.create=mfs,moveonenospc=true,minfreespace=20G,fsname=das,x-systemd.requires=/mnt/disk1,x-systemd.requires=/mnt/disk2  0  0
+/mnt/disk*  /mnt/das  fuse.mergerfs  defaults,allow_other,use_ino,cache.files=partial,dropcacheonclose=true,category.create=mfs,moveonenospc=true,minfreespace=20G,fsname=das,x-systemd.requires=/mnt/disk1,x-systemd.requires=/mnt/disk2  0  0
 ```
 
 Qué hace cada opción que importa:
@@ -140,3 +144,42 @@ Eso es útil justamente el día que falle un disco: sabés exactamente qué perd
 ## Sobre la falta de redundancia
 
 Con dos discos no hay forma de tener paridad sin resignar capacidad. Si más adelante sumás un tercero, **SnapRAID** encaja bien con mergerfs: usa un disco entero como paridad y te deja recuperar el contenido de cualquiera de los otros. Mientras tanto, asumí que el contenido del DAS es reemplazable, y guardá aparte lo que no lo sea.
+
+---
+
+## Qué hace el instalador según lo que encuentra
+
+La preparación del disco es lo único del instalador que puede borrar datos, así que ramifica según el estado real de cada disco en vez de asumir nada. Lo que decide está en `disco_estado()`.
+
+| Estado del disco | Qué encuentra | Qué hace |
+|---|---|---|
+| **listo** | ext4, xfs o btrfs | Lo monta tal cual. **No formatea**: los datos quedan intactos |
+| **ajeno** | NTFS, exFAT, FAT | Explica que no sirve para hardlinks y ofrece formatear o dejarlo |
+| **vacío** | sin ningún filesystem | Ofrece formatear, explicando qué implica |
+| **en uso** | ya montado o en el fstab | Ni lo ofrece: lo lista como ocupado |
+
+Dos reglas que no se negocian:
+
+**Nunca formatea sin que escribas la palabra completa.** No es un `[S/n]`: hay que tipear `FORMATEAR`. Un dedo apoyado de más no puede costar cuatro terabytes.
+
+**Un disco con filesystem se monta, no se formatea.** Que el instalador no sepa qué hay adentro no lo vuelve vacío.
+
+## Correrlo de nuevo
+
+Es seguro, y está pensado para eso. En una segunda corrida:
+
+- El disco que ya está trabajando aparece como **en uso**, no como candidato. No hay forma de elegirlo por error.
+- Si el DAS ya funciona y no hay discos libres, dice que está todo listo y no toca nada.
+- Las líneas del `fstab` **no se duplican**: el disco se busca por UUID antes de agregarlo.
+- El `chown -R` sobre la estructura corre **una sola vez**, al crearla. Con la biblioteca cargada, recorrer cientos de miles de archivos tardaría una eternidad y pisaría los dueños que los propios contenedores le pusieron a lo suyo.
+- La línea del conjunto se reescribe **solo si cambió**. Si ya es la correcta y está montada, no se remonta: hacerlo con los contenedores arriba los deja mirando un montaje viejo hasta reiniciarlos. Cuando sí hace falta remontar, avisa y deja el pendiente anotado.
+
+## Sumar un disco más adelante
+
+No hay que formatear ni desmontar el disco que ya tenés. Conectás el nuevo, corrés el instalador y elegís la opción de preparar disco:
+
+1. El disco nuevo se formatea y se monta en el primer `/mnt/diskN` libre.
+2. La línea del conjunto se regenera con las dependencias de **todos** los discos.
+3. `/mnt/das` pasa a ser la suma de los dos, y `DAS_ROOT` no cambia.
+
+Los contenedores siguen viendo el mismo `/mnt/das` y nunca se enteran de que abajo hay dos discos. A partir de ahí `category.create=mfs` escribe cada archivo nuevo en el que tenga más espacio libre, así que se balancean solos.
