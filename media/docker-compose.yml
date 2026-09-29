@@ -25,6 +25,29 @@ services:
     devices:
       # Decodificacion por hardware. Requiere el grupo render, ver README.
       - /dev/dri:/dev/dri
+    # La excepcion a "nada se publica al host, todo entra por Caddy".
+    #
+    # Las apps de Jellyfin de tele y celular hablan DIRECTO con el servidor por
+    # su puerto: no mandan el nombre del host, asi que Caddy -que enruta por
+    # nombre- les contesta 403. En una Google TV el error es este, y no dice en
+    # ningun lado que el problema sea el proxy:
+    #
+    #   http://192.168.68.66:8096  - Connection timed out
+    #   http://192.168.68.66       - Unable to connect
+    #   https://192.168.68.66      - SSL handshake failed
+    #
+    # Se podria resolver apuntando el DNS de cada aparato al Pi-hole para que
+    # resuelva jellyfin.pi, pero eso obliga a poner IP fija en cada tele y los
+    # aparatos de Google suelen ignorar el DNS que uno configura.
+    #
+    # Publicarlo no deja nada abierto sin proteger: Jellyfin tiene su propio
+    # login, a diferencia de los *arr, que salen de fabrica sin contrasena y
+    # por eso si dependen de Caddy.
+    ports:
+      - "8096:8096"
+      # Descubrimiento automatico: con esto la app encuentra el servidor sola
+      # en la red y no hay que tipear la IP en cada aparato.
+      - "7359:7359/udp"
     restart: unless-stopped
 
   qbittorrent:
