@@ -480,7 +480,15 @@ valor_automatico() {
         PUID)                          id -u ;;
         PGID)                          id -g ;;
         TZ)                            timedatectl show -p Timezone --value ;;
-        JELLYFIN_PublishedServerUrl)   echo "http://jellyfin.pi" ;;
+        # Con la IP y no con jellyfin.pi. Es la direccion que Jellyfin le pasa
+        # a cada cliente para que vuelva a buscarlo, y las apps de tele no
+        # resuelven los .pi: conectan al servidor por IP, el servidor les dice
+        # "estoy en jellyfin.pi", y ahi se les corta.
+        #
+        # La IP sirve para los dos casos. En la LAN es directa, y desde afuera
+        # tambien alcanza si en Tailscale esta aprobada la ruta de la LAN, que
+        # es la misma condicion que ya necesitaba jellyfin.pi para andar remoto.
+        JELLYFIN_PublishedServerUrl)   echo "http://$IP_FIJA:8096" ;;
         QBIT_TORRENT_PORT)             echo "6881" ;;
         DAS_ROOT)                      echo "/mnt/das" ;;
         *)                             echo "" ;;
