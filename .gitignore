@@ -2,6 +2,17 @@
 **/.env
 **/tokens.json
 
+# Los respaldos que genera respaldo.sh. NUNCA van al repo: adentro llevan
+# TODOS los .env, los tokens.json y las bases de los servicios, o sea
+# exactamente lo que las dos lineas de arriba estan protegiendo.
+#
+# Ya paso una vez: pi-respaldo-2026-08-21-2124.tar.gz quedo commiteado y
+# publicado en GitHub desde el 21 de agosto de 2026, con las credenciales de
+# todo el stack adentro. Se limpio reescribiendo el historial.
+pi-respaldo-*.tar.gz
+*.tar.gz
+respaldos/
+
 # Datos propios: el feed de eventos, el estado de los avisos, las metricas
 # lentas y la cola de importaciones. Se generan solos y no se versionan, pero
 # respaldo.sh SI los guarda: son meses de historia que no se reconstruyen.
