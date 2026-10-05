@@ -1161,9 +1161,22 @@ cfg_perfil_calidad() {
 
     esta_arriba "$svc" || return 0
 
-    # Idempotente: si ya existe uno con ese nombre, no se toca
-    if arr_api "$svc" "$puerto" v3 GET /qualityprofile 2>/dev/null \
-        | grep -q "\"name\":\"$PERFIL_CALIDAD\""; then
+    # Idempotente: si ya existe uno con ese nombre, no se toca.
+    #
+    # Se parsea el JSON en vez de buscar el texto. La version anterior hacia
+    # grep de "name":"Perfeccionista" sin espacio, pero la API devuelve el JSON
+    # formateado, con "name": "Perfeccionista". No matcheaba nunca: en cada
+    # corrida intentaba crear el perfil de nuevo, Radarr rechazaba el nombre
+    # repetido, y el instalador anunciaba "perfil creado" igual, con un
+    # "(0 ? como techo)" que salia de leer la respuesta de error como si fuera
+    # el perfil. Ademas el grep -q encadenado podia fallar por el SIGPIPE.
+    local existentes
+    existentes=$(arr_api "$svc" "$puerto" v3 GET /qualityprofile 2>/dev/null)
+    if echo "$existentes" | NOMBRE="$PERFIL_CALIDAD" python3 -c '
+import sys, json, os
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(0 if any(p.get("name") == os.environ["NOMBRE"] for p in d) else 1)' 2>/dev/null; then
         gris "     $nombre ya tenia el perfil $PERFIL_CALIDAD"
         return 0
     fi
@@ -1239,6 +1252,94 @@ q = (mejor[-1].get("quality") or {}) if mejor else {}
 print(len(mejor), q.get("name") or mejor[-1].get("name", "?") if mejor else "?")' 2>/dev/null)
     ok "$nombre: perfil ${B}$PERFIL_CALIDAD${N} creado ($tope como techo)"
     gris "     mejora sola cuando aparece una version mejor"
+}
+
+# ── Rechazar los reescalados ──────────────────────────────────────────────────
+#
+#  Un "4K" reescalado con IA no es 4K: es un 1080p agrandado, a veces con un HDR
+#  agregado a mano. Pesa tres o cuatro veces mas que el original y se ve peor.
+#  Y el perfil Perfeccionista los prefiere, porque para Radarr 2160p siempre le
+#  gana a 1080p.
+#
+#  Paso de verdad con Idiocracy, que nunca salio en 4K. Radarr eligio un
+#  "WEB-DL 2160p Upscaled HDR10" que en una Google TV se veia con un tinte
+#  verde por el HDR falso, mientras La La Land -HDR real- se veia perfecto en
+#  la misma tele. Al borrarlo eligio otro reescalado, que se etiquetaba "AI" en
+#  vez de "Upscaled". Recien con los dos rechazados bajo el Bluray 1080p, que
+#  es la mejor version que existe de esa pelicula.
+#
+#  Se hace con un formato personalizado con puntaje -10000: como el minimo del
+#  perfil es 0, cualquier release que lo matchee queda descartado.
+#
+#  El regex no lleva barras invertidas a proposito. Con un \b, el escapado se
+#  perdio entre la shell y el JSON y Radarr guardo un caracter de retroceso
+#  (0x08): el formato existia, figuraba en el perfil, y no matcheaba nada.
+#
+#  Lo que NO atrapa: un reescalado que no lo diga en el nombre. Para una
+#  pelicula que nunca salio en 4K cualquier 2160p es falso, pero Radarr no
+#  tiene forma de saber que no salio.
+REESCALADO_REGEX='(?i)(^|[^a-z0-9])(up-?scal(e|ed|ing)?|ai|ai-?up-?scal(e|ed)?|topaz)([^a-z0-9]|$)'
+
+cfg_rechazar_reescalados() {
+    local svc="$1" puerto="$2" nombre="$3" formatos id cuerpo perfil pid resp
+    esta_arriba "$svc" || return 0
+
+    formatos=$(arr_api "$svc" "$puerto" v3 GET /customformat 2>/dev/null)
+    id=$(echo "$formatos" | python3 -c '
+import sys, json
+try: d = json.load(sys.stdin)
+except Exception: d = []
+print(next((c["id"] for c in d if c.get("name") == "Upscaled"), ""))' 2>/dev/null)
+
+    cuerpo=$(REGEX="$REESCALADO_REGEX" ID="$id" python3 -c '
+import json, os
+d = {"name": "Upscaled", "includeCustomFormatWhenRenaming": False,
+     "specifications": [{"name": "Upscaled", "implementation": "ReleaseTitleSpecification",
+       "negate": False, "required": False,
+       "fields": [{"name": "value", "value": os.environ["REGEX"]}]}]}
+if os.environ.get("ID"): d["id"] = int(os.environ["ID"])
+print(json.dumps(d))' 2>/dev/null)
+
+    if [ -z "$id" ]; then
+        id=$(arr_api "$svc" "$puerto" v3 POST /customformat "$cuerpo" 2>/dev/null \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+    else
+        # Ya existia: se le asegura el regex actual, por si quedo uno viejo
+        arr_api "$svc" "$puerto" v3 PUT "/customformat/$id" "$cuerpo" >/dev/null 2>&1
+    fi
+    [ -n "$id" ] || { aviso "$nombre: no pude crear el formato que rechaza reescalados"; return 1; }
+
+    # Se le suma al perfil con -10000, sin tocar los demas formatos que tenga.
+    # Si ya estaba con ese puntaje, no se manda nada.
+    perfil=$(arr_api "$svc" "$puerto" v3 GET /qualityprofile 2>/dev/null \
+        | ID="$id" NOMBRE="$PERFIL_CALIDAD" python3 -c '
+import sys, json, os
+i = int(os.environ["ID"])
+p = next((x for x in json.load(sys.stdin) if x.get("name") == os.environ["NOMBRE"]), None)
+if p is None: sys.exit()
+if any(f.get("format") == i and f.get("score") == -10000 for f in p.get("formatItems", [])): sys.exit()
+p["formatItems"] = [f for f in p.get("formatItems", []) if f.get("format") != i] \
+                   + [{"format": i, "name": "Upscaled", "score": -10000}]
+print(json.dumps(p))' 2>/dev/null)
+
+    if [ -n "$perfil" ]; then
+        pid=$(echo "$perfil" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])' 2>/dev/null)
+        arr_api "$svc" "$puerto" v3 PUT "/qualityprofile/$pid" "$perfil" >/dev/null 2>&1
+    fi
+
+    # Se relee: el PUT puede contestar bien y no haber guardado nada
+    resp=$(arr_api "$svc" "$puerto" v3 GET /qualityprofile 2>/dev/null)
+    if echo "$resp" | ID="$id" NOMBRE="$PERFIL_CALIDAD" python3 -c '
+import sys, json, os
+i = int(os.environ["ID"])
+p = next((x for x in json.load(sys.stdin) if x.get("name") == os.environ["NOMBRE"]), {})
+sys.exit(0 if any(f.get("format") == i and f.get("score") == -10000
+                  for f in p.get("formatItems", [])) else 1)' 2>/dev/null; then
+        ok "$nombre: rechaza los reescalados con IA (\"Upscaled\", \"AI\")"
+    else
+        aviso "$nombre: el perfil no quedo rechazando reescalados"
+        pendiente "Revisar el formato Upscaled en http://$svc.pi, Settings, Custom Formats"
+    fi
 }
 
 # ── FlareSolverr ──────────────────────────────────────────────────────────────
@@ -3724,6 +3825,9 @@ configurar_servicios() {
         # carpeta: es lo que Seerr va a elegir al pedir algo.
         cfg_perfil_calidad radarr 7878 Radarr
         cfg_perfil_calidad sonarr 8989 Sonarr
+        # Despues del perfil y no antes: el formato se engancha a ese perfil.
+        cfg_rechazar_reescalados radarr 7878 Radarr
+        cfg_rechazar_reescalados sonarr 8989 Sonarr
         if esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]]; then
             cfg_prowlarr "$(clave_para 'Prowlarr')"
             # Despues de Prowlarr y no antes: FlareSolverr se da de alta
