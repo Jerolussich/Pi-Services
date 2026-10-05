@@ -1750,6 +1750,44 @@ jf_codifica_por_hardware() {
     echo "$perfiles" | grep -q "VAEntrypointEncSlice"
 }
 
+# Lo que la GPU sabe DECODIFICAR, con los nombres que usa Jellyfin, mas los
+# flags de profundidad de color y si hay OpenCL para el tone mapping. Sale como
+# JSON con exactamente los campos de encoding.xml que hay que tocar.
+#
+# Antes la lista estaba escrita a mano -h264, hevc, vc1- y en la instalacion
+# real ni eso habia quedado: solo h264. O sea que todo el contenido 4K, que es
+# HEVC de 10 bits, se decodificaba con la CPU aunque el chip lo hace por
+# hardware. Y el tone mapping estaba apagado, asi que cualquier HDR que hubiera
+# que transcodificar salia con los colores lavados o corridos.
+jf_capacidades_gpu() {
+    esta_arriba jellyfin || return 1
+    [ -e /dev/dri/renderD128 ] || return 1
+    local perfiles opencl=0
+    perfiles=$($DOCKER exec jellyfin sh -c \
+        '/usr/lib/jellyfin-ffmpeg/vainfo --display drm --device /dev/dri/renderD128 2>/dev/null' 2>/dev/null)
+    [ -n "$perfiles" ] || return 1
+
+    # Con VAAPI el tone mapping de Jellyfin va por OpenCL. Se prueba de verdad
+    # en vez de suponerlo: prenderlo sin el runtime rompe cada transcodificacion
+    # de HDR, que es peor que dejarlo apagado.
+    $DOCKER exec jellyfin /usr/lib/jellyfin-ffmpeg/ffmpeg -v error -init_hw_device opencl=ocl \
+        -f lavfi -i nullsrc=s=16x16 -frames:v 1 -f null - >/dev/null 2>&1 && opencl=1
+
+    PERFILES="$perfiles" OPENCL="$opencl" python3 -c '
+import os, json
+dec = {l.split(":")[0].strip() for l in os.environ["PERFILES"].splitlines() if "VAEntrypointVLD" in l}
+mapa = [("VAProfileH264", "h264"), ("VAProfileHEVC", "hevc"), ("VAProfileMPEG2", "mpeg2video"),
+        ("VAProfileVC1", "vc1"), ("VAProfileVP8", "vp8"), ("VAProfileVP9", "vp9"), ("VAProfileAV1", "av1")]
+print(json.dumps({
+  "HardwareDecodingCodecs": [n for pref, n in mapa if any(p.startswith(pref) for p in dec)],
+  "EnableDecodingColorDepth10Hevc": "VAProfileHEVCMain10" in dec,
+  "EnableDecodingColorDepth10Vp9": "VAProfileVP9Profile2" in dec,
+  "EnableDecodingColorDepth10HevcRext": bool(dec & {"VAProfileHEVCMain422_10", "VAProfileHEVCMain444_10"}),
+  "EnableDecodingColorDepth12HevcRext": bool(dec & {"VAProfileHEVCMain12", "VAProfileHEVCMain422_12", "VAProfileHEVCMain444_12"}),
+  "EnableTonemapping": os.environ["OPENCL"] == "1",
+}))' 2>/dev/null
+}
+
 jf_api() {
     local metodo="$1" ruta="$2" cuerpo="${3:-}" auth
     auth="MediaBrowser Client=\"instalador\", Device=\"pi\", DeviceId=\"instalador-pi\", Version=\"1.0.0\""
@@ -2058,39 +2096,55 @@ cfg_jellyfin() {
     # Antes esto asumia una Pi 5 y dejaba EnableHardwareEncoding en false
     # SIEMPRE, con el comentario "la Pi 5 no tiene codificador". Cierto para la
     # Pi, pero este repo tambien corre en mini PCs con Quick Sync, y ahi la
-    # suposicion deja la GPU a medio usar: decodifica por hardware y despues
-    # codifica con la CPU, que es la mitad cara de la transcodificacion.
+    # suposicion deja la GPU a medio usar.
     #
-    # Ahora se le pregunta al chip. Y la comprobacion de "ya estaba activa"
-    # mira TAMBIEN el flag de codificacion: antes, con vaapi ya puesto, cortaba
-    # ahi y no habia forma de corregirlo volviendo a correr el instalador.
-    local enc nuevo codifica=False estado
+    # Ahora se le pregunta al chip por todo: si codifica, que codecs decodifica,
+    # con cuantos bits, y si hay OpenCL para el tone mapping.
+    #
+    # Y la comprobacion de "ya estaba" compara la config deseada ENTERA contra
+    # la actual, campo por campo. La version anterior miraba solo dos campos
+    # -el tipo de aceleracion y el flag de codificacion- y con eso dio por
+    # buena una instalacion que decodificaba HEVC con la CPU y tenia el tone
+    # mapping apagado. Volver a correr el instalador no lo corregia nunca.
+    local enc nuevo codifica=False deseado
     jf_codifica_por_hardware && codifica=True
-
+    deseado=$(jf_capacidades_gpu)
     enc=$(jf_api GET /System/Configuration/encoding 2>/dev/null)
-    estado=$(echo "$enc" | python3 -c \
-        'import sys,json;d=json.load(sys.stdin);print(d.get("HardwareAccelerationType",""),d.get("EnableHardwareEncoding"))' 2>/dev/null)
 
-    if [ -z "$enc" ] || [ ! -e /dev/dri/renderD128 ]; then
-        :
-    elif [ "$estado" = "vaapi $codifica" ]; then
-        gris "     la aceleracion por hardware ya estaba como corresponde"
-    else
-        nuevo=$(CODIFICA="$codifica" python3 -c '
-import sys, json, os
-d = json.load(sys.stdin)
-d["HardwareAccelerationType"] = "vaapi"
-d["VaapiDevice"] = "/dev/dri/renderD128"
-d["EnableHardwareEncoding"] = os.environ["CODIFICA"] == "True"
-d["HardwareDecodingCodecs"] = ["h264", "hevc", "vc1"]
-print(json.dumps(d))' <<< "$enc" 2>/dev/null)
-        [ -n "$nuevo" ] && jf_api POST /System/Configuration/encoding "$nuevo" >/dev/null 2>&1
-        if [ "$codifica" = "True" ]; then
-            ok "Jellyfin: decodificacion ${B}y codificacion${N} por hardware (VAAPI)"
-            gris "     el chip tiene codificador, asi que transcodificar no usa la CPU"
+    if [ -n "$enc" ] && [ -n "$deseado" ]; then
+        nuevo=$(ENC="$enc" DESEADO="$deseado" CODIFICA="$codifica" python3 -c '
+import os, json
+d = json.loads(os.environ["ENC"])
+q = json.loads(os.environ["DESEADO"])
+q["HardwareAccelerationType"] = "vaapi"
+q["VaapiDevice"] = "/dev/dri/renderD128"
+q["EnableHardwareEncoding"] = os.environ["CODIFICA"] == "True"
+if any(d.get(k) != v for k, v in q.items()):
+    d.update(q)
+    print(json.dumps(d))' 2>/dev/null)
+
+        if [ -z "$nuevo" ]; then
+            gris "     la aceleracion por hardware ya estaba como corresponde"
         else
-            ok "Jellyfin: decodificacion por hardware (VAAPI)"
-            gris "     la codificacion queda en CPU: este chip no tiene codificador"
+            jf_api POST /System/Configuration/encoding "$nuevo" >/dev/null 2>&1
+
+            # Se relee: el POST puede contestar bien y no haber guardado nada.
+            local quedo
+            quedo=$(ENC="$(jf_api GET /System/Configuration/encoding 2>/dev/null)" DESEADO="$deseado" python3 -c '
+import os, json
+d = json.loads(os.environ["ENC"]); q = json.loads(os.environ["DESEADO"])
+print("si" if all(d.get(k) == v for k, v in q.items()) else "no")' 2>/dev/null)
+
+            if [ "$quedo" = "si" ]; then
+                ok "Jellyfin: aceleracion por hardware ajustada a este chip"
+                gris "     decodifica por GPU: $(echo "$deseado" | python3 -c 'import sys,json;print(", ".join(json.load(sys.stdin)["HardwareDecodingCodecs"]))')"
+                [ "$codifica" = "True" ] && gris "     y codifica por GPU, asi que transcodificar no usa la CPU"
+                echo "$deseado" | grep -q '"EnableTonemapping": true' \
+                    && gris "     con tone mapping: el HDR transcodificado se convierte bien a SDR"
+            else
+                aviso "Jellyfin: no pude guardar la configuracion de hardware"
+                pendiente "Revisar la aceleracion por hardware en http://jellyfin.pi, Dashboard, Playback"
+            fi
         fi
     fi
 
