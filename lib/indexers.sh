@@ -22,6 +22,10 @@
 
 # nombre exacto en Prowlarr|para que sirve
 #
+# Ojo con el nombre: el de anime figura como "Nyaa.si", no como "Nyaa". Una
+# busqueda por "Nyaa" a secas no lo encuentra y parece que no existe. Al lado
+# esta "sukebei.nyaa.si", que es contenido adulto: no confundirlos.
+#
 # El nombre tiene que coincidir exacto con el del catalogo de Prowlarr. Si no
 # coincide, no se ofrece y no pasa nada: es preferible a ofrecer algo que no
 # existe.
@@ -30,6 +34,7 @@ PROWLARR_CATALOGO=(
 "The Pirate Bay|Catalogo enorme, pero con nombres sucios: Radarr descarta bastantes resultados por no poder leerlos. Sirve de red para lo que no aparece en ningun otro lado"
 "YTS|Solo peliculas, en x265 y livianas. Comodo si la conexion no sobra, aunque casi siempre pierde contra una version de mejor calidad"
 "EZTV|Solo series, muy consistente y rapido publicando episodios nuevos. Es el companero natural de Sonarr"
+"Nyaa.si|Anime, el estandar del rubro: series y peliculas, con los grupos de fansub y los releases japoneses. Solo tiene sentido si mirás anime"
 )
 
 # LimeTorrents estuvo aca y se fue. Probandolo contra la instalacion real,
