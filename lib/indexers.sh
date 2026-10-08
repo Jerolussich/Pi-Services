@@ -35,6 +35,8 @@ PROWLARR_CATALOGO=(
 "YTS|Solo peliculas, en x265 y livianas. Comodo si la conexion no sobra, aunque casi siempre pierde contra una version de mejor calidad"
 "EZTV|Solo series, muy consistente y rapido publicando episodios nuevos. Es el companero natural de Sonarr"
 "Nyaa.si|Anime, el estandar del rubro: series y peliculas, con los grupos de fansub y los releases japoneses. Solo tiene sentido si mirás anime"
+"Anime Tosho|Anime, junta lo de Nyaa y otras fuentes en un solo lugar. Sirve de respaldo cuando Nyaa no tiene algo. Solo declara series, asi que a Radarr no se sincroniza"
+"SubsPlease|Anime de temporada: los capitulos aparecen apenas salen en Japon. Va solo a Sonarr: Radarr lo rechaza porque casi no publica peliculas, y para series es justo lo que se busca"
 )
 
 # LimeTorrents estuvo aca y se fue. Probandolo contra la instalacion real,
