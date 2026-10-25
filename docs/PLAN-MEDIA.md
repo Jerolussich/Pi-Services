@@ -8,16 +8,18 @@ Estado, decisiones tomadas, y el orden en que hay que hacer las cosas.
 
 | Pieza | Estado |
 |---|---|
-| `media/docker-compose.yml` | **Escrito.** 5 servicios, integrado al compose raíz |
-| Entradas en Caddy | **Hechas.** `jellyfin.pi`, `radarr.pi`, `prowlarr.pi`, `bazarr.pi`, `qbit.pi` |
-| `media/.env` | **Creado** con tus valores reales |
-| Documentación | **Hecha.** [README](../media/README.md), [DAS](../media/DAS.md), [plugins](../media/JELLYFIN-PLUGINS.md) |
-| Registros DNS en Pi-hole | **Pendiente**, son 5 |
-| Grupo `render` | **Pendiente.** No existe en el sistema |
-| DAS físico | **Pendiente**, todavía no lo tenés |
-| Tailscale | **Pendiente** |
+| `media/docker-compose.yml` | **Escrito.** 8 servicios (`jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` y `flaresolverr`), integrado al compose raíz |
+| Entradas en Caddy | **Hechas.** `jellyfin.pi`, `seerr.pi`, `radarr.pi`, `sonarr.pi`, `prowlarr.pi`, `bazarr.pi`, `qbit.pi` |
+| `media/.env` | **Lo completa el instalador** |
+| Documentación | **Hecha.** [README](../media/README.md), [DAS](../media/DAS.md), [plugins](../media/JELLYFIN-PLUGINS.md), [puerto de torrents](TORRENTS.md) |
+| Registros DNS en Pi-hole | **Solos.** Los deriva el instalador del Caddyfile |
+| Grupo `render` | **Solo si hace falta**: si `/dev/dri/renderD128` queda como `root:root` |
+| DAS físico | **Lo prepara el instalador** (opción 4 del menú del disco), o se arma a mano con [DAS.md](../media/DAS.md) |
+| Tailscale | **Lo instala el instalador** |
 
-Los contenedores ya levantan con `docker compose up -d`, pero apuntan a un `/mnt/das` provisorio que es una carpeta en la SD, no el disco real.
+Este documento es el plan con el que se armó el stack, y las fases de abajo se conservan por el orden y los porqués. Casi todo lo que antes eran pasos a mano hoy lo hace [el instalador](INSTALADOR.md).
+
+Si el DAS no está montado, los contenedores levantan igual contra un `/mnt/das` provisorio que es una carpeta en la tarjeta, no el disco real. Por eso el instalador lo comprueba antes de levantar y ofrece dejar las descargas en pausa.
 
 ---
 
@@ -30,7 +32,7 @@ Los contenedores ya levantan con `docker compose up -d`, pero apuntan a un `/mnt
 | Redundancia | **Ninguna** | Con dos discos no hay paridad sin resignar capacidad |
 | Acceso remoto | **Tailscale** | Sin abrir puertos en el router |
 | Series (Sonarr) | **Incluido** | Se sumó después, junto con Seerr para pedir contenido |
-| Cómo se levanta | **Junto con todo** | Un `docker compose up -d` levanta los 23 servicios |
+| Cómo se levanta | **Junto con todo** | Un `docker compose up -d` levanta los 24 servicios |
 
 ---
 
@@ -40,17 +42,13 @@ Estas tres cosas no dependen del disco y conviene hacerlas ya.
 
 ### Registros DNS en Pi-hole
 
-En `Local DNS → DNS Records`, cinco entradas apuntando a `192.168.68.66`:
+No hace falta cargarlos a mano: el instalador carga uno por cada bloque `http://` del Caddyfile, apuntando a `192.168.68.66` (`jellyfin.pi`, `seerr.pi`, `radarr.pi`, `sonarr.pi`, `prowlarr.pi`, `bazarr.pi`, `qbit.pi`, y los de los demás servicios). Si alguno falta, `./diagnostico.sh --arreglar` lo repone.
 
-```
-jellyfin.pi    prowlarr.pi    radarr.pi    bazarr.pi    qbit.pi
-```
-
-Sin esto los nombres no resuelven y vas a ver un error de DNS, no de Caddy.
+Sin los registros los nombres no resuelven y vas a ver un error de DNS, no de Caddy.
 
 ### Grupo render
 
-Verifiqué que en tu Pi **no existe el grupo `render`**, y por eso `/dev/dri/renderD128` quedó como `root:root`. Sin arreglarlo, Jellyfin no puede usar el decodificador por hardware.
+En una Pi puede pasar que **el grupo `render` no exista**, y entonces `/dev/dri/renderD128` queda como `root:root`. Sin arreglarlo, Jellyfin no puede usar el decodificador por hardware.
 
 ```bash
 getent group render || sudo groupadd -r render
@@ -94,8 +92,10 @@ Si no la borrás, esos archivos quedan **escondidos debajo** del montaje: siguen
 El orden importa porque cada pieza se registra contra la anterior. Está detallado en [../media/README.md](../media/README.md).
 
 ```
-qBittorrent  →  Prowlarr  →  Radarr  →  Bazarr  →  Jellyfin
+qBittorrent  →  Radarr y Sonarr  →  Prowlarr  →  Bazarr  →  Jellyfin  →  Seerr
 ```
+
+Prowlarr va después de Radarr y Sonarr porque necesita sus claves de API para enlazarse con ellos, y Seerr va último porque necesita que Jellyfin ya tenga sus bibliotecas y que los dos *arr existan con su carpeta raíz.
 
 Dos ajustes que son fáciles de pasar por alto y caros de descubrir tarde:
 

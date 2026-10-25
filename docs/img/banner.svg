@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="340" viewBox="0 0 1280 340" role="img" aria-label="Pi Services: tu casa digital en una mini PC">
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#16193a"/>
+      <stop offset="1" stop-color="#2a1b4d"/>
+    </linearGradient>
+    <linearGradient id="titulo" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.5" stop-color="#a5b4fc"/>
+      <stop offset="1" stop-color="#f0abfc"/>
+    </linearGradient>
+    <radialGradient id="brillo" cx="0.82" cy="0.1" r="0.7">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="puntos" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.1" fill="#ffffff" fill-opacity="0.07"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="340" rx="22" fill="url(#fondo)"/>
+  <rect width="1280" height="340" rx="22" fill="url(#puntos)"/>
+  <rect width="1280" height="340" rx="22" fill="url(#brillo)"/>
+
+  <!-- chip de placa -->
+  <g transform="translate(86 70)" fill="none" stroke="#a5b4fc" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="14" y="14" width="76" height="76" rx="12" fill="#1e2250" stroke="#818cf8"/>
+    <rect x="34" y="34" width="36" height="36" rx="6" stroke="#7dd3fc"/>
+    <path d="M30 14V0M52 14V0M74 14V0M30 90v14M52 90v14M74 90v14M14 30H0M14 52H0M14 74H0M90 30h14M90 52h14M90 74h14" stroke="#818cf8"/>
+    <circle cx="52" cy="52" r="5" fill="#f0abfc" stroke="none"/>
+  </g>
+
+  <text x="228" y="132" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="78" font-weight="800" fill="url(#titulo)" letter-spacing="-1">Pi Services</text>
+  <text x="230" y="178" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="27" fill="#e2e8f0">Tu casa digital en una mini PC, con un solo instalador.</text>
+  <text x="230" y="212" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="19" fill="#94a3b8">DNS sin publicidad · multimedia · domótica · finanzas · salud · todo configurado y vigilado</text>
+
+  <!-- píldoras -->
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#e2e8f0">
+    <g transform="translate(86 262)">
+      <rect width="118" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="59" y="25" text-anchor="middle">Pi-hole</text>
+    </g>
+    <g transform="translate(216 262)">
+      <rect width="118" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="59" y="25" text-anchor="middle">Jellyfin</text>
+    </g>
+    <g transform="translate(346 262)">
+      <rect width="118" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="59" y="25" text-anchor="middle">Radarr</text>
+    </g>
+    <g transform="translate(476 262)">
+      <rect width="118" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="59" y="25" text-anchor="middle">Sonarr</text>
+    </g>
+    <g transform="translate(606 262)">
+      <rect width="168" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="84" y="25" text-anchor="middle">Home Assistant</text>
+    </g>
+    <g transform="translate(786 262)">
+      <rect width="118" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="59" y="25" text-anchor="middle">Grafana</text>
+    </g>
+    <g transform="translate(916 262)">
+      <rect width="108" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="54" y="25" text-anchor="middle">Caddy</text>
+    </g>
+    <g transform="translate(1036 262)">
+      <rect width="148" height="38" rx="19" fill="#ffffff" fill-opacity="0.08" stroke="#ffffff" stroke-opacity="0.18"/><text x="74" y="25" text-anchor="middle">Tailscale</text>
+    </g>
+  </g>
+</svg>

@@ -50,9 +50,9 @@ Varias explicaciones más abajo hablan de "la tarjeta". Son ciertas y siguen val
 
 ### 1. Nada se expone directamente
 
-Ningún contenedor publica puertos al host. **Todo el tráfico HTTP entra por Caddy en el puerto 80** y de ahí se reparte según el nombre que pediste.
+Casi ningún contenedor publica puertos al host. **Todo el tráfico HTTP entra por Caddy en el puerto 80** (y en el 443 si hay HTTPS) y de ahí se reparte según el nombre que pediste.
 
-La única excepción es el puerto de torrenting de qBittorrent, que necesita recibir conexiones entrantes de otros pares y no puede ir por proxy. **Y por defecto está cerrado**: escucha solo en `127.0.0.1`, y abrirlo es una decisión que el instalador te hace tomar, explicando qué ganás y qué arriesgás. Además, qBittorrent vive en una red de Docker aparte (`pi-torrent`), con permisos recortados y una regla de firewall que le impide llegar a esta máquina. Todo el detalle está en [TORRENTS.md](TORRENTS.md).
+Hay tres excepciones, y las tres tienen su porqué. **Jellyfin (8096 y 7359/udp) y Seerr (5055)** se publican porque las apps de tele y de celular hablan directo con el servidor por IP: no mandan el nombre del host, así que Caddy, que enruta por nombre, les contesta 403, y los aparatos de Google suelen ignorar el DNS que uno les configura. Los dos tienen su propio login, así que publicarlos no deja nada sin proteger. Y **el puerto de torrenting de qBittorrent**, que necesita recibir conexiones entrantes de otros pares y no puede ir por proxy. **Ese por defecto está cerrado**: escucha solo en `127.0.0.1`, y abrirlo es una decisión que el instalador te hace tomar, explicando qué ganás y qué arriesgás. Además, qBittorrent vive en una red de Docker aparte (`pi-torrent`), con permisos recortados y una regla de firewall que le impide llegar a esta máquina. Todo el detalle está en [TORRENTS.md](TORRENTS.md).
 
 La ventaja práctica: hay un solo lugar donde mirar quién entra, un solo lugar donde poner autenticación, y agregar un servicio nuevo no abre nada nuevo hacia afuera.
 
@@ -60,20 +60,39 @@ La ventaja práctica: hay un solo lugar donde mirar quién entra, un solo lugar 
 
 Home Assistant está ahí porque descubre los dispositivos de la casa por mDNS, SSDP y DHCP, que son protocolos de difusión y no atraviesan el puente. En el puente arrancaría igual y parecería sano, pero habría que cargar cada dispositivo a mano por IP. El detalle está en [../home/README.md](../home/README.md).
 
+### Los puertos publicados
+
+Todo lo que escucha hacia afuera, en un solo lugar. Si un puerto no está en esta tabla, no se alcanza desde la red de casa.
+
+| Puerto | Quién | Quién lo alcanza | Por qué |
+|---|---|---|---|
+| 22/tcp | SSH del sistema | la red de casa y la tailnet | entrar a administrar |
+| 53 tcp/udp | Pi-hole (nativo) | la red de casa y la tailnet | DNS: resuelve los `*.pi` |
+| 80/tcp | Caddy | la red de casa y la tailnet | la puerta de entrada de todo el HTTP |
+| 443/tcp | Caddy | quien llegue por la tailnet | HTTPS con el certificado de Tailscale. Se publica siempre, pero sin certificado no hay ningún bloque que escuche ahí |
+| 8096/tcp | Jellyfin | **cualquiera en la red de casa** | las apps de tele y celular conectan por IP. Tiene login propio |
+| 7359/udp | Jellyfin | **cualquiera en la red de casa** | que las apps encuentren el servidor solas, sin tipear la IP |
+| 5055/tcp | Seerr | **cualquiera en la red de casa** | la app de Seerr en Android TV conecta por IP. Tiene login propio |
+| 6881 tcp y udp | qBittorrent | **solo esta máquina** (`127.0.0.1`) por defecto; la red de casa con `0.0.0.0`; internet solo si además hay reenvío en el router | pares que se conectan a vos. Ver [TORRENTS.md](TORRENTS.md) |
+| 8181/tcp | panel de Pi-hole (host) | solo Caddy | UFW lo cierra para todo el resto |
+| 8123/tcp | Home Assistant (host) | solo Caddy | UFW lo cierra para todo el resto |
+
+Una aclaración que explica la columna del medio: **lo que Docker publica no pasa por UFW**. Docker arma sus propias reglas de iptables y salta el firewall, así que 8096, 7359, 5055, 80 y 443 están al alcance de la red de casa aunque UFW no los liste. Por eso solo se publica lo que tiene login propio, y por eso el 6881 se ata a `127.0.0.1` en vez de confiar en el firewall. En cambio 8181 y 8123 corren en el host, no en un contenedor con puerto publicado, y ahí UFW sí manda.
+
 ### 2. Los nombres los resuelve Pi-hole
 
 Cada servicio tiene un nombre `*.pi` que Pi-hole resuelve a la IP del Pi. Caddy después mira ese nombre y te manda al contenedor correcto.
 
 Por eso Pi-hole no es solo un bloqueador de publicidad: es la pieza de la que depende que funcionen los nombres de toda tu infraestructura. Si Pi-hole se cae, los servicios siguen andando pero no llegás a ellos por nombre.
 
-Los registros se cargan en Pi-hole, en `Local DNS → DNS Records`, todos apuntando a `192.168.68.66`. **No hace falta cargarlos a mano**: el instalador los deriva del Caddyfile, uno por nombre, cada vez que corre. Hoy son 19.
+Los registros se cargan en Pi-hole, en `Local DNS → DNS Records`, todos apuntando a `192.168.68.66`. **No hace falta cargarlos a mano**: el instalador los deriva del Caddyfile, uno por nombre, cada vez que corre. Hoy son 20.
 
 ### 3. Un solo compose levanta todo
 
 El `docker-compose.yml` de la raíz no define servicios: los **incluye** desde cada carpeta. Eso permite dos cosas a la vez:
 
 ```bash
-docker compose up -d          # desde la raiz: levanta los 23 servicios
+docker compose up -d          # desde la raiz: levanta los 24 servicios
 ```
 
 ```bash
@@ -92,7 +111,7 @@ No todos los servicios se protegen igual, y la regla es simple:
 
 Seerr es un caso lindo: no tiene contraseña propia porque **entra con la de Jellyfin**. Un usuario menos que recordar, y si cambiás la de Jellyfin, Seerr la sigue sin que hagas nada.
 
-**Si no trae login, Caddy le pone autenticación básica adelante.** Es el caso de Homepage y Prometheus.
+**Si no trae login, Caddy le pone autenticación básica adelante.** Es el caso de Homepage, Prometheus y el feed `eventos.pi`.
 
 La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.env`, nunca en texto plano y nunca versionada.
 
@@ -102,7 +121,7 @@ La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.en
 
 | Capa | Qué hace |
 |---|---|
-| **UFW** | Solo deja entrar 22, 80 y 53. Los puertos del host (8181 de Pi-hole, 8123 de Home Assistant) están bloqueados desde afuera y solo se llega vía Caddy |
+| **UFW** | Deja entrar 22, 80 y 53 (y el 443 cuando hay HTTPS). Los puertos del host (8181 de Pi-hole, 8123 de Home Assistant) están bloqueados desde afuera y solo se llega vía Caddy. No filtra lo que Docker publica por su cuenta: ver [los puertos publicados](#los-puertos-publicados) |
 | **fail2ban** | Banea por una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy. Tu LAN y tu tailnet están exentas, porque si no te dejaba afuera a vos |
 | **Caddy** | Punto único de entrada HTTP, con autenticación donde hace falta |
 | **Tailscale** | Acceso remoto sin abrir un solo puerto en el router |
@@ -120,7 +139,7 @@ Hay tres lugares distintos y conviene no confundirlos:
 
 **Carpetas del repositorio.** Las bases SQLite de fitbit, finanzas y news-filter viven en `data/` o `exports/` dentro de cada carpeta de servicio. Están en `.gitignore`, así que **no se van a GitHub**: si perdés el Pi, se pierden salvo que las tengas respaldadas aparte.
 
-**`datos/`**, en la raíz. El feed de eventos, el estado de los avisos y las métricas que se miden cada dos días. Son unos 100 KB de historia que no se reconstruye de ningún lado, así que `respaldo.sh` los guarda. Y el estado de los avisos importa más de lo que parece: sin él, después de restaurar te llegarían de golpe treinta notificaciones de cosas que ya sabías.
+**`datos/`**, en la raíz. El feed de eventos, el estado de los avisos y las métricas que se miden cada dos días, más el score que lee la homepage (`estado.json`), la cola de importaciones de Radarr y Sonarr (`media-pendiente/`) y lo que anota `pi movil` (`movil-estado`). Son unos 100 KB de historia que no se reconstruye de ningún lado, así que `respaldo.sh` los guarda. Y el estado de los avisos importa más de lo que parece: sin él, después de restaurar te llegarían de golpe treinta notificaciones de cosas que ya sabías.
 
 **`/run/pi-services/`**, que es RAM. Lo que se reescribe entero cada hora y no tiene nada que recordar: el estado para el mensaje de bienvenida y las métricas que lee node-exporter. Va ahí y no en el disco para no desgastar la tarjeta justamente con la herramienta que vigila que no se desgaste.
 

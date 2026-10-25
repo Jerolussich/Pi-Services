@@ -60,7 +60,7 @@ df -h /
 sudo du -xsh /var/log/* | sort -rh | head -5
 ```
 
-Tenés Prometheus y Grafana andando: **una alerta al 80% de uso te habría avisado en marzo**.
+Esa alerta ya existe: el diagnóstico avisa en ámbar al 75% de uso del disco y en rojo al 90% (`DISCO_OJO` y `DISCO_MAL` en [`../ajustes.conf`](../ajustes.conf)), por el celular si activaste los avisos, y la tendencia queda en Grafana. **Una alerta así te habría avisado en marzo.**
 
 ### 4. Verificar que logrotate sigue vivo
 
@@ -77,10 +77,10 @@ Si eso da error de librería, estás en el mismo camino de la vez pasada.
 Ya está activado: cada 30 montajes se corre un `fsck` automático. Estaba desactivado, y por eso nadie detectaba el daño.
 
 ```bash
-sudo tune2fs -l /dev/mmcblk0p2 | grep -i "mount count\|Filesystem state"
+sudo tune2fs -l "$(findmnt -no SOURCE /)" | grep -i "mount count\|Filesystem state"
 ```
 
-Si el estado dice `clean with errors`, hay que forzar una revisión:
+(`/dev/mmcblk0p2` es el nombre en una microSD; con `findmnt` sale solo, sea el disco que sea.) El diagnóstico también lo mira y ofrece activarlo con `./diagnostico.sh --arreglar`. Si el estado dice `clean with errors`, hay que forzar una revisión:
 
 ```bash
 sudo touch /forcefsck && sudo reboot

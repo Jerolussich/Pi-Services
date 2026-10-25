@@ -123,10 +123,12 @@ Cosas que no eran obvias y conviene recordar:
 
 ---
 
-## Lo que sigue pendiente
+## Lo que quedó pendiente ese día, y cómo siguió
 
-- **UPS o HAT con batería**: la única defensa real contra los cortes
-- **log2ram**: menos escrituras a la SD
-- **Arranque desde SSD por USB**: el salto de robustez más grande
-- **Alerta de disco en Grafana**: habría avisado en marzo
-- **Reinicio** para que corra el `fsck` programado
+La lista de abajo es la de aquel día, con lo que pasó después:
+
+- **UPS o HAT con batería**: la única defensa real contra los cortes. Sigue pendiente.
+- **log2ram**: menos escrituras a la SD. Hoy lo instala el instalador, preguntando antes, y solo tiene sentido si arrancás desde una microSD.
+- **Arranque desde SSD por USB**: el salto de robustez más grande. Es lo que terminó pasando: el proyecto se mudó a una máquina con SSD.
+- **Alerta de disco**: habría avisado en marzo. Hoy la hace el diagnóstico (ámbar al 75%, rojo al 90%), con aviso al celular, y el estado del disco entra al score. Ver [DIAGNOSTICO.md](DIAGNOSTICO.md).
+- **Reinicio** para que corra el `fsck` programado.

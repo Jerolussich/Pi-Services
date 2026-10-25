@@ -31,13 +31,16 @@ Ofelia es un contenedor dedicado exclusivamente al scheduling. Usa `docker exec`
 
 ```
 Ofelia
-  → 0 8 * * *  : docker exec news-filter python /app/filter.py
-  → 0 * * * *  : docker exec itau-email-tracker python /app/fetch.py
+  → 0 0 8 * * *  : docker exec news-filter python /app/filter.py
+  → 0 0 * * * *  : docker exec itau-email-tracker python /app/fetch.py
+  → 0 0 6 1 * *  : docker exec fitbit-exporter python /app/export.py --source scheduled
 ```
+
+**Ojo con el cron: lleva seis campos y el primero son segundos.** No es el cron de siempre. Con los cinco clásicos, `0 * * * *` no significa "cada hora" sino "cada minuto", y nadie avisa. Para cada hora va `0 0 * * * *`.
 
 **Las variables de entorno están disponibles** — `docker exec` corre el comando dentro del contexto del contenedor destino, con todas sus variables de entorno ya inyectadas por Docker.
 
-**Shutdown limpio** — Los contenedores `news-filter` e `itau-email-tracker` ahora corren `sleep infinity` como PID 1. `sleep` maneja `SIGTERM` correctamente y el contenedor se detiene limpiamente.
+**Shutdown limpio** — Los contenedores `news-filter`, `itau-email-tracker` y `fitbit-exporter` corren `sleep infinity` como PID 1. `sleep` maneja `SIGTERM` correctamente y el contenedor se detiene limpiamente.
 
 **El schedule está en el compose** — Los horarios se definen como labels en el `docker-compose.yml` de cada servicio, no en el Dockerfile. Cambiar el horario es editar una línea y hacer `docker compose restart ofelia`.
 
@@ -50,13 +53,17 @@ Ofelia
 ```
 Ofelia (accede al Docker socket)
   ├── lee labels de contenedores activos al iniciar
-  ├── 0 8 * * *  → docker exec news-filter python /app/filter.py
-  └── 0 * * * *  → docker exec itau-email-tracker python /app/fetch.py
+  ├── 0 0 8 * * *  → docker exec news-filter python /app/filter.py
+  ├── 0 0 * * * *  → docker exec itau-email-tracker python /app/fetch.py
+  └── 0 0 6 1 * *  → docker exec fitbit-exporter python /app/export.py --source scheduled
 
 news-filter (CMD: sleep infinity)
   └── espera ser invocado por Ofelia o por el UI
 
 itau-email-tracker (CMD: sleep infinity)
+  └── espera ser invocado por Ofelia o por el UI
+
+fitbit-exporter (CMD: sleep infinity)
   └── espera ser invocado por Ofelia o por el UI
 ```
 
@@ -81,14 +88,14 @@ services:
   news-filter:
     labels:
       ofelia.enabled: "true"
-      ofelia.job-exec.news-filter.schedule: "0 8 * * *"
+      ofelia.job-exec.news-filter.schedule: "0 0 8 * * *"
       ofelia.job-exec.news-filter.command: "python /app/filter.py"
 ```
 
 | Label | Descripción |
 |---|---|
 | `ofelia.enabled` | Activa Ofelia para este contenedor |
-| `ofelia.job-exec.<nombre>.schedule` | Cron expression del schedule |
+| `ofelia.job-exec.<nombre>.schedule` | Cron de seis campos: segundo, minuto, hora, día, mes, día de la semana |
 | `ofelia.job-exec.<nombre>.command` | Comando a ejecutar vía `docker exec` |
 
 El nombre del job (`news-filter` en el ejemplo) puede ser cualquier string único — se usa solo para identificar el job en los logs.

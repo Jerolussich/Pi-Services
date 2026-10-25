@@ -48,7 +48,7 @@ docker compose up -d
 
 ### 3. Primer login
 
-Acceder en `http://<pi_ip>:8082`
+Acceder en `http://wallabag.pi` (el contenedor no publica ningún puerto: se entra por Caddy)
 
 Credenciales por defecto:
 - **Usuario:** `wallabag`
@@ -64,7 +64,7 @@ Credenciales por defecto:
 |---|---|---|
 | `PI_IP` | IP del Pi en la red local | `192.168.68.66` |
 
-`PI_IP` se usa para setear `SYMFONY__ENV__DOMAIN_NAME`, que Wallabag necesita para generar links internos correctamente.
+`PI_IP` hoy no se usa: el compose fija `SYMFONY__ENV__DOMAIN_NAME=http://wallabag.pi`, que es lo que Wallabag necesita para generar links internos correctamente. Si cambiás el nombre con el que se entra, es esa línea del compose la que hay que tocar.
 
 ---
 
@@ -91,5 +91,5 @@ Al ser un named volume, Docker gestiona su ubicación en `/var/lib/docker/volume
 | Problema | Causa | Solución |
 |---|---|---|
 | Artículo no carga correctamente | Sitio con paywall o JS pesado | Usar la extensión del browser en vez de pegar la URL |
-| `Invalid domain` al acceder | `PI_IP` incorrecto en `.env` | Actualizar `PI_IP` y reiniciar el contenedor |
+| `Invalid domain` al acceder | Se entró con un nombre distinto del de `SYMFONY__ENV__DOMAIN_NAME` | Entrar por `http://wallabag.pi`, o cambiar esa variable en el compose y recrear el contenedor |
 | Datos perdidos tras recrear contenedor | Volumen eliminado manualmente | Verificar que `wallabag-data` existe con `docker volume ls` |

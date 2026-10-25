@@ -2,6 +2,11 @@
 
 Dashboard unificado para todos los servicios del Pi. Corre como contenedor Docker y sirve como punto de entrada visual a toda la infraestructura.
 
+<p align="center">
+  <img src="../docs/img/homepage.png" alt="El panel de inicio, con datos en vivo de cada servicio" width="85%">
+  <br><sub>El panel de inicio, con datos en vivo de cada servicio</sub>
+</p>
+
 ---
 
 ## Arquitectura
@@ -17,7 +22,9 @@ homepage/
     ├── widgets.yaml      ← Widgets del dashboard
     ├── bookmarks.yaml    ← Bookmarks externos
     ├── docker.yaml       ← Integración Docker (opcional)
-    └── kubernetes.yaml   ← Integración K8s (opcional)
+    ├── kubernetes.yaml   ← Integración K8s (opcional)
+    ├── proxmox.yaml      ← Integración Proxmox (opcional, sin usar)
+    └── custom.css / custom.js   ← vacíos, para retoques propios
 ```
 
 ---
@@ -70,6 +77,7 @@ Define los links a los servicios organizados por grupo. Estructura actual:
 
 | Grupo | Servicios |
 |---|---|
+| Estado | Salud del Pi (el score del diagnóstico) |
 | Media | Jellyfin, Seerr, Radarr, Sonarr, qBittorrent, Bazarr, Prowlarr |
 | Casa | Home Assistant |
 | Network | Pi-hole, Grafana |
@@ -104,7 +112,7 @@ Widgets que aparecen en la barra superior:
 | `greeting` | Texto de bienvenida |
 
 ### bookmarks.yaml
-Links externos agrupados por categoría. Actualmente: GitHub, Reddit, YouTube.
+Links externos agrupados por categoría. Actualmente: GitHub y YouTube.
 
 ---
 
@@ -123,7 +131,9 @@ Algunos servicios no muestran solo un enlace sino **datos reales**: cuántas pel
 | `HOMEPAGE_VAR_JELLYFIN_KEY` | una clave propia que el instalador crea en Jellyfin |
 | `HOMEPAGE_VAR_QBIT_USER` y `_PASS` | la contraseña que el instalador le acaba de poner |
 
-Jellyfin y qBittorrent traían recuadro nativo y estaban apagados: solo mostraban el puntito de "está vivo". Ahora muestran quién está reproduciendo, el tamaño de la biblioteca y qué se está bajando, que era lo que se quería de la pantalla de media.
+Jellyfin y qBittorrent traían recuadro nativo y estaban apagados: solo mostraban el puntito de "está vivo". Ahora qBittorrent muestra qué se está bajando, y Jellyfin cuántas películas, series y episodios hay.
+
+**El de Jellyfin ya no es el recuadro nativo.** Con Jellyfin 12, `type: jellyfin` contestaba 404 y mostraba "API Error": la 12 sacó la ruta `/emby` y la clave en la URL, que el recuadro nativo usa (gethomepage/homepage#7113 sigue sin resolverse). Hoy es un `customapi` contra `/Items/Counts` con la cabecera `Authorization: MediaBrowser Token=...`, con la misma clave de siempre (`HOMEPAGE_VAR_JELLYFIN_KEY`). Se pierde el "quién está reproduciendo ahora". El detalle, en [../media/README.md](../media/README.md#jellyfin-12-lo-que-cambió-y-lo-que-se-rompió).
 
 qBittorrent es el único que no tiene clave de API: se entra con usuario y contraseña. El instalador no te la vuelve a preguntar, reusa la que le acaba de poner.
 

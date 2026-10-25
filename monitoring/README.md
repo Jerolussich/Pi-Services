@@ -2,6 +2,18 @@
 
 Stack de monitoreo del Pi basado en Prometheus y Grafana. Recolecta métricas del sistema y de Pi-hole, y visualiza también los datos de salud de Fitbit desde SQLite y las finanzas desde SQLite.
 
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="../docs/img/grafana-pi.png" alt="Tablero «Pi»: salud del equipo" width="100%"><br><sub>Tablero «Pi»: salud del equipo</sub></td>
+    <td width="50%" align="center"><img src="../docs/img/grafana-finanzas.png" alt="Tablero de finanzas (datos de ejemplo)" width="100%"><br><sub>Tablero de finanzas (datos de ejemplo)</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="../docs/img/grafana-fitbit.png" alt="Tablero de Fitbit (datos de ejemplo)" width="70%">
+  <br><sub>Tablero de Fitbit (datos de ejemplo)</sub>
+</p>
+
 ---
 
 ## Arquitectura
@@ -80,11 +92,15 @@ monitoring/
     │   │   └── fitbit_insights_dashboard.json
     │   ├── finance/
     │   │   └── finance_dashboard.json
-    │   └── pihole/
-    │       └── pihole_dashboard.json
+    │   ├── pihole/
+    │   │   └── pihole_dashboard.json
+    │   └── system/
+    │       └── node-exporter-full.json
     └── provisioning/
-        └── dashboards/
-            └── dashboards.yaml   ← Auto-provisioning de dashboards
+        ├── dashboards/
+        │   └── dashboards.yaml   ← Auto-provisioning de dashboards
+        └── datasources/
+            └── datasources.yaml  ← Prometheus, Fitbit y Finance, con UID fijo
 ```
 
 ---
@@ -168,7 +184,7 @@ Todos deben mostrar `Up`. Acceder a Grafana en `http://grafana.pi`.
 
 ### Configuración de scraping
 
-`prometheus.yml` define los targets que Prometheus scrapea cada 15 segundos:
+`prometheus.yml` define los targets que Prometheus scrapea cada 60 segundos (`scrape_interval: 60s`, ver más arriba por qué):
 
 | Job | Target | Descripción |
 |---|---|---|
@@ -205,11 +221,9 @@ Los dashboards se provisionan automáticamente desde `grafana/dashboards/` al in
 | Fitbit Insights | Fitbit | Correlaciones y tendencias |
 | Finance | Finance | Transacciones Itaú |
 | Pi-hole v6 | Pihole | Queries DNS, bloqueos, clientes |
+| Node Exporter Full | System | CPU, RAM, disco y red del equipo |
 
-Para el dashboard de sistema (Node Exporter), importar desde Grafana:
-1. **Dashboards → Import**
-2. ID: `1860` (Node Exporter Full)
-3. Seleccionar el datasource Prometheus
+El de sistema es Node Exporter Full (el 1860 de grafana.com) y **también viene provisionado**, desde `dashboards/system/`, con el UID `rYdddlPWk` que la homepage enlaza a propósito. No hay que importarlo a mano: antes vivía solo dentro del volumen de Grafana y se perdió con él.
 
 #### El tablero "Pi"
 
@@ -235,11 +249,13 @@ Arriba de todo hay un panel que no es del equipo sino **del propio diagnóstico*
 |---|---|---|
 | `prometheus` | Prometheus | Métricas del sistema y Pi-hole |
 | `Fitbit` | SQLite | Base de datos de Fitbit |
-| `Finance SQLite` | SQLite | Base de datos de finanzas |
+| `Finance` | SQLite | Base de datos de finanzas |
+
+Los tres están declarados en `grafana/provisioning/datasources/datasources.yaml`, con un UID fijo que son exactamente los que referencian los JSON de los tableros. Antes vivían solo dentro de `grafana.db`, y cuando ese volumen se perdió los tableros quedaron apuntando a UIDs que no existían y los paneles de Fitbit y Finance se veían vacíos, sin ningún error. Por eso no se crean a mano.
 
 #### Datasource SQLite (Fitbit / Finance)
 
-Si hay que reinstalar el plugin:
+El plugin `frser-sqlite-datasource` se instala solo, con `GF_PLUGINS_PREINSTALL` en el compose. Si hay que reinstalarlo a mano:
 
 ```bash
 docker exec -it grafana grafana-cli plugins install frser-sqlite-datasource
@@ -250,20 +266,15 @@ Paths de los archivos:
 - Fitbit: `///var/fitbit/fitbit.db`
 - Finance: `///var/finance/finance.db`
 
-### Reemplazar UID del datasource en los dashboards
+### Si un tablero queda sin datos por el UID del datasource
 
-Si el datasource tiene un UID distinto al hardcodeado en los JSON:
+Con el provisioning no debería pasar: los UID están fijos en `datasources.yaml`. Solo ocurre si alguien creó un datasource a mano con otro UID. Para ver los que hay:
 
 ```bash
-# Obtener los UIDs reales
 curl -s http://admin:TU_PASSWORD@grafana.pi/api/datasources | python3 -m json.tool | grep -E '"uid"|"name"'
-
-# Reemplazar en los dashboards
-sed -i 's/UID_VIEJO/UID_NUEVO/g' grafana/dashboards/fitbit/fitbit_dashboard.json
-
-# Reiniciar para que tome los cambios
-docker compose up -d --force-recreate grafana
 ```
+
+La salida correcta es borrar el que se creó a mano y dejar el provisionado, no tocar los JSON.
 
 ---
 
@@ -304,6 +315,6 @@ networks:
 | Pi-hole exporter `403` | Usando API vieja (pre-v6) o key incorrecta | Verificar que la imagen sea `amonacoos/pihole6_exporter` y `PIHOLE_API_KEY` en `.env` |
 | Pi-hole exporter sin conexión | Caddy bloqueando acceso por IP | El exporter debe apuntar a `192.168.68.66:8181`, no al puerto 80 |
 | Grafana no carga datos de Fitbit | Path del SQLite incorrecto | Verificar `FITBIT_EXPORTS_PATH` en `.env` |
-| Dashboard sin datos | UID del datasource incorrecto | Ver sección Grafana → reemplazar UID |
+| Dashboard sin datos | Hay un datasource creado a mano con otro UID | Borrarlo y dejar el provisionado (ver la sección de UID más arriba) |
 | `Login failed` en Grafana | Volumen recreado con datos vacíos | Verificar que se use el volumen `monitoring_grafana-data` |
 | Dashboard provisionado no aparece | UID conflicto con dashboard importado manualmente | Cambiar el `uid` en el JSON y reiniciar Grafana |

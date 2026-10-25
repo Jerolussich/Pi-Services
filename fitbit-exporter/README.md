@@ -2,6 +2,13 @@
 
 Exportación mensual de datos de Fitbit a un Excel acumulativo y base de datos SQLite, con visualización en Grafana y una UI web (`fitbit.pi`) para disparar ingestas manuales por mes y ver qué meses ya están cargados.
 
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="../docs/img/fitbit-ui.png" alt="La UI de ingesta manual (fitbit.pi)" width="100%"><br><sub>La UI de ingesta manual (fitbit.pi)</sub></td>
+    <td width="50%" align="center"><img src="../docs/img/grafana-fitbit.png" alt="El tablero de Grafana, con datos de ejemplo" width="100%"><br><sub>El tablero de Grafana, con datos de ejemplo</sub></td>
+  </tr>
+</table>
+
 ---
 
 ## Arquitectura
@@ -159,7 +166,7 @@ Editá `UI_USERNAME`, `UI_PASSWORD` y generá un `SECRET_KEY` random:
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-La UI queda expuesta en `http://fitbit.pi` (requiere entry DNS en Pi-hole → `fitbit.pi` → tu IP del Pi).
+La UI queda expuesta en `http://fitbit.pi`. El registro DNS en Pi-hole lo carga solo el instalador, que lo deriva del Caddyfile.
 
 ---
 
@@ -197,35 +204,20 @@ docker compose up -d --build fitbit-exporter
 
 ### Instalar plugin SQLite
 
+Ya viene preinstalado: el compose de monitoring lo pide con `GF_PLUGINS_PREINSTALL`. Esto solo hace falta si hubiera que reinstalarlo a mano:
+
 ```bash
 docker exec -it grafana grafana-cli plugins install frser-sqlite-datasource
 docker restart grafana
 ```
 
-### Configurar datasource
+### Datasource
 
-1. Ir a **Connections → Data sources → Add data source**
-2. Buscar **SQLite**
-3. En **Path**: `///var/fitbit/fitbit.db`
-4. **Save & test**
+No hay que configurarlo: el datasource `Fitbit` (SQLite, path `///var/fitbit/fitbit.db`) viene provisionado desde `monitoring/grafana/provisioning/datasources/datasources.yaml`, con el UID fijo que usan los tableros. No crees uno a mano: con otro UID los paneles quedan vacíos.
 
 ### Configurar provisioning del dashboard
 
-El dashboard se provisiona automáticamente desde `monitoring/grafana/dashboards/`. Si necesitás reemplazar el UID del datasource:
-
-```bash
-# Obtener el UID real del datasource
-curl -s http://admin:TU_PASSWORD@localhost:3000/api/datasources | python3 -m json.tool | grep -E '"uid"|"name"'
-
-# Reemplazar en el JSON
-sed -i 's/\${DS_FITBIT}/EL_UID_REAL/g' monitoring/grafana/dashboards/fitbit_dashboard.json
-```
-
-Reiniciar Grafana para que tome los cambios:
-
-```bash
-docker compose up -d --force-recreate grafana
-```
+Los dashboards se provisionan automáticamente desde `monitoring/grafana/dashboards/fitbit/` (`fitbit_dashboard.json` y `fitbit_insights_dashboard.json`). Si tocás un JSON, Grafana lo relee solo en unos segundos. Si un tablero quedara sin datos, lo habitual es que alguien haya creado un datasource a mano con otro UID: borralo y dejá el provisionado.
 
 ---
 
@@ -387,10 +379,10 @@ sqlite3 fitbit-exporter/exports/fitbit.db "SELECT * FROM actividad ORDER BY fech
 | `401 Unauthorized` | Token expirado | Correr `docker exec fitbit-exporter python /app/export.py` manualmente |
 | `403` en SpO2 | Falta scope `oxygen_saturation` | Reautorizar con ese scope habilitado en dev.fitbit.com |
 | `429 Rate limit` | Demasiadas llamadas a la API | Esperar 1 hora y volver a correr |
-| Dashboard sin datos | UID del datasource incorrecto | Ver sección Grafana → reemplazar UID |
+| Dashboard sin datos | Hay un datasource creado a mano con otro UID | Borrarlo y dejar el provisionado (ver la sección Grafana) |
 | `no file exists at the file path` | Permisos o path incorrecto | `chmod 644 exports/fitbit.db` y verificar path con `///var/fitbit/fitbit.db` |
 | Contenedor no arranca | `tokens.json` no existe | `cp tokens.json.example tokens.json` y completar credenciales |
 | UI pide auth con credenciales viejas | `env_file` solo se lee al crear el contenedor | Después de tocar `ui/.env`, hacer `docker compose up -d --force-recreate fitbit-exporter-ui` (un `restart` no alcanza) |
-| `fitbit.pi` no resuelve | Falta el DNS record en Pi-hole | Agregar `fitbit.pi` → IP del Pi en Pi-hole → Local DNS → DNS Records |
+| `fitbit.pi` no resuelve | Falta el DNS record en Pi-hole | Correr `./instalador.sh` o `./diagnostico.sh --arreglar`, que cargan los registros del Caddyfile. A mano: Pi-hole → Local DNS → DNS Records |
 | UI muestra celda gris aunque el mes tiene datos | Ofelia registró el job con el comando viejo (sin `--source`) | Recrear el exporter y reiniciar ofelia: `docker compose up -d --force-recreate fitbit-exporter && docker restart ofelia` |
 | Cambios a `export.py` no se aplican | Tanto el exporter como la UI montan `./export.py:/app/export.py:ro` | Un edit del archivo en el host se refleja instantáneamente en ambos — no hace falta rebuild a menos que toques `requirements.txt` |

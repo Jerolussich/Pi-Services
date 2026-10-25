@@ -2,6 +2,20 @@
 
 Stack multimedia del Pi. Descarga, organiza, subtitula y reproduce, con todo el contenido viviendo en un DAS de dos discos unidos.
 
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="../docs/img/jellyfin.jpg" alt="Jellyfin: la biblioteca" width="100%"><br><sub>Jellyfin: la biblioteca</sub></td>
+    <td width="50%" align="center"><img src="../docs/img/sonarr-serie.jpg" alt="Sonarr: una serie, temporada por temporada" width="100%"><br><sub>Sonarr: una serie, temporada por temporada</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="../docs/img/sonarr-series.jpg" alt="Sonarr: la lista de series" width="100%">
+  <br><sub>Sonarr: la lista de series</sub>
+</p>
+
+<sub>Capturas sobre una biblioteca de demostración: películas de dominio público y archivos de prueba.</sub>
+
 ---
 
 ## Arquitectura
@@ -50,7 +64,7 @@ Comparten indexers (los de Prowlarr), cliente de descargas (qBittorrent) y subti
 
 Dos cosas sostienen todo el diseño:
 
-**Una única raíz de almacenamiento.** Los siete contenedores montan el DAS en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca.
+**Una única raíz de almacenamiento.** Radarr, Sonarr y Bazarr montan el DAS entero en el mismo path `/data`. Eso permite que Radarr importe con **hardlinks** en vez de copiar, así una película ocupa espacio una sola vez aunque figure en descargas y en la biblioteca. (qBittorrent monta solo `/data/downloads`, con la misma ruta de adentro, y Jellyfin solo `/media`, de lectura: ninguno de los dos necesita ver todo.)
 
 **Los dos discos se ven como uno.** `mergerfs` los une en `/mnt/das`, así Jellyfin escanea una sola biblioteca y no te importa en qué disco cayó cada archivo. Está todo en [DAS.md](DAS.md).
 
@@ -69,7 +83,7 @@ Dos cosas sostienen todo el diseño:
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
 | `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr` | `8191` | — | Resuelve el Cloudflare de los indexers que lo usan |
 
-Casi nada publica puertos al host: todo entra por Caddy, igual que el resto del repo. Las excepciones son Jellyfin (`8096`) y Seerr (`5055`), porque las apps de tele se conectan por IP y no resuelven los nombres `.pi`; los dos tienen su propio login. Y la otra excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares. **Viene cerrado** (escucha solo en `127.0.0.1`): abrirlo es opcional y lo decidís en el instalador o después con `pi puerto`. Qué ganás, qué implica y qué protecciones lleva puestas, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
+Casi nada publica puertos al host: todo entra por Caddy, igual que el resto del repo. Las excepciones son Jellyfin (`8096` y `7359/udp`, el descubrimiento automático para que las apps encuentren el servidor sin tipear la IP) y Seerr (`5055`), porque las apps de tele se conectan por IP y no resuelven los nombres `.pi`; los dos tienen su propio login. Y la otra excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares. **Viene cerrado** (escucha solo en `127.0.0.1`): abrirlo es opcional y lo decidís en el instalador o después con `pi puerto`. Qué ganás, qué implica y qué protecciones lleva puestas, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
 
 `flaresolverr` no tiene hostname porque no es para vos: no tiene interfaz que visitar. Solo le habla Prowlarr, por la red interna del compose, en `http://flaresolverr:8191`.
 
@@ -97,7 +111,7 @@ Seguí [DAS.md](DAS.md) completo. No sigas hasta que la prueba de hardlinks de e
 
 ### 2. Aceleración por hardware
 
-Verifiqué esto en tu Pi y hay algo que arreglar antes: **el grupo `render` no existe**, y por eso `/dev/dri/renderD128` quedó como `root:root`. Sin eso Jellyfin no puede usar el decodificador por hardware.
+Jellyfin decodifica por hardware a través de `/dev/dri`, y para eso el dispositivo tiene que ser legible. En una Pi puede pasar que **el grupo `render` no exista**, y entonces `/dev/dri/renderD128` queda como `root:root`: sin arreglarlo, Jellyfin no puede usar el decodificador. Se comprueba con `ls -la /dev/dri/renderD128`; si dice `root root`, esto lo resuelve:
 
 ```bash
 getent group render || sudo groupadd -r render
@@ -137,7 +151,7 @@ Sube junto con el resto del stack, con el mismo comando que todo lo demás.
 
 **Ojo con esto:** el stack multimedia arranca aunque el DAS no esté montado. `DAS_ROOT` apunta a `/mnt/das`, y esa carpeta existe igual, así que los contenedores levantan, se ven sanos, y descargan a la tarjeta del sistema hasta llenarla.
 
-Quien te protege de eso es el instalador, que comprueba si `/mnt/das` está en otro dispositivo que la raíz del sistema y, si no lo está, te ofrece configurar todo con las descargas en pausa. Si levantás a mano, esa comprobación no corre y quedás por tu cuenta.
+Quien te protege de eso es el instalador, que comprueba si `/mnt/das` está en otro dispositivo que la raíz del sistema y, si no lo está, te ofrece configurar todo con las descargas en pausa. Si levantás a mano, esa comprobación no corre y quedás por tu cuenta. El diagnóstico igual lo sigue vigilando: si el DAS deja de estar montado, lo marca, y `./diagnostico.sh --arreglar` pone las descargas de qBittorrent en pausa hasta que vuelvas a conectar el disco.
 
 ---
 
@@ -157,11 +171,11 @@ docker logs qbittorrent | grep -i password
 
 Entrá a `http://qbit.pi`, cambiala, y configurá las rutas como `/data/downloads/incomplete` y `/data/downloads/complete`.
 
-Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: el DAS se monta en `/data` en los siete contenedores, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
+Dos cosas que hacen tropezar acá. La primera es que **viene apuntando a `/downloads`, que en este stack no existe**: la carpeta de descargas se ve en `/data/downloads`, la misma ruta que ven Radarr y Sonarr, así que sin corregirlo las descargas caen adentro del contenedor y se pierde el hardlink con la biblioteca. La segunda es que **no acepta contraseñas de menos de 6 caracteres**, y si la mandás por su API el error viene en el cuerpo de la respuesta, no en el código.
 
 ### 2. Prowlarr
 
-En `http://prowlarr.pi`, agregá tus indexers. Después, en `Settings → Apps`, agregá Radarr con URL `http://radarr:7878` y Sonarr con `http://sonarr:8989`. Prowlarr les sincroniza los indexers solo, y no vas a tener que cargarlos de nuevo en cada aplicación.
+En `http://prowlarr.pi`, agregá tus indexers (el instalador te ofrece de a uno una lista corta de siete, explicados: 1337x, The Pirate Bay, YTS, EZTV, Nyaa.si, Anime Tosho y SubsPlease; lo que no cargues ahí queda para acá). Después, en `Settings → Apps`, agregá Radarr con URL `http://radarr:7878` y Sonarr con `http://sonarr:8989`. Prowlarr les sincroniza los indexers solo, y no vas a tener que cargarlos de nuevo en cada aplicación.
 
 Es el único lugar donde se cargan indexers. Ese es el punto de tener Prowlarr.
 
@@ -186,7 +200,7 @@ En `http://bazarr.pi`, conectá Radarr con host `radarr` y puerto `7878`, y Sona
 
 El **perfil de idiomas** lo deja creado el instalador con Español e Inglés, y es más importante de lo que suena: sin uno, Bazarr corre, se ve sano, aparece conectado a Radarr y a Sonarr, y no baja un solo subtítulo nunca. Es el paso que más se olvida de todo el stack y el que peor avisa. Si querés otros idiomas, se cambia en `Settings → Languages`.
 
-Lo que sí queda para vos es **de dónde bajarlos**, en `Settings → Providers`. Los que andan bien sin pagar son OpenSubtitles.com, que pide crear cuenta propia, y Subdivx. Si no elegís ninguno, Bazarr corre pero nunca baja nada.
+El instalador también te ofrece de a uno siete proveedores (OpenSubtitles.com, Subtitulamos.tv, Subtis, subtítulos embebidos, YifySubtitles, Subf2m y SubDL), y los que no piden cuenta quedan andando en el momento. Lo que queda para vos es **de dónde bajarlos** si no elegiste ninguno, en `Settings → Providers`. Los que andan bien sin pagar son OpenSubtitles.com, que pide crear cuenta propia, y Subdivx. Si no elegís ninguno, Bazarr corre pero nunca baja nada.
 
 Un detalle por si lo hacés a mano: los perfiles **no se guardan por su propio endpoint**, que contesta `405`. Van por el de configuración general, con el perfil serializado adentro:
 
@@ -196,7 +210,7 @@ curl -X POST -H "X-API-KEY: $KEY" --data-urlencode "languages-profiles=$PERFIL" 
 
 ### 5. Jellyfin
 
-En `http://jellyfin.pi`, creá dos bibliotecas: una de **Películas** apuntando a `/media/movies` y otra de **Series** apuntando a `/media/tv`. Es importante que sean dos y con el tipo correcto, porque Jellyfin busca los metadatos de forma distinta para cada una. En `Dashboard → Playback`, activá aceleración por hardware con **VAAPI** y dispositivo `/dev/dri/renderD128`.
+En `http://jellyfin.pi`, creá dos bibliotecas: una de **Películas** apuntando a `/media/movies` y otra de **Series** apuntando a `/media/tv`. Es importante que sean dos y con el tipo correcto, porque Jellyfin busca los metadatos de forma distinta para cada una. En `Dashboard → Playback`, activá aceleración por hardware con **VAAPI** y dispositivo `/dev/dri/renderD128`. El instalador lo hace por vos y **no supone qué sabe hacer el chip**: se lo pregunta (`vainfo`) y activa solo los códecs que decodifica, la codificación por hardware solo si existe y el tone mapping del HDR solo si hay OpenCL.
 
 Una advertencia concreta sobre el Pi 5: **no tiene codificador de video por hardware**. Decodifica H.264 y HEVC por hardware, pero al codificar usa CPU. Por eso hay que dejar la codificación por hardware **apagada**: si la activás, cada transcodificación falla. En la práctica conviene reproducir en formato nativo y evitar transcodificar. Si tus clientes soportan el códec original, el Pi 5 alcanza de sobra.
 
@@ -215,6 +229,8 @@ Radarr y Sonarr quedan con un perfil llamado **Perfeccionista**, que es el que u
 Hace dos cosas. La primera es **aceptar todas las calidades**, así una película rara que solo existe en 480p igual se baja en vez de no bajarse nunca. La segunda es **poner el corte arriba de todo** con la mejora automática activada: cuando el indexer encuentra una versión mejor de algo que ya tenés, la baja y reemplaza la anterior sola.
 
 O sea que pedís una vez y la copia va mejorando con el tiempo, sin que vuelvas a mirarla.
+
+Además el perfil lleva un formato personalizado, **Upscaled**, con puntaje `-10000`: rechaza los releases que dicen en el título que son reescalados con IA (`upscaled`, `AI`, `Topaz`), porque un "4K" reescalado es un 1080p agrandado. No atrapa uno que no lo declare.
 
 Quedan afuera dos calidades a propósito: **BR-DISK** y **Raw-HD**, que son la imagen del disco entera sin comprimir. Pesan decenas de gigas, muchos reproductores no las abren, y en un Pi 5 obligan a transcodificar, que es justo lo que conviene evitar.
 
@@ -292,7 +308,7 @@ Va por **Tailscale**, sin abrir puertos en el router. Para que funcione hacen fa
 
 Con eso, `http://jellyfin.pi` resuelve y es alcanzable desde tu celular en la calle, igual que en casa. Es la misma URL en los dos lados, que simplifica la configuración de los clientes.
 
-Si alguna app de TV no resuelve los nombres `.pi`, la alternativa es publicar el puerto `8096` de Jellyfin y usar el nombre MagicDNS del Pi.
+Las apps de tele que no resuelven los nombres `.pi` conectan por IP a `http://192.168.68.66:8096`, que ya está publicado a propósito (Jellyfin) y con `JELLYFIN_PublishedServerUrl` apuntando ahí. Lo mismo vale para Seerr en el `5055`.
 
 ---
 
@@ -312,14 +328,14 @@ Con las series hay una diferencia que conviene saber: Sonarr sigue emitiendo. Un
 
 ## Bajar y levantar todo
 
-Los siete de una, sin tocar el resto del Pi:
+Los ocho de una, sin tocar el resto del Pi:
 
 ```bash
-cd ~/pi-services && docker compose stop jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr
+cd ~/pi-services && docker compose stop jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr flaresolverr
 ```
 
 ```bash
-cd ~/pi-services && docker compose up -d jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr
+cd ~/pi-services && docker compose up -d jellyfin seerr qbittorrent prowlarr radarr sonarr bazarr flaresolverr
 ```
 
 Los datos viven en volúmenes nombrados y en el DAS, así que bajarlos no borra nada. Para borrar también la configuración hay que agregar `-v` a un `down` explícitamente, y eso te deja empezando de cero.
@@ -349,6 +365,18 @@ Tres cosas salen de armarlo así:
 El instalador también le pide a Jellyfin que reescanee al importar. Sin eso el aviso mentiría: te diría "ya la podés ver" antes de que Jellyfin la haya indexado.
 
 Si el gancho se pierde (pasa si alguien recrea el contenedor desde cero), el diagnóstico lo detecta y lo vuelve a poner con `./diagnostico.sh --arreglar`. El detalle está en [../docs/AVISOS.md](../docs/AVISOS.md).
+
+---
+
+## Jellyfin 12: lo que cambió y lo que se rompió
+
+Al actualizar todo el stack el 25 de octubre de 2026, Jellyfin saltó de la 10.11 a la 12. Las migraciones corrieron bien, las bibliotecas y la aceleración por hardware quedaron como estaban, y los plugins se actualizaron solos. Eso último tiene un detalle: **un plugin actualizado pide reiniciar Jellyfin para tomar efecto**, igual que uno recién instalado, y hasta que lo reinicies sigue andando la versión de antes.
+
+Lo que sí se rompió fue el recuadro de Jellyfin de la homepage, y por una razón que no dice nada de sí misma: la 12 **sacó la ruta `/emby`** y **sacó la autenticación con la clave en la URL** (`?api_key=...`). Desde la 12 solo vale una cabecera, `Authorization: MediaBrowser Token="..."`. El recuadro nativo de la homepage (`type: jellyfin`) usa las dos cosas que se fueron, así que Jellyfin le contestaba 404 y el recuadro mostraba `API Error`, sin ninguna pista de que el problema fuera la versión. [gethomepage/homepage#7113](https://github.com/gethomepage/homepage/issues/7113) se cerró sin resolverlo y la homepage 2.7.0 sigue igual.
+
+Por eso `homepage/config/services.yaml` ya no usa `type: jellyfin` sino un `customapi` que le pregunta directo a `/Items/Counts` con el formato nuevo de autenticación. Muestra cuántas películas, series y episodios hay; **se pierde el "quién está reproduciendo ahora"** que traía el recuadro nativo. La clave sigue siendo la misma (`HOMEPAGE_VAR_JELLYFIN_KEY`), la crea y la escribe el instalador. Cuando la homepage lo arregle, se vuelve al recuadro nativo.
+
+El instalador no se ve afectado: ya se autentica con la cabecera `MediaBrowser` y nunca usó `/emby`. Pero si tenés algo propio (un script, una app vieja) que le hable a Jellyfin con la clave en la URL, ahí va a contestar error.
 
 ---
 

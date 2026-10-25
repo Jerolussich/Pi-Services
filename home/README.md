@@ -8,7 +8,7 @@ Entra por `http://casa.pi`, o por `http://homeassistant.pi`, que es el mismo lug
 
 ## Por qué este es el único que va en la red del host
 
-Es el único contenedor del repo que no está en la red `pi-services`, y no es un descuido.
+Es el único contenedor del repo que está en la red del host y no en la del puente de Docker, y no es un descuido. (qBittorrent tampoco está en `pi-services`, pero por la razón contraria: lo encierra una red propia, `pi-torrent`. Ver [../docs/TORRENTS.md](../docs/TORRENTS.md).)
 
 Home Assistant descubre los dispositivos de la casa por **mDNS, SSDP y DHCP**, que son protocolos de difusión: no atraviesan el puente de Docker. En la red del puente arranca igual y funciona, pero **no encuentra nada solo** y hay que cargar cada dispositivo a mano por IP, que es justo el trabajo que uno quiere evitar.
 
@@ -16,7 +16,7 @@ Home Assistant descubre los dispositivos de la casa por **mDNS, SSDP y DHCP**, q
 
 ---
 
-## Tres cosas que el instalador deja hechas, y por qué
+## Cuatro cosas que el instalador deja hechas, y por qué
 
 ### Que funcione detrás de Caddy
 
@@ -67,13 +67,31 @@ Queda configurado en 3 días, con confirmación cada 30 segundos en vez de cada 
 
 Si algún día tenés el disco externo y querés historial largo, subí `purge_keep_days` en `config/configuration.yaml`.
 
+### Que el Bluetooth ande
+
+Home Assistant también habla con el Bluetooth del equipo (sensores y otros aparatos que haya cerca), y para eso hacen falta dos cosas que no vienen solas: el servicio **bluez** en el host, y que el contenedor llegue a él.
+
+Lo segundo está en el compose, y explica dos líneas que de otro modo parecen exageradas:
+
+- **`privileged: true`**: es el acceso al hardware de la máquina, que es justamente para lo que sirve tener esto en casa y no en la nube de otro. Sin eso el contenedor no ve el adaptador.
+- **`/run/dbus:/run/dbus:ro`**: bluez no vive adentro de la imagen, se maneja por DBus desde el host, y ese montaje es el cable. Va en solo lectura porque Home Assistant solo necesita hablarle al bus, no cambiarlo.
+
+Lo primero lo hace el instalador (`cfg_ha_bluetooth`, en [`../lib/comun.sh`](../lib/comun.sh)), y lo hace con cuidado:
+
+- **Si el equipo no tiene adaptador Bluetooth** (el caso de muchos equipos, y es lo que se detecta mirando `/sys/class/bluetooth`) no instala nada: no tiene sentido sumar un servicio sin hardware que atender.
+- **Si lo tiene**, instala `bluez` (y `rfkill`) solo si faltan, habilita y prende el servicio, saca el bloqueo por software y comprueba que el adaptador figure encendido.
+- **Reinicia Home Assistant solo si cambió algo**, porque él busca el servicio únicamente cuando arranca.
+- **bluez corre solo en esta máquina, sin escuchar en la red.** No empareja nada ni deja el equipo visible: eso lo decide cada dispositivo que agregues desde Home Assistant.
+
+Sin bluez, Home Assistant no encuentra a quién hablarle y deja un error cada cinco minutos en su log. No rompe nada, pero tapa los errores que sí importan. Por eso el diagnóstico lo vigila (`rev_ha_bluetooth`, solo si hay adaptador): si el servicio del equipo está apagado o no está instalado lo marca y ofrece arreglarlo con `./diagnostico.sh --arreglar` (`rep_bluetooth`, que vuelve a correr el mismo paso del instalador), y si el servicio anda pero el log de la última hora trae errores de Bluetooth lo marca también, con el comando para mirarlos. Ver [../docs/DIAGNOSTICO.md](../docs/DIAGNOSTICO.md).
+
 ---
 
 ## Lo que sí tenés que hacer vos
 
-**Crear tu usuario.** Entrás a `http://casa.pi` y te pide nombre, contraseña y ubicación. Eso no se puede automatizar: Home Assistant genera claves criptográficas por instalación durante ese paso, y sembrarlas de antemano sería peor que hacerlo a mano.
+**Poner la ubicación.** Si en el instalador le dejaste crear las cuentas, el usuario `admin` ya existe, con tu contraseña de siempre: lo crea por la misma API que usa el asistente de bienvenida, sin navegador. Si preferiste crearlas vos, entrás a `http://casa.pi` y el asistente te pide nombre, usuario y contraseña, y ese paso queda anotado como pendiente.
 
-Poner la ubicación bien vale la pena, porque de ahí salen el amanecer y el atardecer, que es con lo que se disparan la mitad de las automatizaciones de una casa.
+En los dos casos, al entrar la primera vez te pide **la ubicación en un mapa** y si querés mandar estadísticas de uso. Esos dos pasos los deja a propósito para vos: la ubicación es tu casa y no la va a inventar, y ponerla bien vale la pena porque de ahí salen el amanecer y el atardecer, que es con lo que se disparan la mitad de las automatizaciones de una casa. Lo de las estadísticas es una decisión de privacidad, y anotarte sin preguntar estaría mal.
 
 Son dos minutos y es una sola vez. La configuración del proxy ya está confirmada, así que no importa por dónde entres.
 

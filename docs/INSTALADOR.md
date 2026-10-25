@@ -2,6 +2,13 @@
 
 `instalador.sh` levanta el Pi por módulos. No es un script lineal: mira el estado real del equipo y se adapta a lo que ya está hecho.
 
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="img/instalador-menu.png" alt="El menú: qué anda, qué falta y qué querés instalar" width="100%"><br><sub>El menú: qué anda, qué falta y qué querés instalar</sub></td>
+    <td width="50%" align="center"><img src="img/instalador-puerto.png" alt="Una decisión de seguridad, explicada antes de preguntar" width="100%"><br><sub>Una decisión de seguridad, explicada antes de preguntar</sub></td>
+  </tr>
+</table>
+
 ```bash
 cd ~/pi-services && ./instalador.sh
 ```
@@ -35,6 +42,8 @@ No están ahí por prolijidad. Ninguna de las cinco rompe nada en el momento: ro
 La salida a internet se prueba con **HTTPS contra el mismo servidor del que sale Docker**, no con un `ping`: una red puede tener ICMP abierto y HTTPS bloqueado, y el ping te diría que todo está bien.
 
 **Solo aborta por lo que hace imposible seguir** (sin `sudo`, sin internet, sin espacio). La memoria justa y el reloj desincronizado se avisan y la instalación sigue: es tu máquina y sabés cosas que el script no. Y cuando aborta, muestra igual el resultado de los cinco, para que veas de una todo lo que falta en vez de arreglar uno y volver a chocar con el siguiente.
+
+Si pasa el chequeo, lo primero que hace, antes de preguntar nada, es dejar el comando `pi` como un enlace en `/usr/local/bin`. Va temprano a propósito: si la instalación se corta a la mitad, el comando ya quedó puesto y se puede usar para ver qué pasó. Es un enlace y no una copia, así un `git pull` actualiza también el comando.
 
 ### 1. Diagnóstico
 
@@ -74,7 +83,7 @@ Y los crea vacíos antes de levantar los contenedores, por una razón concreta: 
 
 ### 2. Elegís módulos
 
-Un menú numerado con los doce módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
+Un menú numerado con los trece módulos y su estado. Escribís los números separados por espacio, o usás dos atajos:
 
 - **`todo`** para todos
 - **`faltantes`** para solo lo incompleto o sin instalar
@@ -136,6 +145,12 @@ Se escriben ocultas y no quedan en el historial. La de Caddy además se conviert
 
 **Una excepción, y es de qBittorrent, no del instalador:** rechaza contraseñas de menos de 6 caracteres. Si la tuya es más corta y elegiste el módulo de multimedia, te avisa en el momento de elegirla y te deja decidir: cambiarla por una de 6 o más y seguir teniendo una sola, o dejar la corta y ponerle una aparte solo a qBittorrent.
 
+#### El disco del DAS
+
+Si elegiste multimedia, antes de levantar nada el instalador comprueba que `/mnt/das` sea un disco de verdad y no una carpeta de la tarjeta del sistema. Se pregunta **antes** porque preguntada después llega tarde: los contenedores ya estarían arriba y qBittorrent ya podría estar escribiendo en la tarjeta, y una tarjeta llena es lo que la corrompe.
+
+Si el disco no está usable, explica qué implica y ofrece cuatro caminos: preparar el disco que está conectado (lo formatea si hace falta, lo monta y arma el mergerfs; solo aparece si hay uno libre), configurar todo con las descargas en pausa, bajar igual, o no tocar multimedia todavía. Antes de borrar nada pide que escribas `FORMATEAR`. La preparación entera está en [`../media/DAS.md`](../media/DAS.md) y en [`lib/discos.sh`](../lib/discos.sh).
+
 #### El puerto de torrents
 
 Si elegiste multimedia con qBittorrent, el instalador te hace **una pregunta más**, que es de seguridad y no de contraseñas: ¿abrís el puerto 6881 para que otros se conecten a vos?
@@ -163,33 +178,35 @@ La respuesta queda en `media/.env` y **no se vuelve a preguntar** al correr el i
 En orden de dependencias. Para cada módulo:
 
 - Si ya funcionaba, no lo toca.
-- Si es de Docker, baja las imágenes que falten y levanta **solo** los servicios que elegiste, salteando los que ya estaban arriba. Antes de cada módulo se asegura de que existan las dos redes de Docker que los composes dan por hechas (`pi-services` y `pi-torrent`): si faltara una, el `up` falla recién al final y sin levantar nada.
+- Si es de Docker, baja las imágenes que falten y levanta **solo** los servicios que elegiste, salteando los que ya estaban arriba. Antes de cada módulo se asegura de que existan las dos redes de Docker que los composes dan por hechas (`pi-services` y `pi-torrent`): si faltara una, el `up` falla recién al final y sin levantar nada. Después de levantar espera a que cada contenedor esté de verdad arriba, y si alguno no llegó dice por qué (en bucle, se cerró solo, nunca arrancó).
 - Si es nativo, corre su instalación específica.
 
 Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alguno no levantó, cuál fue y con qué comando ver su log.
 
 Con qBittorrent ya arriba, el instalador aplica además lo de [TORRENTS.md](TORRENTS.md): la regla de UFW que lo deja sin acceso al SSH y a los paneles de la máquina, las reglas de iptables que le cierran el router y la red local, el tope de subida, y recrea los contenedores que no tenían el blindaje nuevo (también los deja montando solo la carpeta de descargas). Si elegiste abrirlo, pide el puerto al router (UPnP) y comprueba desde afuera si se ve. Las reglas de iptables se vuelven a poner solas en cada arranque con `pi-torrent-red.service`.
 
+Si elegiste Tailscale, al terminar su instalación el instalador intenta además dejar **HTTPS de verdad** en el nombre de la máquina dentro de la tailnet: si tu cuenta tiene los certificados habilitados emite el certificado, configura Caddy, abre el 443 y programa la renovación; si no los tiene, lo anota como pendiente. Ver [../TAILSCALE.md](../TAILSCALE.md).
+
 ### 6. Configura los servicios solo
 
 Levantar un contenedor no alcanza. Jellyfin recién levantado te recibe con un asistente de cinco pantallas, Radarr no sabe dónde guardar las películas, y qBittorrent viene apuntando a una carpeta que en este stack no existe. Todo eso lo hace el instalador antes de que abras el navegador.
 
-Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`, porque ninguno publica su puerto al host. Casi todos traen `curl`; a los que no, el instalador los consulta desde el host por su IP de Docker.
+Las llamadas salen desde adentro de cada contenedor contra su propio `localhost`, porque casi ninguno publica su puerto al host (las excepciones son Jellyfin, Seerr y el puerto de torrents de qBittorrent). Casi todos traen `curl`; a los que no, el instalador los consulta desde el host por su IP de Docker.
 
 | Servicio | Qué deja hecho |
 |---|---|
-| **Jellyfin** | Completa el asistente entero, crea tu usuario, arma las bibliotecas de Películas (`/media/movies`) y Series (`/media/tv`), y activa la decodificación por hardware con VAAPI |
+| **Jellyfin** | Completa el asistente entero, crea tu usuario, arma las bibliotecas de Películas (`/media/movies`) y Series (`/media/tv`), activa VAAPI con lo que el chip sabe hacer de verdad (ver más abajo), te ofrece de a uno los plugins del catálogo oficial y le crea la clave que lee la homepage |
 | **qBittorrent** | Lee la contraseña temporal del log, la reemplaza por la tuya, y corrige las rutas de descarga a `/data/downloads` |
 | **Radarr** y **Sonarr** | Carpeta raíz (`/data/media/movies` y `/data/media/tv`), hardlinks activados, qBittorrent conectado, y el perfil de calidad **Perfeccionista** |
-| **Prowlarr** | Lo enlaza con Radarr y Sonarr, así los indexers que cargues se sincronizan solos a los dos |
-| **Bazarr** | Lo conecta a Radarr y a Sonarr, y le crea el **perfil de idiomas** con Español e Inglés |
+| **Prowlarr** | Lo enlaza con Radarr y Sonarr, así los indexers que cargues se sincronizan solos a los dos. Da de alta FlareSolverr y te ofrece de a uno una lista corta de indexers |
+| **Bazarr** | Lo conecta a Radarr y a Sonarr, le crea el **perfil de idiomas** con Español e Inglés y te ofrece de a uno los proveedores de subtítulos |
 | **Seerr** | Crea tu usuario contra Jellyfin, habilita las dos bibliotecas, y conecta Radarr y Sonarr pidiendo con el perfil Perfeccionista |
 | **Homepage** | Lee las API keys de Radarr, Sonarr, Prowlarr y Seerr y las escribe en su `.env`, así los recuadros muestran datos en vivo |
 | **Grafana** | Le pone la contraseña de admin, así no te pide cambiarla en el primer login |
 | **Pi-hole** | Le pone la contraseña del panel y **genera su clave de API** para las métricas |
 | **FreshRSS** | Hace el asistente entero, crea tu usuario y **habilita la API con su clave** |
 | **Wallabag** | Le cambia la contraseña de fábrica y **le crea el cliente de API** que usa el filtro |
-| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, y **confirma la configuración del proxy** escribiendo su store, que es la única forma de hacerlo sin navegador |
+| **Home Assistant** | Deja `configuration.yaml` listo antes del primer arranque, abre su puerto solo para Caddy, **confirma la configuración del proxy** escribiendo su store (la única forma de hacerlo sin navegador), deja el **Bluetooth** del equipo andando si hay adaptador (instala `bluez`, ver [../home/README.md](../home/README.md#que-el-bluetooth-ande)) y, si le dejás crear las cuentas, crea tu usuario `admin` |
 
 #### Antes de nada, te pregunta quién las crea
 
@@ -239,6 +256,18 @@ La lista de "datos que te pido después de crear una cuenta" **quedó vacía**. 
 
 Queda una excepción honesta: si FreshRSS **ya estaba instalado**, el instalador no lo toca. Su clave de API se guarda hasheada y no se puede releer ni cambiar desde afuera para un usuario que ya existe, así que en ese caso sigue siendo tuya y te lo dice.
 
+#### Lo que te ofrece de a uno
+
+Hay tres elecciones que eran pasos manuales y ahora se hacen desde el propio instalador, porque lo difícil nunca fue cargarlas sino saber cuál conviene. En los tres casos el catálogo es una lista corta con una línea de para qué sirve cada entrada, **todo lo demás se le pregunta al servicio en el momento** (si existe, si es público o privado, de qué dominio es) y Enter es no:
+
+| Qué | Cuántas ofrece | Dónde vive la lista |
+|---|---|---|
+| **Indexers de Prowlarr** | 7: 1337x, The Pirate Bay, YTS, EZTV, Nyaa.si, Anime Tosho y SubsPlease | [`lib/indexers.sh`](../lib/indexers.sh) |
+| **Proveedores de subtítulos de Bazarr** | 7: OpenSubtitles.com, Subtitulamos.tv, Subtis, subtítulos embebidos, YifySubtitles, Subf2m y SubDL | [`lib/subtitulos.sh`](../lib/subtitulos.sh) |
+| **Plugins de Jellyfin** | 10 del catálogo oficial: la intersección entre su selección y lo que el servidor dice tener | [`lib/jellyfin_plugins.sh`](../lib/jellyfin_plugins.sh) |
+
+Los que piden una cuenta (los indexers privados, OpenSubtitles.com, SubDL) te piden los datos, y si no los tenés a mano apretás Enter y queda anotado como pendiente con la dirección donde sacarla: nunca se deja algo activado a medias, que es peor que no tenerlo. Los indexers detrás de Cloudflare reciben solos la etiqueta `flaresolverr`. Los plugins que aceptes se instalan y Jellyfin se reinicia **una sola vez** al final.
+
 #### El perfil de idiomas de Bazarr
 
 Es el paso que más se olvida de todo el stack, y el que peor avisa: sin un perfil de idiomas, Bazarr corre, se ve sano, aparece conectado a Radarr y a Sonarr, y **no baja un solo subtítulo nunca**.
@@ -250,6 +279,8 @@ Queda creado con Español e Inglés. Qué idiomas querés es tuyo, así que el i
 Radarr y Sonarr quedan con un perfil llamado **Perfeccionista**, que acepta todas las calidades y tiene el corte arriba de todo con la mejora automática activada. Traducido: agarra lo que haya, y cuando aparece una versión mejor la reemplaza sola.
 
 Quedan afuera **BR-DISK** y **Raw-HD**, que son el disco entero sin comprimir: pesan decenas de gigas y en un Pi 5 obligan a transcodificar.
+
+Al perfil se le suma además un formato personalizado, **Upscaled**, con puntaje `-10000`: rechaza los releases que dicen en el nombre que son reescalados con IA (`upscaled`, `AI`, `Topaz`). Un "4K" reescalado no es 4K, es un 1080p agrandado, y a veces con un HDR inventado. Lo que no atrapa es un reescalado que no lo declare en el título.
 
 No lo escribe a mano. Le pide a cada servicio su propio esquema de calidades con `GET /qualityprofile/schema`, lo marca entero y devuelve el resultado. Así el perfil sale correcto aunque Radarr y Sonarr tengan listas distintas, que es el caso, y sigue saliendo correcto cuando una versión nueva agregue calidades.
 
@@ -269,11 +300,17 @@ Dos reglas gobiernan todo el paso:
 
 El orden importa y no es casual: qBittorrent antes que Radarr, porque Radarr necesita su contraseña para conectarse; y Radarr antes que Prowlarr y Bazarr, porque los dos se enganchan contra él.
 
+#### Las tareas programadas
+
+Al final de este paso, y tengas lo que tengas levantado, el instalador programa lo automático: el diagnóstico cada hora (`pi-estado`), el respaldo diario (`pi-respaldo`), el aviso de importaciones agrupadas (`pi-media`, solo si hay canales de avisos), la renovación del certificado (`pi-cert`, solo si quedó HTTPS), la renovación del permiso UPnP (`pi-upnp`, solo si elegiste UPnP), la tarea de arranque que vuelve a aislar a qBittorrent (`pi-torrent-red`), el mensaje de bienvenida del SSH y la carpeta en RAM donde el diagnóstico deja las métricas. Los horarios salen de [`../ajustes.conf`](../ajustes.conf): se cambian ahí y se aplican al volver a correr el instalador. Una cosa que **no** hace es copiar `docker/daemon.json`, el límite a los logs de Docker (ver [../docker/README.md](../docker/README.md)).
+
 ### 7. Te guía con lo que queda
 
-Después de todo eso queda poco, y de dos tipos: **elecciones que son tuyas** (qué trackers usás, de dónde bajar los subtítulos, qué complementos querés en Jellyfin) y **la cuenta de Home Assistant**, que es la única que no se puede automatizar de verdad.
+Después de todo eso queda poco, y casi todo son **elecciones que son tuyas**: qué trackers usás, de qué sitios bajar los subtítulos, qué complementos querés en Jellyfin. Y un detalle de Home Assistant: el instalador le crea el usuario, pero **la ubicación en el mapa** la ponés vos al entrar la primera vez, porque es tu casa y no la va a inventar (de ahí salen el amanecer y el atardecer).
 
-Son **cuatro pantallas**. Antes eran seis, y la mitad eran cuentas que había que crear a mano solo para poder copiar un token de vuelta. Esas ya no están.
+Son **hasta cuatro pantallas**. Antes eran seis, y la mitad eran cuentas que había que crear a mano solo para poder copiar un token de vuelta. Esas ya no están. Y no se anota como pendiente lo que el instalador ya hizo: si cargó los proveedores de Bazarr o los plugins de Jellyfin, esas pantallas ni aparecen.
+
+Ojo con algo que hoy no es perfecto: la pantalla de Home Assistant y la de Prowlarr salen siempre que levantaste el módulo, aunque el instalador ya haya creado el usuario o cargado indexers. El texto de la de Home Assistant habla de crear la cuenta; si el instalador ya la creó, solo te queda la ubicación y podés saltearla con `s`.
 
 ```
   [2/4]  prowlarr   Cargar los indexers que uses
@@ -364,15 +401,16 @@ Es la forma normal de usarlo, no una excepción.
 | Módulo | Qué levanta |
 |---|---|
 | Base del sistema | zona horaria, chequeo periódico del disco, Docker, `smartmontools` para la salud del disco, y log2ram si arrancás desde una microSD |
-| Pi-hole | nativo: DNS, listas de bloqueo, los 15 registros `*.pi` |
+| Pi-hole | nativo: DNS, listas de bloqueo, y un registro `*.pi` por cada bloque del Caddyfile (hoy 20) |
 | Caddy y Homepage | `caddy`, `homepage` |
 | Monitoreo | `grafana`, `prometheus`, `node-exporter`, `pihole-exporter` |
 | Noticias | `freshrss`, `wallabag`, `news-filter`, `news-filter-ui` |
 | Finanzas | `itau-email-tracker`, `finance-tracker-ui` |
 | Fitbit | `fitbit-exporter`, `fitbit-exporter-ui` |
-| Multimedia | `jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr` |
+| Multimedia | `jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr`. Además `flaresolverr`, que no se elige solo: sube con Prowlarr, que depende de él |
 | Casa | `homeassistant` |
 | Ofelia | `ofelia` |
+| Avisos | nativo: crea los dos canales de ntfy (`alertas` y `media`) y te guía para suscribirte. No instala nada |
 | Tailscale | nativo, acceso remoto |
 | UFW y fail2ban | firewall |
 
@@ -398,7 +436,7 @@ El caso que le dio origen a todo esto fue peor: los cuatro `POST` del asistente 
 
 Los demás rompen cosas que después no se parecen en nada a su causa: sin la biblioteca de series, Seerr nunca marca un pedido como disponible y el síntoma es que la lista de pedidos no se vacía nunca; sin el enlace de Prowlarr, los indexers no se sincronizan y Radarr no encuentra nada aunque Prowlarr los tenga todos.
 
-**La red de Docker tiene que existir antes del primer `up`.** Tres composes declaran `pi-services` como externa, porque están pensados para poder correr sueltos. En un equipo nuevo no existe, y el `up` construye las seis imágenes propias durante más de una hora para recién al final fallar con `network declared as external but could not be found`, sin levantar nada. El instalador la crea primero.
+**La red de Docker tiene que existir antes del primer `up`.** Diez composes declaran `pi-services` como externa (y tres de ellos, `media`, `caddy` y `homepage`, también `pi-torrent`), porque están pensados para poder correr sueltos. En un equipo nuevo no existen, y el `up` construye las seis imágenes propias durante más de una hora para recién al final fallar con `network declared as external but could not be found`, sin levantar nada. El instalador las crea primero.
 
 **Las imágenes se bajan de a una.** En paralelo saturan la tarjeta SD y el proceso se cuelga sin dar error. Peor: deja capas escritas a medias que después rompen contenedores de formas difíciles de rastrear. A Jellyfin le faltaba una librería de ffmpeg y a dos servicios propios les quedaron archivos de Python corruptos.
 
@@ -412,7 +450,7 @@ Los demás rompen cosas que después no se parecen en nada a su causa: sin la bi
 
 **Radarr, Prowlarr y Bazarr salen de fábrica sin contraseña.** Vienen con `authenticationMethod: none`, y Caddy tampoco les pone la suya porque se asume que traen login propio. El resultado es que quedan abiertos en la red. El instalador les configura autenticación por formulario.
 
-**qBittorrent viene apuntando a `/downloads`, que en este stack no existe.** El DAS se monta en `/data`, en los siete contenedores del stack. Si no se corrige, las descargas caen adentro del contenedor y encima se pierde el hardlink con la biblioteca, así que cada película termina ocupando el doble.
+**qBittorrent viene apuntando a `/downloads`, que en este stack no existe.** El DAS se monta en `/data` en Radarr, Sonarr y Bazarr (qBittorrent solo ve `/data/downloads`). Si no se corrige, las descargas caen adentro del contenedor y encima se pierde el hardlink con la biblioteca, así que cada película termina ocupando el doble.
 
 **qBittorrent no acepta contraseñas de menos de 6 caracteres.** Contesta `400` con el motivo en el cuerpo, y si no se lee ese cuerpo el fallo parece un éxito. Peor: la contraseña queda sin cambiar y después Radarr no se puede conectar, así que un error silencioso se convierte en dos.
 
@@ -426,7 +464,7 @@ Los demás rompen cosas que después no se parecen en nada a su causa: sin la bi
 
 **Jellyfin se configura entero por sus endpoints `/Startup`**, que no piden autenticación mientras el asistente esté sin terminar. Después de cerrarlo hay que autenticarse para todo lo demás.
 
-**La Pi 5 decodifica por hardware pero no codifica.** Al activar VAAPI hay que dejar la codificación por hardware apagada, o cada transcodificación falla.
+**La Pi 5 decodifica por hardware pero no codifica, y un Intel sí.** Por eso el instalador no supone nada: le pregunta al chip con `vainfo` qué decodifica (y activa solo esos códecs, con HEVC de 10 bits si lo hace), si codifica y si hay OpenCL para el tone mapping del HDR. En una Pi 5 la codificación queda apagada, porque encenderla hace fallar cada transcodificación; en una máquina con Quick Sync queda prendida. Y se vuelve a ajustar en cada corrida, así una instalación vieja se corrige sola.
 
 **Jellyfin necesita las dos bibliotecas, no una.** Con solo la de Películas, Seerr no puede marcar las series como disponibles y te las ofrece para pedir aunque ya las tengas bajadas.
 

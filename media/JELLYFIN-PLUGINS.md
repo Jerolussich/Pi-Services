@@ -12,6 +12,8 @@ La lista no está escrita en el instalador: le pregunta al propio Jellyfin qué 
 
 Los que ofrece: **DLNA** (para teles sin app de Jellyfin), **Playback Reporting**, **TMDb Box Sets**, **Subtitle Extract**, **Transcode Killer**, **Reports**, **Webhook**, **Trakt**, **Session Cleaner** y **Open Subtitles**. La selección vive en [`lib/jellyfin_plugins.sh`](../lib/jellyfin_plugins.sh).
 
+Una vez instalados, **los plugins se actualizan solos**, y cuando lo hacen piden reiniciar Jellyfin para tomar efecto: hasta que lo reinicies sigue andando la versión de antes. Es lo que pasó al saltar a Jellyfin 12 (ver [README.md](README.md#jellyfin-12-lo-que-cambió-y-lo-que-se-rompió)).
+
 **Lo que el instalador no hace es agregar repositorios externos**, y es a propósito. Los manifiestos de la comunidad se mudan: el de Intro Skipper, sin ir más lejos, hoy redirige a una página de GitHub y ya no sirve JSON. Un repositorio muerto clavado en el instalador falla en silencio y no hay forma de que te enteres. Por eso los de acá abajo siguen siendo a mano.
 
 ---

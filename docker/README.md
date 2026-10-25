@@ -7,7 +7,7 @@ sudo cp docker/daemon.json /etc/docker/daemon.json
 sudo systemctl restart docker
 ```
 
-El instalador lo hace solo.
+**El instalador no lo hace**: hay que copiarlo a mano, una vez por máquina. Es fácil que se pase por alto justamente porque el resto del repo se configura solo.
 
 ---
 
@@ -26,7 +26,7 @@ Y una tarjeta llena no es solo un inconveniente. Cuando el disco se acaba, las b
 | `max-size` | `5m` | cada archivo de log llega a 5 MB y rota |
 | `max-file` | `3` | se guardan 3, o sea 15 MB de historia por contenedor |
 
-Con 21 contenedores, el techo total son unos **315 MB**. Suficiente historia para diagnosticar cualquier cosa, y un límite que no puede sorprenderte.
+Con 24 contenedores, el techo total son unos **360 MB**. Suficiente historia para diagnosticar cualquier cosa, y un límite que no puede sorprenderte.
 
 ## Un detalle que hace tropezar
 
@@ -46,7 +46,7 @@ docker inspect <contenedor> -f '{{.HostConfig.LogConfig}}'
 
 ## El otro que crece
 
-El journal de systemd también acumula, y ahí van los errores del kernel. Está limitado en `/etc/systemd/journald.conf`:
+El journal de systemd también acumula, y ahí van los errores del kernel. Conviene limitarlo en `/etc/systemd/journald.conf` (esto tampoco lo hace el instalador, se pone a mano):
 
 ```
 SystemMaxUse=100M

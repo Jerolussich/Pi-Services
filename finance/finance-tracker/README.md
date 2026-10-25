@@ -7,6 +7,13 @@ Tracks movements across bank accounts from two sources:
 
 All movements land in the same SQLite table, are categorized, and are visualized in Grafana.
 
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="../../docs/img/finanzas-ui.png" alt="La UI web (finance.pi), con datos de ejemplo" width="100%"><br><sub>La UI web (finance.pi), con datos de ejemplo</sub></td>
+    <td width="50%" align="center"><img src="../../docs/img/grafana-finanzas.png" alt="El tablero de Grafana, con datos de ejemplo" width="100%"><br><sub>El tablero de Grafana, con datos de ejemplo</sub></td>
+  </tr>
+</table>
+
 ---
 
 ## Architecture
@@ -65,8 +72,10 @@ monitoring/
     │   └── finance/
     │       └── finance_dashboard.json
     └── provisioning/
-        └── dashboards/
-            └── fitbit.yaml
+        ├── dashboards/
+        │   └── dashboards.yaml
+        └── datasources/
+            └── datasources.yaml   ← the Finance SQLite datasource, with a fixed UID
 ```
 
 ---
@@ -153,6 +162,12 @@ docker compose up -d --build itau-email-tracker finance-tracker-ui
 docker exec -it itau-email-tracker python /app/auth.py
 ```
 
+**Known problem:** the tracker image does not contain `auth.py` (`tracker/Dockerfile` only copies `fetch.py`), so the command above fails with `No such file`. Until the Dockerfile copies it, run it by mounting the file from the repo into a one-off container (not tested on this machine):
+
+```bash
+docker compose run --rm -v "$PWD/finance/finance-tracker/tracker/auth.py:/app/auth.py:ro" itau-email-tracker python /app/auth.py
+```
+
 Open the printed URL, enter the code, sign in with your Hotmail account. `data/token.json` is saved automatically.
 
 ### 7. Run first fetch
@@ -161,16 +176,9 @@ Open the printed URL, enter the code, sign in with your Hotmail account. `data/t
 docker exec itau-email-tracker python /app/fetch.py
 ```
 
-### 8. Configure Grafana SQLite datasource
+### 8. Grafana datasource
 
-1. In Grafana go to **Connections → Data sources → Add data source → SQLite**
-2. Path: `///var/finance/finance.db`
-3. **Save & test** — note the datasource UID from the browser URL
-4. Update dashboard JSON:
-   ```bash
-   sed -i 's/finance-sqlite/your_uid_here/g' monitoring/grafana/dashboards/finance/finance_dashboard.json
-   docker compose restart grafana
-   ```
+Nothing to do: the `Finance` SQLite datasource (path `///var/finance/finance.db`) is provisioned from `monitoring/grafana/provisioning/datasources/datasources.yaml`, with the fixed UID the dashboard JSON refers to. Don't create one by hand: a second datasource with another UID leaves the dashboard empty.
 
 ---
 
@@ -310,7 +318,7 @@ Queries filter by `direction = 'debit'` for expense charts and `direction = 'cre
 | `400 Bad Request` on device code | Enable **Allow public client flows** in Azure → Authentication |
 | `Token refresh failed: 400` | Use `"tenant_id": "consumers"` in `config.json` |
 | `card:None` in logs | Rebuild after regex fix |
-| Token expired after 90 days | Re-run `docker exec -it itau-email-tracker python /app/auth.py` |
-| Dashboard shows no data | Verify datasource UID matches — update with `sed` |
+| Token expired after 90 days | Re-run the authorization (see step 6: `auth.py` is not inside the image, so mount it) |
+| Dashboard shows no data | A hand-made datasource with another UID is shadowing the provisioned one — delete it |
 | UI returns 400 on form submit | CSRF token missing — browser submits automatically, curl requires session cookie |
 | UI returns 429 | Rate limit hit — wait 1 minute |

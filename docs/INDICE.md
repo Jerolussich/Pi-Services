@@ -31,7 +31,7 @@ Si preferís entender antes de ejecutar, o hacerlo a mano:
 | Configurar cada servicio | el README de cada uno, abajo |
 | Acceso remoto | [../TAILSCALE.md](../TAILSCALE.md) |
 | Que no se vuelva a romper | [MANTENIMIENTO.md](MANTENIMIENTO.md) |
-| Diagnosticar un problema | `./diagnostico.sh`, ver abajo |
+| Diagnosticar un problema | `pi estado`, explicado en [DIAGNOSTICO.md](DIAGNOSTICO.md) |
 | Respaldos y logs | la sección de acá abajo |
 
 ## El comando `pi`
@@ -56,6 +56,8 @@ No duplica lógica: resuelve dónde vive el repo, elige el script de siempre y l
 
 Lo instala el instalador como un enlace en `/usr/local/bin`, temprano en el flujo para que siga estando aunque la instalación se corte. Es un enlace y no una copia, así un `git pull` actualiza también el comando.
 
+Hay además tres subcomandos internos que no salen en `pi ayuda` porque no son para tipear: `pi renovar-https` (lo llama el timer `pi-cert`), `pi renovar-puerto` (lo llama `pi-upnp`) y `pi aplicar-red-torrent` (lo llama `pi-torrent-red` al arrancar). Son los únicos que cargan las librerías en vez de delegar en un script.
+
 ## Uso diario
 
 Después de un reinicio **no hay nada que hacer**: Pi-hole y Tailscale son servicios del sistema y arrancan solos, y los contenedores tienen `restart: unless-stopped`.
@@ -70,7 +72,7 @@ cd ~/pi-services && docker compose up -d
 
 ## Los servicios
 
-Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos al host, salvo el de torrenting de qBittorrent, que viene cerrado (ver [TORRENTS.md](TORRENTS.md)).
+Todo entra por Caddy en `http://<nombre>.pi` (puertos 80 y 443). Las únicas excepciones son Jellyfin (8096 y 7359/udp) y Seerr (5055), que tienen login propio y se publican porque las apps de tele conectan por IP, y el puerto de torrents de qBittorrent, que viene cerrado (ver [TORRENTS.md](TORRENTS.md)). La tabla completa de puertos, en [ARQUITECTURA.md](ARQUITECTURA.md#los-puertos-publicados).
 
 ### Red y acceso
 
@@ -126,6 +128,7 @@ Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos
 | Servicio | Qué hace | Documentación |
 |---|---|---|
 | Ofelia | Programador de tareas de todos los contenedores | [../ofelia/README.md](../ofelia/README.md) |
+| FlareSolverr | Resuelve el Cloudflare de los indexers que lo usan. Solo le habla Prowlarr, sin interfaz | [../media/README.md](../media/README.md) |
 | Node Exporter | Métricas del sistema para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
 | Pi-hole Exporter | Métricas de Pi-hole para Prometheus | [../monitoring/README.md](../monitoring/README.md) |
 
@@ -146,21 +149,21 @@ Todo se puede usar desde el navegador, pero para el día a día conviene tener l
 ./movil.sh --todo    # todos los datos de una, sin preguntar
 ```
 
-Te ofrece solo las apps que sirven para lo que tenés **corriendo**, te dice para qué sirve cada una y, si la querés, te muestra los datos ya resueltos: la clave de Radarr sale de su XML, la de Bazarr de su YAML, la de Seerr de su JSON, la de Pi-hole del `.env` de monitoring. Nunca se copian a ningún lado, se leen en el momento.
+Te ofrece solo las apps que sirven para lo que tenés **corriendo**, te dice para qué sirve cada una y, si la querés, te muestra los datos ya resueltos: la clave de Radarr sale de su XML, la de Bazarr de su YAML, la de Seerr de su JSON, la de Pi-hole del `.env` de monitoring. Nunca se copian a ningún lado, se leen en el momento. Las ocho apps que conoce: la homepage como app, Home Assistant, Jellyfin, ntfy, Helmarr (solo iOS), Pi-hole Remote (solo iOS), Wallabag y un lector de RSS para FreshRSS.
 
 Después pregunta si te quedó funcionando y lo anota con la fecha en `datos/movil-estado`. Con eso la próxima corrida no te vuelve a ofrecer lo que ya tenés andando, y lo que quedó a medias se vuelve a ofrecer solo. Si insistís con una que figura como lista, te dice de cuándo es esa anotación.
 
 El instalador ofrece esto mismo al terminar, justo después de decirte las direcciones de cada servicio.
 
-**Siempre el nombre, nunca la IP con el puerto.** Las direcciones que te da van por Caddy, en el puerto 80 y con el nombre `.pi`. La IP con el puerto interno es lo que dice cualquier tutorial de internet y lo que **no** funciona acá: esos puertos están cerrados a la red de casa a propósito, y el síntoma de equivocarse es un tiempo de espera agotado que parece culpa de la app.
+**Siempre el nombre, nunca la IP con el puerto.** Las direcciones que te da van por Caddy, en el puerto 80 y con el nombre `.pi`. La IP con el puerto interno es lo que dice cualquier tutorial de internet y lo que **no** funciona acá: esos puertos están cerrados a la red de casa a propósito, y el síntoma de equivocarse es un tiempo de espera agotado que parece culpa de la app. Las excepciones son Jellyfin (`IP:8096`) y Seerr (`IP:5055`), que sí se publican para las apps de tele.
 
 ---
 
 ## Lo que corre solo
 
-Cinco cosas pasan sin que las pidas (seis, si elegís UPnP para el puerto de torrents). Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
+Hay varias cosas que pasan sin que las pidas, y están acá porque son justamente las que uno olvida que existen hasta que las necesita. Unas corren siempre (el diagnóstico cada hora, el feed y el respaldo), otras dependen de lo que hayas elegido (los avisos al celular, el certificado HTTPS, el permiso UPnP) y hay una tarea de arranque que no es periódica (`pi-torrent-red`).
 
-Todas las instala y las programa el instalador. Los horarios salen de [`ajustes.conf`](../ajustes.conf), un solo archivo, y no de las unidades de systemd.
+Las instala y las programa el instalador, salvo el límite a los logs de Docker, que hoy hay que poner a mano (ver más abajo). Los horarios salen de [`ajustes.conf`](../ajustes.conf), un solo archivo, y no de las unidades de systemd. Los timers son `pi-estado`, `pi-respaldo`, `pi-media` (solo con avisos), `pi-cert` (solo con HTTPS) y `pi-upnp` (solo con UPnP); se ven con `systemctl list-timers 'pi-*'`.
 
 ### Avisos al celular
 
@@ -190,7 +193,7 @@ No hay ningún servicio detrás: Caddy sirve una página estática y un archivo 
 | Cuándo | todos los días a las **04:00** |
 | Quién lo dispara | el timer `pi-respaldo` ([`systemd/`](../systemd/)) |
 | Dónde deja el archivo | **`~/respaldos`** en la Pi, guarda los últimos 7 |
-| Cuánto pesa | poco más de 1 MB cada uno |
+| Cuánto pesa | unos pocos megas como mucho |
 
 Guarda lo irrecuperable y nada más: los `.env` con contraseñas y claves, los tokens de OAuth, y las bases de datos de cada servicio, incluidas las que viven dentro de los volúmenes de Docker.
 
@@ -224,11 +227,15 @@ Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuand
 
 Solo si elegiste abrir el puerto de torrents por UPnP. `pi-upnp.timer` le renueva al router el permiso del puerto 6881 cada media hora (el permiso dura una). Si elegís cerrado u otra opción, el instalador lo desactiva. Ver [TORRENTS.md](TORRENTS.md).
 
-### Límite a los logs
+### Aislamiento de qBittorrent al arrancar
+
+Las reglas de iptables que le cierran a qBittorrent el acceso a la red local no sobreviven a un reinicio. `pi-torrent-red.service` las vuelve a poner en cada arranque, **después** de Docker (antes la cadena `DOCKER-USER` no existe), y se repite sola si Docker se reinicia. No tiene horario: es una tarea de arranque. Ver [TORRENTS.md](TORRENTS.md).
+
+### Límite a los logs (se aplica a mano)
 
 Docker guarda los logs de cada contenedor **sin ningún límite de fábrica**. Un contenedor en bucle de reinicio puede escribir toda la noche y llenar el disco, y un disco lleno corrompe bases de datos al escribir.
 
-Está acotado en [`docker/daemon.json`](../docker/daemon.json): 5 MB por archivo, 3 archivos, o sea 15 MB por contenedor y unos 315 MB de techo entre todos. El journal de systemd tiene su propio tope de 100 MB.
+El límite está escrito en [`docker/daemon.json`](../docker/daemon.json): 5 MB por archivo, 3 archivos, o sea 15 MB por contenedor y unos 360 MB de techo entre los 24. **Pero el instalador no lo copia**: hay que ponerlo a mano (`sudo cp docker/daemon.json /etc/docker/daemon.json && sudo systemctl restart docker`) y recrear los contenedores para que lo tomen. Lo mismo el tope de 100 MB del journal de systemd, que se configura en `/etc/systemd/journald.conf` y tampoco lo hace el instalador.
 
 El porqué y los detalles, en [../docker/README.md](../docker/README.md).
 
@@ -243,7 +250,8 @@ journalctl --disk-usage              # y el journal
 
 ### Operación
 
-- [OPERACION.md](OPERACION.md): levantar, bajar, actualizar, ver logs, backups
+- [OPERACION.md](OPERACION.md): levantar, bajar, actualizar (y qué versión corre cada cosa), ver logs, backups
+- [DIAGNOSTICO.md](DIAGNOSTICO.md): qué revisa `pi estado`, qué arregla, y cómo se calcula el score
 - [ARQUITECTURA.md](ARQUITECTURA.md): cómo encaja todo, decisiones de diseño y por qué
 - [AVISOS.md](AVISOS.md): notificaciones al celular, feed de eventos, métricas propias y el score de salud
 
@@ -290,8 +298,12 @@ pi-services/
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
 ├── lib/torrents.sh            ← el puerto de torrents: red aparte, firewall, UPnP y `pi puerto`
+├── lib/indexers.sh            ← los indexers de Prowlarr que el instalador ofrece, explicados
+├── lib/subtitulos.sh          ← los proveedores de subtitulos de Bazarr que el instalador ofrece
+├── motd/                      ← el aviso al entrar por SSH, si hay algo mal
 ├── systemd/                   ← los timers y tareas de arranque (pi-upnp solo si elegís UPnP; pi-torrent-red aísla a qBittorrent), que instala el instalador
-├── docker/                    ← daemon.json, el limite a los logs
+├── docker/                    ← daemon.json, el limite a los logs (se aplica a mano)
+├── datos/                     ← se genera sola, no se versiona: feed, estado de los avisos, metricas lentas
 │
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio

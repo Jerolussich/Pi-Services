@@ -30,7 +30,7 @@ Cada hallazgo del diagnóstico sale por cuatro lados, desde un solo punto del c�
 
 El punto es `bien` / `ojo` / `mal` en [`diagnostico.sh`](../diagnostico.sh), que son las tres funciones por donde pasa **todo**. Agregar un chequeo nuevo no obliga a acordarse de la métrica ni del aviso: salen solos.
 
-Las funciones viven en [`lib/avisos.sh`](../lib/avisos.sh), aparte de `lib/comun.sh`, porque `respaldo.sh` también necesita avisar y no tiene por qué cargar 2600 líneas para mandar una notificación.
+Las funciones viven en [`lib/avisos.sh`](../lib/avisos.sh), aparte de `lib/comun.sh`, porque `respaldo.sh` también necesita avisar y no tiene por qué cargar casi 4000 líneas para mandar una notificación.
 
 ---
 
@@ -189,8 +189,10 @@ Solo lo que node-exporter **no puede saber solo**. El espacio del DAS, la CPU, l
 | `pi_salud`, `pi_problemas` | CPU, RAM |
 | `pi_voltaje_ok`, `pi_fs_errores` | temperatura de la Pi |
 | `pi_smart_*` | tráfico de red por interfaz |
-| `pi_red_latencia_ms`, `pi_red_perdida_pct` | uptime |
-| `pi_huerfanos_bytes`, `pi_biblioteca_bytes` | |
+| `pi_red_ok`, `pi_red_latencia_ms`, `pi_red_perdida_pct` | uptime |
+| `pi_huerfanos_bytes`, `pi_huerfanos_archivos`, `pi_biblioteca_bytes` | |
+| `pi_biblioteca_faltantes`, `pi_series_sin_carpeta` | |
+| `pi_avisos_ok`, `pi_feed_lineas` | |
 
 ### Tres detalles que se pagan caro
 
@@ -223,9 +225,9 @@ No es un promedio de categorías, y eso es lo único que importa del diseño. Se
 | Qué se rompió | Castigo (`mal`) | (`ojo`) |
 |---|---|---|
 | Podés perder datos: voltaje, disco lleno, SMART, respaldo, DAS | **40** | 10 |
-| Se cayó algo que usás: Pi-hole, Caddy, Jellyfin, internet | **15** | 5 |
+| Se cayó algo que usás: Pi-hole, Caddy, Jellyfin, la homepage, internet | **15** | 5 |
 | Algo degradado: token vencido, un 502, reinicios en bucle | **8** | 4 |
-| Configuración floja: log2ram, fsck, firewall, feed, ganchos | **3** | 3 |
+| Configuración floja: log2ram, fsck, firewall, Tailscale, canales, feed, ganchos | **3** | 3 |
 
 Verde de 90 para arriba, ámbar hasta 70, rojo abajo.
 
@@ -280,15 +282,17 @@ En [`ajustes.conf`](../ajustes.conf), un solo archivo, y sin tocar código:
 ```
  discos          cada 48 h, preferentemente a las 04
  espacio         cada 48 h
+ biblioteca      cada 48 h, preferentemente a las 05
  respaldo        todos los dias a las 04
  silencio        de 00 a 08 (solo pasa lo grave)
- agrupar media   5 min
+ media           el timer corre cada 5 min y espera 3 min sin
+                 importaciones nuevas para dar la tanda por cerrada
  umbrales        disco, temperatura, latencia, perdida, huerfanos
 ```
 
 Los horarios de los timers de systemd **salen de ahí**: el instalador los escribe con esos valores en vez de que estén escritos a mano en dos lugares. Es el mismo principio que los registros DNS del Caddyfile.
 
-Si cambiás un horario, volvé a correr `./instalador.sh`. Si cambiás un umbral o una cadencia de las de adentro del diagnóstico, vale en la corrida siguiente sin hacer nada.
+Si cambiás un horario de los de systemd (diagnóstico, respaldo, media), volvé a correr `./instalador.sh`. Si cambiás un umbral o una cadencia de las de adentro del diagnóstico, vale en la corrida siguiente sin hacer nada.
 
 ---
 

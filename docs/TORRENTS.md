@@ -2,6 +2,11 @@
 
 qBittorrent es el único programa de este stack que habla con desconocidos, y por eso es el único con un puerto propio y el único que está encerrado a propósito. Este documento explica qué decisión tenés que tomar, qué cambia en cada caso, qué deja hecho el instalador pase lo que pase y qué riesgos quedan.
 
+<p align="center">
+  <img src="img/instalador-puerto.png" alt="Lo que el instalador explica antes de preguntar si abrir el puerto" width="80%">
+  <br><sub>Lo que el instalador explica antes de preguntar si abrir el puerto</sub>
+</p>
+
 ---
 
 ## La decisión: ¿abrir el puerto o no?
@@ -47,8 +52,10 @@ El instalador lo explica en pantalla antes de preguntar. Si apretás Enter, qued
 UPnP es un protocolo con el que un aparato de la red le pide al router "abrime este puerto hacia mí". El router crea la regla sin que nadie entre a su panel.
 
 - **Ventaja:** no tocás el router.
+- **Instala `miniupnpc`** en el host, el programa (`upnpc`) que habla UPnP con el router, la primera vez que lo necesita.
 - **Implicancia:** cualquier aparato de tu red puede pedirle lo mismo al router, no solo esta máquina. Una cámara, una tele o un programa infectado podrían abrir puertos hacia adentro sin que te enteres. Es la razón por la que muchos lo apagan.
 - **Qué hace este repo:** pide solo el puerto 6881 (TCP y UDP), con una concesión de una hora, y un timer (`pi-upnp.timer`) la renueva cada media hora. Si cambiás a cerrado, el instalador borra la regla; si se apaga la mini PC, la regla vence sola a la hora.
+- **Por qué el timer tiene tres disparadores.** `OnBootSec=2min` (a los dos minutos de prender, para que la red esté arriba), `OnUnitActiveSec=30min` (cada media hora después de la última corrida) y `OnActiveSec=1min`. Este último existe por un caso que se vio en la mini PC: si el temporizador se prende cuando la máquina ya lleva más de dos minutos andando (lo normal al elegir UPnP desde `pi puerto`), `OnBootSec` ya pasó y `OnUnitActiveSec` no tiene de dónde contar, porque el servicio todavía no corrió nunca. El temporizador quedaba en estado *elapsed* sin disparar jamás, nadie renovaba el permiso, y a la hora el router cerraba el puerto sin avisar. Con `OnActiveSec=1min` corre al minuto de activarse y de ahí en más se sostiene solo.
 - **Lo que UPnP no puede hacer:** no toca la configuración de esta máquina. Solo habla con el router.
 - **Un aparato solo puede abrir puertos hacia sí mismo.** Se comprobó en el router de esta casa: pedirle que reenvíe un puerto hacia *otra* IP de la red da `718 ConflictInMappingEntry`. Atenúa el riesgo de arriba: una cámara infectada puede abrirse puertos a sí misma, pero no apuntarlos a tu mini PC ni a otro aparato.
 - **Una regla de firewall más, solo con UPnP.** El router contesta el descubrimiento con un paquete UDP desde su puerto 1900, y UFW lo tira porque la pregunta salió a una dirección multicast: sin esto el programa dice «No IGD UPnP Device found» aunque el router responda. El instalador agrega `ufw allow in proto udp from <router> port 1900` (con el comentario `pi-upnp: respuestas del router`), que admite solo UDP, solo del router, solo de su puerto 1900. Se borra sola al volver a cerrar el puerto.
@@ -111,7 +118,7 @@ Si la carpeta no existe cuando Docker la necesita, la crearía Docker como root 
 
 ### 5. No llega a la red local
 
-Lo medido antes de arreglarlo, desde adentro del contenedor: el panel del router contestaba, los puertos que Docker publica en la mini PC (80, 5055 y 8096) contestaban, y cualquier aparato de la LAN era alcanzable.
+Lo medido antes de arreglarlo, desde adentro del contenedor: el panel del router contestaba, los puertos que Docker publica en la mini PC (80, 5055 y 8096) contestaban, y cualquier aparato de la LAN era alcanzable. Hoy Docker publica además el 443 (Caddy) y el 7359/udp (el descubrimiento de Jellyfin): los cubre la misma regla, que rechaza todo lo que va a rangos privados, aunque no se midieron por separado.
 
 Docker deja la cadena `DOCKER-USER` de iptables para esto: se consulta antes que sus propias reglas y Docker no la pisa. El instalador cuelga ahí una cadena propia, `PI-TORRENT`, que solo mira lo que **sale** de la red de torrents:
 
@@ -131,7 +138,7 @@ Con una cadena propia se puede rearmar entera de forma idempotente sin tocar lo 
 
 ### 6. Un tope a la subida
 
-Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexión, le saca el ancho a Jellyfin desde afuera y a todo lo demás de la casa. Viene en **2 MiB/s** (unos 16 Mbit/s), configurable con `QBIT_LIMITE_SUBIDA` en `media/.env` (en KiB/s; `0` = sin tope). Se aplica al instalar, con `pi puerto` y con `--arreglar`, y se lee de vuelta: qBittorrent ignora en silencio las preferencias que no conoce, y un tope que no se aplicó es peor que no tenerlo.
+Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexión, le saca el ancho a Jellyfin desde afuera y a todo lo demás de la casa. Viene en **2 MiB/s** (unos 16 Mbit/s), configurable con `QBIT_LIMITE_SUBIDA` en `media/.env` (en KiB/s; `0` = sin tope). Se aplica cuando corre el instalador y cuando cambiás el estado del puerto desde `pi puerto` (si contestás que sí a cambiarlo), y se lee de vuelta: qBittorrent ignora en silencio las preferencias que no conoce, y un tope que no se aplicó es peor que no tenerlo. Ojo con dos límites: `pi puerto` a secas solo **muestra** el valor configurado, no lo aplica, y `--arreglar` tampoco lo repone ni el diagnóstico lo verifica. Si cambiás la variable, para que valga hay que volver a correr el instalador o pasar por `pi puerto` y aceptar el cambio.
 
 ### 7. El puerto se publica solo donde corresponde
 
@@ -178,6 +185,9 @@ Puerto de torrents  (6881)
   Aislamiento de qBittorrent:
   ✓ red aparte (pi-torrent)
   ✓ sin forma de ganar privilegios
+  ✓ solo ve las descargas, no la biblioteca
+  ✓ no llega al router ni a la red local
+     tope de subida: 2 MiB/s  (QBIT_LIMITE_SUBIDA en media/.env, 0 = sin tope)
   ✓ el firewall le bloquea el acceso a esta máquina
 ```
 
@@ -185,7 +195,7 @@ La comprobación "desde internet" se hace con un servicio externo (`ifconfig.co`
 
 ### Qué revisa el diagnóstico
 
-`./diagnostico.sh` (o `pi estado`) verifica, dentro del bloque de multimedia, que qBittorrent esté en su red, que no pueda ganar privilegios, que la regla de UFW exista y en qué estado está el puerto. Si falta el aislamiento ofrece repararlo con `./diagnostico.sh --arreglar` (`rep_aislar_torrents`).
+`./diagnostico.sh` (o `pi estado`) verifica, dentro del bloque de multimedia, que qBittorrent esté en su red, que no pueda ganar privilegios, que la regla de UFW exista, que las reglas de iptables que le cierran la red local estén puestas, que monte solo la carpeta de descargas y en qué estado está el puerto (cerrado, abierto y visible, o abierto y no visible). Si falta el aislamiento ofrece repararlo con `./diagnostico.sh --arreglar` (`rep_aislar_torrents`). No verifica el tope de subida.
 
 ---
 

@@ -88,7 +88,7 @@ cp news/news-filter/.env.example news/news-filter/.env
 cp news/news-filter/ui/.env.example news/news-filter/ui/.env
 ```
 
-**`news/wallabag/.env`**
+**`news/wallabag/.env`** (hoy no se usa ninguna variable; el compose fija el dominio en `http://wallabag.pi`)
 ```
 PI_IP=your_pi_ip
 ```

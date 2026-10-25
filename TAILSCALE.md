@@ -45,7 +45,7 @@ Dos aclaraciones sobre esos parámetros:
 
 ## Pi-hole desde afuera
 
-Una vez aprobada la ruta, en la consola de Tailscale poné el Pi como **nameserver global** con su IP `192.168.68.66`. Con eso tenés el bloqueo de publicidad de Pi-hole en el celular estando en la calle, sin VPN aparte.
+Una vez aprobada la ruta, en la consola de Tailscale poné el Pi como **nameserver global** con su IP `192.168.68.66` (en DNS, *Add nameserver*, *Custom*) y activá **Override DNS servers**: sin ese tercer paso el celular no usa Pi-hole cuando está fuera de casa. Con eso tenés el bloqueo de publicidad de Pi-hole en el celular estando en la calle, sin VPN aparte.
 
 ### El paso que falta, y que no da ningún error
 
