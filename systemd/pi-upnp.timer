@@ -7,8 +7,14 @@ Description=Renovacion del permiso UPnP del puerto de torrents
 # que se cierre el puerto.
 OnBootSec=2min
 OnUnitActiveSec=30min
-# Si la maquina estaba apagada, renueva al prender.
-Persistent=true
+# Un minuto despues de que el propio temporizador se active. Hace falta por un
+# caso que se vio en la mini PC: si el temporizador se prende cuando la maquina
+# ya lleva mas de dos minutos andando (el caso normal al elegir UPnP desde
+# `pi puerto`), OnBootSec ya paso y OnUnitActiveSec no tiene de donde contar
+# porque el servicio todavia no corrio nunca. El temporizador queda "elapsed"
+# sin disparar jamas, nadie renueva el permiso, y a la hora el router cierra el
+# puerto sin avisar.
+OnActiveSec=1min
 
 [Install]
 WantedBy=timers.target
