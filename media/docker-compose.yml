@@ -188,7 +188,7 @@ services:
   # sin error, pero quedo congelada en agosto de 2025: no falla, simplemente te
   # deja un ano atras. La vigente es esta.
   seerr:
-    image: ghcr.io/seerr-team/seerr:v3.4.1
+    image: ghcr.io/seerr-team/seerr:v3.5.1
     container_name: seerr
     # Segunda excepcion a "todo entra por Caddy", igual que Jellyfin: las apps de
     # tele (Seerr en Android TV) no usan Pi-hole como DNS, asi que no resuelven

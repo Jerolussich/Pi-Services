@@ -28,16 +28,31 @@
         href: http://jellyfin.pi
         description: Reproducir peliculas y series
         siteMonitor: http://jellyfin:8096
-        # El recuadro estaba apagado y solo se veia el puntito de "esta vivo".
-        # Con la clave, muestra quien esta reproduciendo ahora y el tamano de
-        # la biblioteca, que es lo que se queria de la pantalla de media.
+        # El recuadro nativo de la homepage (type: jellyfin) dejo de andar con
+        # Jellyfin 12: le pega a /emby/Sessions con la clave en la URL, y las
+        # dos cosas se sacaron. Contesta 404 y el recuadro muestra "API Error",
+        # sin decir que el problema es la version. La homepage 2.7.0 todavia no
+        # lo arreglo (gethomepage/homepage#7113 se cerro sin resolverlo).
+        #
+        # Mientras tanto se le pregunta directo con customapi, con el formato
+        # nuevo de autenticacion. Muestra el tamano de la biblioteca; se pierde
+        # el "quien esta reproduciendo ahora", que el recuadro nativo si traia.
         # La clave la crea y la escribe el instalador: nunca pasa por tus manos.
         widget:
-          type: jellyfin
-          url: http://jellyfin:8096
-          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
-          enableBlocks: true
-          enableNowPlaying: true
+          type: customapi
+          url: http://jellyfin:8096/Items/Counts
+          headers:
+            Authorization: 'MediaBrowser Token="{{HOMEPAGE_VAR_JELLYFIN_KEY}}"'
+          mappings:
+            - field: MovieCount
+              label: Peliculas
+              format: number
+            - field: SeriesCount
+              label: Series
+              format: number
+            - field: EpisodeCount
+              label: Episodios
+              format: number
     - Seerr:
         icon: jellyseerr.png
         href: http://seerr.pi
