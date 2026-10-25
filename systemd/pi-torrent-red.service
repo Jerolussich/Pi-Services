@@ -1,0 +1,27 @@
+[Unit]
+# Cierra el acceso de qBittorrent a la red local.
+#
+# Las reglas de iptables no sobreviven a un reinicio, y Docker puede rearmar
+# sus cadenas cuando arranca. Esto las vuelve a poner cada vez, DESPUES de
+# Docker: sin ese orden la cadena DOCKER-USER todavia no existe y la regla no
+# tiene donde colgarse.
+#
+# PartOf hace que se repita solo si Docker se reinicia, que es justo cuando
+# podria haberlas perdido.
+#
+# __REPO__ y __USUARIO__ los reemplaza el instalador. No se copia a mano.
+Description=Aislar qBittorrent de la red local
+Documentation=file:__REPO__/docs/TORRENTS.md
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=__USUARIO__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/pi aplicar-red-torrent
+
+[Install]
+WantedBy=multi-user.target

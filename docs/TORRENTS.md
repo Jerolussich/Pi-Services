@@ -101,7 +101,39 @@ ufw insert 1 deny from <subred de pi-torrent> to any comment 'pi-torrent: qBitto
 
 Con eso qBittorrent no llega al SSH, a Home Assistant ni a Pi-hole de esta máquina. La subred se lee de Docker, no se fija a mano, y la regla se verifica leyéndola de vuelta.
 
-### 4. El puerto se publica solo donde corresponde
+### 4. Solo ve la carpeta de descargas
+
+Radarr y Sonarr montan el disco entero (`/data`), porque los hardlinks entre descargas y biblioteca solo funcionan bajo un mismo montaje. qBittorrent no lo necesita: solo escribe en `/data/downloads`, y es lo único que monta (`${DAS_ROOT}/downloads:/data/downloads`). La ruta de adentro es la misma que ven Radarr y Sonarr, así que no hace falta ningún mapeo de rutas y los hardlinks los siguen haciendo ellos.
+
+Efecto: una intrusión en qBittorrent puede estropear lo que se está bajando, pero no toca la biblioteca ni nada más del disco. Se comprobó desde adentro del contenedor: `/data` contiene solo `downloads`, y escribe ahí con el usuario de la aplicación.
+
+Si la carpeta no existe cuando Docker la necesita, la crearía Docker como root y qBittorrent no podría escribir; por eso el instalador la prepara antes de levantar (`torrent_preparar_descargas`).
+
+### 5. No llega a la red local
+
+Lo medido antes de arreglarlo, desde adentro del contenedor: el panel del router contestaba, los puertos que Docker publica en la mini PC (80, 5055 y 8096) contestaban, y cualquier aparato de la LAN era alcanzable.
+
+Docker deja la cadena `DOCKER-USER` de iptables para esto: se consulta antes que sus propias reglas y Docker no la pisa. El instalador cuelga ahí una cadena propia, `PI-TORRENT`, que solo mira lo que **sale** de la red de torrents:
+
+1. lo que es respuesta a algo ya abierto **pasa** (si no, las conexiones entrantes de otros pares se cortarían a la mitad);
+2. lo que va a la propia red de torrents **pasa** (Radarr, Sonarr, Caddy y la homepage);
+3. el DNS al router **pasa**, y nada más del router: es uno de los servidores de respaldo que usa Docker;
+4. lo que va a rangos privados se **rechaza**: tu red local (el router incluido), las otras redes de Docker (eso cubre los puertos que Docker publica), Tailscale (`100.64.0.0/10`) y `10/8`, `172.16/12`, `192.168/16`, `169.254/16` y multicast;
+5. todo lo demás, que es internet, **sale como siempre**.
+
+Con una cadena propia se puede rearmar entera de forma idempotente sin tocar lo que otro haya puesto en `DOCKER-USER`. La subred se lee de Docker, no se fija a mano.
+
+**Persistencia.** Las reglas de iptables no sobreviven a un reinicio. `pi-torrent-red.service` las vuelve a poner al arrancar, después de Docker (la cadena `DOCKER-USER` no existe antes), y se repite sola si Docker se reinicia (`PartOf=docker.service`). No tiene timer: es una tarea de arranque.
+
+**Qué se probó.** Antes y después, desde adentro del contenedor: el router y los puertos publicados dejaron de contestar; DNS, HTTP y HTTPS a internet siguen andando; Radarr y Sonarr siguen conectando con qBittorrent (el `test` del cliente de descargas da 200) y Caddy sigue sirviendo `qbit.pi`. Y lo más importante, que **las conexiones entrantes no se rompieron**: con el puerto publicado en la LAN (sin reenvío en el router), un handshake BitTorrent real mandado desde otra computadora llegó y qBittorrent contestó con el mismo infohash. Se perdieron las reglas a propósito para ver que el diagnóstico lo detecta, que `--arreglar` las repone y que `systemctl restart pi-torrent-red` también. No se probó reiniciar la máquina entera ni Docker.
+
+**Limitaciones.** Solo IPv4 (Docker no tiene IPv6 activado acá). Y qBittorrent ya no puede conectarse a otros pares que estén en tu red local: no hace falta, pero es un cambio de comportamiento.
+
+### 6. Un tope a la subida
+
+Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexión, le saca el ancho a Jellyfin desde afuera y a todo lo demás de la casa. Viene en **5 MiB/s** (unos 40 Mbit/s), configurable con `QBIT_LIMITE_SUBIDA` en `media/.env` (en KiB/s; `0` = sin tope). Se aplica al instalar, con `pi puerto` y con `--arreglar`, y se lee de vuelta: qBittorrent ignora en silencio las preferencias que no conoce, y un tope que no se aplicó es peor que no tenerlo.
+
+### 7. El puerto se publica solo donde corresponde
 
 `QBIT_ESCUCHA` en `media/.env` decide en qué interfaz escucha el puerto publicado:
 
@@ -118,8 +150,9 @@ La interfaz web de qBittorrent **nunca** se publica: va por Caddy en `http://qbi
 
 Esto es lo que este cambio **no** resuelve, para que no te quedes con una idea de más seguridad de la que hay:
 
-- **qBittorrent todavía llega a los puertos que Docker publica en esta máquina**: Caddy (80 y 443), Seerr (5055) y Jellyfin (8096). Docker publica esos puertos salteándose UFW, así que la regla de arriba no los cubre. Cerrarlo del todo requiere reglas en la cadena `DOCKER-USER` de iptables y no está implementado.
-- **Tampoco bloquea a los aparatos de tu red local.** Desde `pi-torrent` se sale a internet, y por esa misma salida se podría llegar a la tele, al router o a una cámara.
+- **Si alguien lograra ejecutar código en qBittorrent, todavía puede** estropear o borrar lo que hay en la carpeta de descargas (incluidos los torrents en curso) y usar tu conexión a internet para atacar a otros o sacar datos, subiendo hasta el tope.
+- **Los vecinos de su red siguen alcanzables**: Radarr y Sonarr (piden clave de API: devolvieron 401 sin ella), Caddy y la homepage (con la cabecera de host correcta, `casa.pi` se ve sin credenciales, igual que desde cualquier aparato de tu red).
+- **Una falla del kernel o de Docker** que saque a qBittorrent del contenedor no la frena nada de esto. No es privilegiado, tiene `no-new-privileges`, cinco capacidades y no tiene `docker.sock`, pero no hay defensa perfecta contra un escape de contenedor.
 - **Contenedores con privilegios que no tocó este cambio.** Hay otros con acceso a `docker.sock` o con permisos ampliados; no son alcanzables desde qBittorrent por red, pero un atacante que ya estuviera adentro de alguno de ellos es otro problema.
 
 El aislamiento convierte un compromiso total en uno mucho más acotado. No lo vuelve imposible.
@@ -172,13 +205,15 @@ La comprobación "desde internet" se hace con un servicio externo (`ifconfig.co`
 | `QBIT_TORRENT_PORT` | `media/.env` | `6881` | El puerto |
 | `QBIT_ESCUCHA` | `media/.env` | `127.0.0.1` / `0.0.0.0` | Quién puede alcanzar el puerto publicado |
 | `QBIT_UPNP` | `media/.env` | `0` / `1` | Si el timer pide el puerto al router por UPnP |
+| `QBIT_LIMITE_SUBIDA` | `media/.env` | KiB/s, `5120` por defecto | Tope de subida (`0` = sin tope) |
 | `QBIT_PUERTO_DECIDIDO` | `media/.env` | `1` | Marca que ya se eligió, para no volver a explicarlo |
 
 ## Archivos
 
 - [../lib/torrents.sh](../lib/torrents.sh): la lógica completa: redes, firewall, UPnP, asistente y `pi puerto`
 - [../systemd/pi-upnp.service](../systemd/pi-upnp.service) y [../systemd/pi-upnp.timer](../systemd/pi-upnp.timer): la renovación de la concesión de UPnP, activa solo si elegiste esa opción
-- [../media/docker-compose.yml](../media/docker-compose.yml): la red, los permisos y el puerto
+- [../systemd/pi-torrent-red.service](../systemd/pi-torrent-red.service): vuelve a poner las reglas de iptables al arrancar, después de Docker
+- [../media/docker-compose.yml](../media/docker-compose.yml): la red, los permisos, el montaje reducido y el puerto
 
 ## Qué se probó
 

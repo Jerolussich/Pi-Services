@@ -148,6 +148,13 @@ case "$sub" in
         source "$REPO/lib/comun.sh" >/dev/null 2>&1
         torrent_upnp_renovar
         ;;
+    # Interno: lo llama pi-torrent-red.service al arrancar, para volver a poner
+    # las reglas que cierran el acceso de qBittorrent a la red local.
+    aplicar-red-torrent)
+        # shellcheck source=lib/comun.sh
+        source "$REPO/lib/comun.sh" >/dev/null 2>&1
+        torrent_red_aplicar
+        ;;
     ayuda|help|-h|--help) ayuda ;;
     "")                   portada ;;
     *)

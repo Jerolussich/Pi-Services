@@ -494,6 +494,7 @@ valor_automatico() {
         # le pregunta a la persona (decidir_puerto_torrent), no un valor por defecto.
         QBIT_ESCUCHA)                  echo "127.0.0.1" ;;
         QBIT_UPNP)                     echo "0" ;;
+        QBIT_LIMITE_SUBIDA)            echo "5120" ;;
         DAS_ROOT)                      echo "/mnt/das" ;;
         *)                             echo "" ;;
     esac
@@ -1269,6 +1270,7 @@ levantar_modulo() {
     # Las redes tienen que existir ANTES de levantar nada: los composes las
     # declaran como externas. Ver asegurar_redes_docker.
     asegurar_redes_docker || return 1
+    [ "$mod" = "media" ] && torrent_preparar_descargas
 
     # Los que ya estan corriendo no se tocan
     local pendientes="" s

@@ -268,7 +268,9 @@ qBittorrent es el único servicio de este stack que habla con desconocidos, así
 
 - **Red aparte** (`pi-torrent`): no ve a los demás contenedores. Radarr, Sonarr, Caddy y la homepage están en las dos redes, porque son los que le hablan.
 - **Sin privilegios**: `no-new-privileges` y `cap_drop: ALL`, devolviéndole solo cinco capacidades (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`).
-- **Una regla de UFW** que le impide llegar al SSH, a Home Assistant y a Pi-hole de la mini PC.
+- **Solo la carpeta de descargas**: monta `/data/downloads`, no el disco entero como Radarr y Sonarr. Una intrusión no toca la biblioteca.
+- **Sin acceso a la red local**: una regla de UFW le impide llegar al SSH, a Home Assistant y a Pi-hole de la mini PC, y reglas de iptables (`DOCKER-USER`) le impiden llegar al router, a los aparatos de tu casa y a los puertos que Docker publica. Solo sale a internet.
+- **Un tope de subida** de 5 MiB/s (`QBIT_LIMITE_SUBIDA` en `media/.env`).
 - **El puerto 6881 viene cerrado.** Con `QBIT_ESCUCHA=127.0.0.1` solo lo alcanza la propia máquina; con `0.0.0.0` queda publicado y, para que llegue gente de internet, además hay que reenviarlo en el router (a mano o por UPnP).
 
 Descargar funciona igual abierto o cerrado. Abrirlo sirve para sembrar y para alcanzar torrents con pocos seeds, pero ayuda sobre todo a los demás, y a cambio expone qBittorrent a internet.

@@ -288,6 +288,7 @@ VARIABLES=(
 "media|media/.env|QBIT_TORRENT_PORT|auto|Puerto de conexiones entrantes|"
 "media|media/.env|QBIT_ESCUCHA|auto|Quien puede conectarse al puerto de torrents|"
 "media|media/.env|QBIT_UPNP|auto|Si el router abre el puerto por UPnP|"
+"media|media/.env|QBIT_LIMITE_SUBIDA|auto|Tope de subida de qBittorrent, en KiB/s|"
 "news|news/news-filter/.env|FRESHRSS_USERNAME|texto|Tu usuario de FreshRSS|El nombre con el que creaste la cuenta. Por defecto: admin"
 "news|news/news-filter/.env|WALLABAG_USERNAME|texto|Tu usuario de Wallabag|El nombre con el que creaste la cuenta. Por defecto: wallabag"
 )
@@ -1794,9 +1795,13 @@ cfg_qbittorrent() {
     # qBittorrent is set to remove completed downloads". Pausado, lo importan,
     # lo sueltan y lo borran ellos con sus archivos; la copia de la biblioteca
     # es un hardlink y no se toca.
+    #
+    # Tope de subida (QBIT_LIMITE_SUBIDA, en KiB/s; la API lo quiere en bytes).
+    # Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexion
+    # y le saca el ancho a Jellyfin de afuera y a todo lo demas de la casa.
     local pausar="False"
     [ "$MEDIA_MODO" = "pausa" ] && pausar="True"
-    prefs=$(CLAVE="$clave" PAUSA="$pausar" python3 -c '
+    prefs=$(CLAVE="$clave" PAUSA="$pausar" SUBIDA="$(leer_var media/.env QBIT_LIMITE_SUBIDA 2>/dev/null || true)" python3 -c '
 import json, os
 p = os.environ["PAUSA"] == "True"
 print(json.dumps({
@@ -1810,7 +1815,8 @@ print(json.dumps({
   "add_stopped_enabled": p,
   "max_ratio_enabled": True,
   "max_ratio": 1.2,
-  "max_ratio_act": 0}))' 2>/dev/null)
+  "max_ratio_act": 0,
+  "up_limit": int(os.environ.get("SUBIDA") or 5120) * 1024}))' 2>/dev/null)
 
     resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
         -H "Referer: http://localhost:8080" \
@@ -3648,6 +3654,10 @@ instalar_automatismos() {
         _instalar_si_cambio "$REPO/systemd/$u.timer"   "/etc/systemd/system/$u.timer"   && cambio=1
     done
 
+    # Sin timer: es una tarea de arranque, no periodica. Corre despues de
+    # Docker y vuelve a poner las reglas que aislan a qBittorrent de la LAN.
+    _instalar_si_cambio "$REPO/systemd/pi-torrent-red.service" /etc/systemd/system/pi-torrent-red.service && cambio=1
+
     # El mensaje de bienvenida del SSH. Es el unico canal que existia antes de
     # los avisos, y sigue siendo util: te muestra lo que esta mal justo en el
     # lugar por el que ya entras.
@@ -3679,6 +3689,9 @@ instalar_automatismos() {
     else
         sudo systemctl disable --now pi-cert.timer >/dev/null 2>&1
     fi
+
+    sudo systemctl enable pi-torrent-red.service >/dev/null 2>&1
+    sudo systemctl start pi-torrent-red.service >/dev/null 2>&1
 
     # La renovacion del permiso de UPnP, solo si elegiste que el router abra el
     # puerto por ese camino. Sin eso seria un temporizador cada media hora que

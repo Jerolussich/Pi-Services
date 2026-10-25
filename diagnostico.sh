@@ -564,8 +564,17 @@ rev_media() {
             ojo "qBittorrent" "sin la regla del firewall que lo aisla de este equipo"
             implica "alcanzaria SSH, Home Assistant y el panel de Pi-hole de esta maquina"
             arreglo "agregar la regla para $sub_q" "rep_aislar_torrents"
+        elif ! torrent_red_puesta; then
+            ojo "qBittorrent" "puede llegar al router y a los aparatos de tu red local"
+            implica "si alguien le encuentra una falla, lo usaria de escalon hacia el resto de tu casa"
+            arreglo "volver a poner las reglas que se lo impiden" "rep_aislar_torrents"
+        elif $DOCKER inspect qbittorrent --format '{{range .Mounts}}{{.Destination}}{{"
+"}}{{end}}' 2>/dev/null | grep -qx "/data"; then
+            ojo "qBittorrent" "tiene montado el disco entero y no solo las descargas"
+            implica "una falla suya podria leer o borrar tu biblioteca, no solo lo que esta bajando"
+            arreglo "recrearlo montando solo las descargas" "rep_aislar_torrents"
         else
-            bien "qBittorrent" "aislado: red aparte, permisos recortados y sin acceso al equipo"
+            bien "qBittorrent" "aislado: red aparte, permisos recortados, solo ve las descargas y no llega a la red local"
         fi
 
         if torrent_abierto; then
@@ -1277,6 +1286,7 @@ publicar_estado() {
 rep_aislar_torrents() {
     asegurar_redes_docker >/dev/null 2>&1 || return 1
     torrent_aislar_host >/dev/null 2>&1
+    torrent_red_aplicar >/dev/null 2>&1
     torrent_aplicar_refuerzo >/dev/null 2>&1
     olvidar_estado
     torrent_comprobar_aislamiento

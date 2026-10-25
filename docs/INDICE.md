@@ -290,7 +290,7 @@ pi-services/
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
 ├── lib/torrents.sh            ← el puerto de torrents: red aparte, firewall, UPnP y `pi puerto`
-├── systemd/                   ← los timers (incluido pi-upnp, solo si elegís UPnP), que instala el instalador
+├── systemd/                   ← los timers y tareas de arranque (pi-upnp solo si elegís UPnP; pi-torrent-red aísla a qBittorrent), que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
 ├── caddy/                     ← proxy inverso, la puerta de entrada

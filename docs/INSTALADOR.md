@@ -168,7 +168,7 @@ En orden de dependencias. Para cada módulo:
 
 Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alguno no levantó, cuál fue y con qué comando ver su log.
 
-Con qBittorrent ya arriba, el instalador aplica además lo de [TORRENTS.md](TORRENTS.md): la regla de UFW que lo deja sin acceso al SSH y a los paneles de la máquina, recrea los contenedores que no tenían el blindaje nuevo, y, si elegiste abrirlo, pide el puerto al router (UPnP) y comprueba desde afuera si se ve.
+Con qBittorrent ya arriba, el instalador aplica además lo de [TORRENTS.md](TORRENTS.md): la regla de UFW que lo deja sin acceso al SSH y a los paneles de la máquina, las reglas de iptables que le cierran el router y la red local, el tope de subida, y recrea los contenedores que no tenían el blindaje nuevo (también los deja montando solo la carpeta de descargas). Si elegiste abrirlo, pide el puerto al router (UPnP) y comprueba desde afuera si se ve. Las reglas de iptables se vuelven a poner solas en cada arranque con `pi-torrent-red.service`.
 
 ### 6. Configura los servicios solo
 

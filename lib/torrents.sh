@@ -62,6 +62,22 @@ torrent_gateway() {
         | tr ' ' '\n' | awk '/\./ && !/:/ {print; exit}'
 }
 
+# ── La carpeta de descargas ───────────────────────────────────────────────────
+
+# qBittorrent monta solo ${DAS_ROOT}/downloads. Si esa carpeta no existe cuando
+# Docker la necesita, la crea el, como root, y qBittorrent (que corre como tu
+# usuario) no podria escribir en ella. En un disco armado por el instalador ya
+# esta; esto cubre el resto (sin DAS, o un disco que traia otra estructura).
+torrent_preparar_descargas() {
+    local raiz d
+    raiz=$(leer_var media/.env DAS_ROOT 2>/dev/null); raiz="${raiz:-/mnt/das}"
+    for d in "$raiz/downloads" "$raiz/downloads/complete" "$raiz/downloads/incomplete"; do
+        [ -d "$d" ] && continue
+        sudo mkdir -p "$d" && sudo chown "$(id -u):$(id -g)" "$d"
+    done
+    return 0
+}
+
 # ── Las redes de Docker ───────────────────────────────────────────────────────
 
 # La red tiene que existir ANTES de levantar. Nueve composes declaran la de
@@ -92,6 +108,57 @@ asegurar_redes_docker() {
         fi
     done
     return 0
+}
+
+# ── El tope de subida ─────────────────────────────────────────────────────────
+
+# Una sesion en la API de qBittorrent, con la cuenta que ya usa la homepage
+# (HOMEPAGE_VAR_QBIT_USER / _PASS). Deja la cookie dentro del contenedor.
+QBIT_COOKIE="/tmp/ck-pi"
+_qbit_sesion() {
+    local u p code
+    u=$(leer_var homepage/.env HOMEPAGE_VAR_QBIT_USER 2>/dev/null)
+    p=$(leer_var homepage/.env HOMEPAGE_VAR_QBIT_PASS 2>/dev/null)
+    [ -n "$p" ] || return 1
+    code=$($DOCKER exec qbittorrent curl -s -o /dev/null -w '%{http_code}' -c "$QBIT_COOKIE" -X POST \
+        -H "Referer: http://localhost:8080" \
+        --data-urlencode "username=${u:-admin}" --data-urlencode "password=$p" \
+        "http://localhost:8080/api/v2/auth/login" 2>/dev/null)
+    [ "$code" = "200" ] || [ "$code" = "204" ]
+}
+_qbit_cerrar_sesion() { $DOCKER exec qbittorrent rm -f "$QBIT_COOKIE" 2>/dev/null; }
+
+# KiB/s. 5120 = 5 MiB/s, unos 40 Mbit/s: alcanza para sembrar sin llenar una
+# conexion hogarena normal. 0 = sin tope.
+torrent_tope_subida() {
+    local v; v=$(leer_var media/.env QBIT_LIMITE_SUBIDA 2>/dev/null)
+    case "$v" in ""|*[!0-9]*) v=5120 ;; esac
+    echo "$v"
+}
+
+# Aplica el tope y lo lee de vuelta. qBittorrent ignora en silencio lo que no
+# conoce, y un tope que no se aplico es peor que no tenerlo: se cree puesto.
+torrent_limitar_subida() {
+    esta_arriba qbittorrent || return 0
+    local kib bytes real
+    kib=$(torrent_tope_subida); bytes=$((kib * 1024))
+    _qbit_sesion || { gris "     No pude entrar a qBittorrent para ponerle el tope de subida"; return 1; }
+    $DOCKER exec qbittorrent curl -s -b "$QBIT_COOKIE" -X POST -H "Referer: http://localhost:8080" \
+        --data-urlencode "json={\"up_limit\": $bytes}" \
+        "http://localhost:8080/api/v2/app/setPreferences" >/dev/null 2>&1
+    real=$($DOCKER exec qbittorrent curl -s -b "$QBIT_COOKIE" "http://localhost:8080/api/v2/app/preferences" 2>/dev/null \
+        | python3 -c 'import sys,json; print(json.load(sys.stdin).get("up_limit",""))' 2>/dev/null)
+    _qbit_cerrar_sesion
+    if [ "$real" = "$bytes" ]; then
+        if [ "$kib" = "0" ]; then
+            gris "     Subida de qBittorrent: sin tope"
+        else
+            ok "Subida de qBittorrent limitada a $((kib / 1024)) MiB/s"
+        fi
+        return 0
+    fi
+    aviso "No pude dejar el tope de subida de qBittorrent"
+    return 1
 }
 
 # ── Que no llegue al resto de esta maquina ────────────────────────────────────
@@ -163,6 +230,12 @@ torrent_comprobar_aislamiento() {
         aviso "qBittorrent todavia alcanza el SSH de este equipo"
         return 1
     fi
+    TORRENT_ALCANZA=""
+    torrent_red_probar
+    case $? in
+        1) aviso "qBittorrent todavia alcanza:${TORRENT_ALCANZA}"; return 1 ;;
+        3) aviso "qBittorrent ya no sale a internet: revisar las reglas de PI-TORRENT"; return 1 ;;
+    esac
     return 0
 }
 
@@ -332,6 +405,93 @@ torrent_probar_afuera() {
     return 2
 }
 
+# ── Que no llegue a la red local ──────────────────────────────────────────────
+#
+#  La regla de UFW de arriba cubre lo que qBittorrent le puede pedir A ESTA
+#  MAQUINA. Esto cubre lo demas: que, si alguien tomara el control de
+#  qBittorrent, no pueda usarlo de escalon hacia el resto de tu casa.
+#
+#  Que se midio antes de hacerlo (desde adentro del contenedor):
+#    · el panel del router contestaba (200)
+#    · los puertos que Docker publica en esta maquina -80, 443, 5055, 8096-
+#      contestaban, porque Docker los publica saltandose UFW
+#    · cualquier aparato de la red local era alcanzable
+#
+#  Docker deja una cadena de iptables para esto, DOCKER-USER, que se consulta
+#  ANTES de sus propias reglas y que Docker no pisa. Ahi se cuelga una cadena
+#  propia, PI-TORRENT, que solo mira el trafico que SALE de la red de torrents:
+#
+#    1. lo que es respuesta a algo ya abierto pasa (si no, las conexiones
+#       entrantes de otros pares se cortarian a la mitad)
+#    2. lo que va a la propia red de torrents pasa (Radarr, Sonarr, Caddy)
+#    3. el DNS al router pasa: es uno de los servidores que usa Docker de
+#       respaldo, y nada mas del router
+#    4. lo que va a rangos privados se rechaza: la red local, las otras redes
+#       de Docker, Tailscale y los rangos internos de los proveedores
+#    5. todo lo demas, que es internet, sale como siempre
+#
+#  Con una cadena propia en vez de reglas sueltas en DOCKER-USER, se puede
+#  rearmar entera de forma idempotente sin tocar lo que otro haya puesto ahi.
+TORRENT_CADENA="PI-TORRENT"
+TORRENT_PRIVADOS="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 224.0.0.0/4"
+
+torrent_red_aplicar() {
+    local sub gw r
+    sub=$(torrent_subred); [ -n "$sub" ] || return 0
+    gw=$(_upnp_router)
+
+    sudo iptables -L DOCKER-USER -n >/dev/null 2>&1 || return 1
+
+    sudo iptables -N "$TORRENT_CADENA" 2>/dev/null
+    sudo iptables -F "$TORRENT_CADENA" || return 1
+    sudo iptables -A "$TORRENT_CADENA" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    sudo iptables -A "$TORRENT_CADENA" -d "$sub" -j RETURN
+    if [ -n "$gw" ]; then
+        sudo iptables -A "$TORRENT_CADENA" -d "$gw" -p udp --dport 53 -j RETURN
+        sudo iptables -A "$TORRENT_CADENA" -d "$gw" -p tcp --dport 53 -j RETURN
+    fi
+    for r in $TORRENT_PRIVADOS; do
+        sudo iptables -A "$TORRENT_CADENA" -d "$r" -j REJECT --reject-with icmp-admin-prohibited
+    done
+    sudo iptables -A "$TORRENT_CADENA" -j RETURN
+
+    # El enganche, siempre en primer lugar. Se sacan antes los que haya, de
+    # ahora o de una subred anterior: si la red de Docker se recreo con otro
+    # rango, el enganche viejo quedaria apuntando a nada.
+    while sudo iptables -S DOCKER-USER 2>/dev/null | grep -q -- "-j $TORRENT_CADENA"; do
+        r=$(sudo iptables -S DOCKER-USER | grep -- "-j $TORRENT_CADENA" | head -1 | sed 's/^-A /-D /')
+        # shellcheck disable=SC2086
+        sudo iptables $r || break
+    done
+    sudo iptables -I DOCKER-USER 1 -s "$sub" -j "$TORRENT_CADENA"
+}
+
+# ¿Esta puesto? Se lee de vuelta, no se da por hecho.
+torrent_red_puesta() {
+    local sub; sub=$(torrent_subred); [ -n "$sub" ] || return 1
+    sudo iptables -C DOCKER-USER -s "$sub" -j "$TORRENT_CADENA" 2>/dev/null || return 1
+    sudo iptables -S "$TORRENT_CADENA" 2>/dev/null | grep -q -- "-d 192.168.0.0/16 .*REJECT"
+}
+
+# Lo unico que prueba algo: intentar desde adentro. Devuelve 0 si no alcanza
+# nada local y SI sale a internet, 1 si todavia alcanza algo, 2 si no se pudo
+# medir (la imagen no trae nc).
+torrent_red_probar() {
+    esta_arriba qbittorrent || return 2
+    $DOCKER exec qbittorrent sh -c 'command -v nc >/dev/null' 2>/dev/null || return 2
+    local gw ip malo=0 destino
+    gw=$(_upnp_router); ip="${IP_FIJA:-}"
+    for destino in ${gw:+"$gw:80"} ${ip:+"$ip:80" "$ip:8096" "$ip:5055"}; do
+        if $DOCKER exec qbittorrent sh -c "nc -z -w 3 ${destino%%:*} ${destino##*:}" >/dev/null 2>&1; then
+            TORRENT_ALCANZA="${TORRENT_ALCANZA:-} $destino"; malo=1
+        fi
+    done
+    [ "$malo" = "0" ] || return 1
+    # Y que internet siga andando: un bloqueo que corta todo no es un exito
+    $DOCKER exec qbittorrent sh -c "nc -z -w 5 1.1.1.1 443" >/dev/null 2>&1 || return 3
+    return 0
+}
+
 # ── El asistente: la pregunta, y todo lo que hace falta para decidir ──────────
 
 _explicar_puerto() {
@@ -366,9 +526,12 @@ _explicar_puerto() {
     echo "  ${B}Lo que ya queda hecho para limitar el dano, lo abras o no${N}"
     info "· qBittorrent vive en su propia red de Docker: no ve a los otros contenedores."
     info "· Sin permisos de root ni forma de ganar mas: solo cinco permisos minimos."
-    info "· El firewall le impide llegar a SSH, Home Assistant y Pi-hole de esta maquina."
-    gris "     No cubre los puertos que ya publica Docker (Caddy, Jellyfin, Seerr), que son"
-    gris "     los mismos que ve cualquier aparato de tu red local, ni a esos aparatos."
+    info "· Solo ve la carpeta de descargas, no tu biblioteca ni el resto del disco."
+    info "· No llega a esta maquina (SSH, Home Assistant, Pi-hole), ni al router, ni a los"
+    info "  aparatos de tu red local, ni a los demas servicios: solo a internet."
+    info "· Sube con un tope (5 MiB/s) para no llenarte la conexion."
+    gris "     Lo que sigue sin cubrir: si le encontraran una falla, podria romper lo que hay en"
+    gris "     la carpeta de descargas y usar tu conexion a internet. Ver docs/TORRENTS.md."
     echo ""
 }
 
@@ -469,9 +632,11 @@ torrent_proteger() {
     local rc
 
     torrent_aislar_host
+    torrent_red_aplicar || aviso "No pude cerrarle a qBittorrent el acceso a la red local"
     torrent_aplicar_refuerzo
     torrent_comprobar_aislamiento || true
     torrent_sincronizar_timer
+    torrent_limitar_subida || true
 
     if torrent_abierto; then
         if torrent_upnp_elegido; then
@@ -545,6 +710,14 @@ torrent_comando() {
     sec=$($DOCKER inspect qbittorrent --format '{{.HostConfig.SecurityOpt}}' 2>/dev/null)
     [ "${redes% }" = "$RED_TORRENT" ] && ok "red aparte ($RED_TORRENT)" || aviso "no esta aislado en su red: $redes"
     [[ "$sec" == *no-new-privileges* ]] && ok "sin forma de ganar privilegios" || aviso "puede ganar privilegios"
+    if $DOCKER inspect qbittorrent --format '{{range .Mounts}}{{.Destination}}{{"
+"}}{{end}}' 2>/dev/null | grep -qx "/data"; then
+        aviso "ve el disco entero: deberia ver solo las descargas"
+    else
+        ok "solo ve las descargas, no la biblioteca"
+    fi
+    torrent_red_puesta && ok "no llega al router ni a la red local"                        || aviso "puede llegar al router y a la red local (./diagnostico.sh --arreglar lo corrige)"
+    gris "     tope de subida: $(( $(torrent_tope_subida) / 1024 )) MiB/s  (QBIT_LIMITE_SUBIDA en media/.env, 0 = sin tope)"
     sub=$(torrent_subred)
     if sudo ufw status 2>/dev/null | grep "pi-torrent:" | grep -qF "${sub:-sin-subred}"; then
         ok "el firewall le bloquea el acceso a esta maquina"

@@ -210,7 +210,7 @@ pi-services/
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
 ├── lib/torrents.sh            ← el puerto de torrents: red aparte, firewall, UPnP y `pi puerto`
-├── systemd/                   ← los timers (incluido pi-upnp, solo si elegís UPnP), que instala el instalador
+├── systemd/                   ← los timers y tareas de arranque (pi-upnp solo si elegís UPnP; pi-torrent-red aísla a qBittorrent), que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 ├── docs/                      ← toda la documentacion transversal
 │
@@ -240,7 +240,7 @@ Es un despliegue de red local, con defensa en capas y **nada publicado a interne
 | **UFW** | Solo deja entrar 22, 80 y 53. Los puertos del host quedan cerrados salvo para Caddy |
 | **fail2ban** | Banea una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy |
 | **Tailscale** | Acceso remoto sin abrir puertos |
-| **Red `pi-torrent`** | qBittorrent, el único que acepta datos de desconocidos, va en una red aparte, sin privilegios y sin acceso al SSH ni a los paneles de la máquina |
+| **Red `pi-torrent`** | qBittorrent, el único que acepta datos de desconocidos, va en una red aparte, sin privilegios, con solo la carpeta de descargas montada y sin acceso a la máquina, al router ni a la red local |
 
 ```bash
 ./setup-security.sh --dry-run    # muestra todo lo que haria, sin hacer nada

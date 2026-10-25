@@ -106,7 +106,7 @@ La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.en
 | **fail2ban** | Banea por una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy. Tu LAN y tu tailnet están exentas, porque si no te dejaba afuera a vos |
 | **Caddy** | Punto único de entrada HTTP, con autenticación donde hace falta |
 | **Tailscale** | Acceso remoto sin abrir un solo puerto en el router |
-| **Red `pi-torrent`** | qBittorrent, el único que habla con desconocidos, está aislado del resto de los contenedores, sin privilegios y sin acceso al SSH ni a los paneles del host. Ver [TORRENTS.md](TORRENTS.md) |
+| **Red `pi-torrent`** | qBittorrent, el único que habla con desconocidos, está aislado del resto de los contenedores, sin privilegios, con solo la carpeta de descargas montada y sin acceso al host, al router ni a la red local (solo sale a internet). Ver [TORRENTS.md](TORRENTS.md) |
 
 Por defecto, nada de esto está publicado a internet y el router no tiene puertos abiertos hacia el Pi. La excepción es el puerto de torrents, que solo se abre si lo elegís en el instalador (o con `pi puerto`).
 

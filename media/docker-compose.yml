@@ -57,7 +57,14 @@ services:
       - .env
     volumes:
       - qbittorrent-config:/config
-      - ${DAS_ROOT:-/mnt/das}:/data
+      # Solo las descargas, NO el disco entero como Radarr y Sonarr. Es el
+      # unico contenedor que acepta datos de desconocidos: si alguna falla
+      # suya diera ejecucion de codigo, lo unico que puede tocar es esta
+      # carpeta, y no la biblioteca. La ruta de adentro es la misma
+      # (/data/downloads) que ven Radarr y Sonarr, asi que no hace falta
+      # ningun mapeo de rutas, y los hardlinks los hacen ellos, que si ven
+      # los dos lados bajo un mismo montaje.
+      - ${DAS_ROOT:-/mnt/das}/downloads:/data/downloads
     # Solo en la red de torrents, NO en la del resto del stack. Es el unico
     # contenedor que acepta datos de desconocidos, asi que es el que menos
     # conviene tener al lado de los otros veinte. Los que si le hablan -Radarr,
