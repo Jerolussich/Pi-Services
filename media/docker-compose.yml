@@ -183,6 +183,12 @@ services:
   seerr:
     image: ghcr.io/seerr-team/seerr:v3.4.1
     container_name: seerr
+    # Segunda excepcion a "todo entra por Caddy", igual que Jellyfin: las apps de
+    # tele (Seerr en Android TV) no usan Pi-hole como DNS, asi que no resuelven
+    # seerr.pi y se conectan por IP a 192.168.68.66:5055. Seerr tiene su propio
+    # login, asi que publicarlo no deja nada sin proteger.
+    ports:
+      - "5055:5055"
     env_file:
       - .env
     environment:

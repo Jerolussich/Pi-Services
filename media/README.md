@@ -69,7 +69,7 @@ Dos cosas sostienen todo el diseño:
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
 | `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr` | `8191` | — | Resuelve el Cloudflare de los indexers que lo usan |
 
-Ningún contenedor publica su interfaz web al host: todo entra por Caddy, igual que el resto del repo. La única excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares. **Viene cerrado** (escucha solo en `127.0.0.1`): abrirlo es opcional y lo decidís en el instalador o después con `pi puerto`. Qué ganás, qué implica y qué protecciones lleva puestas, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
+Casi nada publica puertos al host: todo entra por Caddy, igual que el resto del repo. Las excepciones son Jellyfin (`8096`) y Seerr (`5055`), porque las apps de tele se conectan por IP y no resuelven los nombres `.pi`; los dos tienen su propio login. Y la otra excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares. **Viene cerrado** (escucha solo en `127.0.0.1`): abrirlo es opcional y lo decidís en el instalador o después con `pi puerto`. Qué ganás, qué implica y qué protecciones lleva puestas, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
 
 `flaresolverr` no tiene hostname porque no es para vos: no tiene interfaz que visitar. Solo le habla Prowlarr, por la red interna del compose, en `http://flaresolverr:8191`.
 
