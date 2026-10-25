@@ -219,6 +219,52 @@ torrent_upnp_instalar() {
     command -v upnpc >/dev/null 2>&1
 }
 
+# La IP del router, para abrirle al firewall el paso de sus respuestas.
+_upnp_router() { ip route 2>/dev/null | awk '/^default/ {print $3; exit}'; }
+
+# UPnP SIEMPRE usa la IP con la que upnpc le habla al router ("Local LAN ip
+# address" en su salida), y no la IP fija del repo. Se aprendio probandolo en la
+# mini PC, que tiene cable y wifi a la vez:
+#
+#   AddPortMapping(6881, 6881, 192.168.68.66) failed with code 718
+#
+# El router solo deja que un aparato abra puertos HACIA SI MISMO: acepta el
+# pedido si el destino es la IP desde la que le hablan, y lo rechaza si es otra.
+# Con el wifi conectado, el kernel le habla al router por el wifi (hay una ruta
+# directa a el), asi que el unico destino valido era la IP del wifi, no la del
+# cable. Con una sola interfaz las dos IP son la misma y nada cambia.
+#
+# Es ademas una defensa que sirve: un aparato de tu red no puede usar UPnP para
+# abrirle puertos a otro, solo a si mismo.
+
+# El router contesta el descubrimiento con un paquete UDP que viene desde su
+# puerto 1900 hacia esta maquina, y UFW lo tira: no lo reconoce como respuesta
+# porque la pregunta fue a una direccion multicast. Sin esta regla upnpc dice
+# "No IGD UPnP Device found" aunque el router este contestando perfecto (se vio
+# con tcpdump: la respuesta llegaba y el firewall la bloqueaba).
+#
+# Se abre lo minimo: solo desde el router, solo su puerto 1900, solo UDP.
+UPNP_COMENTARIO="pi-upnp: respuestas del router"
+torrent_upnp_ufw_permitir() {
+    local gw; gw=$(_upnp_router)
+    [ -n "$gw" ] || return 1
+    sudo ufw status 2>/dev/null | grep -q "$UPNP_COMENTARIO" && return 0
+    sudo ufw allow in proto udp from "$gw" port 1900 comment "$UPNP_COMENTARIO" >/dev/null 2>&1
+    sudo ufw status 2>/dev/null | grep -q "$UPNP_COMENTARIO"
+}
+
+torrent_upnp_ufw_quitar() {
+    local gw n; gw=$(_upnp_router)
+    sudo ufw status 2>/dev/null | grep -q "$UPNP_COMENTARIO" || return 0
+    [ -n "$gw" ] && sudo ufw delete allow in proto udp from "$gw" port 1900 >/dev/null 2>&1
+    # Si el router cambio de IP, la regla vieja no se borra con la de ahora:
+    # se busca por su comentario.
+    while n=$(sudo ufw status numbered 2>/dev/null | grep "$UPNP_COMENTARIO" | head -1 | sed -E 's/^\[ *([0-9]+)\].*/\1/'); [ -n "$n" ]; do
+        sudo ufw --force delete "$n" >/dev/null 2>&1 || break
+    done
+    return 0
+}
+
 # Le pregunta al router, sin cambiarle nada: si responde por UPnP, cual es su IP
 # publica y cual es la de esta maquina. Deja el resultado en variables.
 UPNP_LAN=""; UPNP_WAN=""
@@ -226,7 +272,8 @@ torrent_upnp_sondear() {
     local salida
     UPNP_LAN=""; UPNP_WAN=""
     torrent_upnp_instalar || return 1
-    salida=$(timeout 15 upnpc -s 2>&1)
+    torrent_upnp_ufw_permitir || true
+    salida=$(timeout 20 upnpc -s 2>&1)
     echo "$salida" | grep -q "Found valid IGD" || return 1
     UPNP_LAN=$(echo "$salida" | grep -oE "Local LAN ip address : [0-9.]+" | awk '{print $NF}')
     UPNP_WAN=$(echo "$salida" | grep -oE "ExternalIPAddress = [0-9.]+" | awk '{print $NF}')
@@ -251,11 +298,13 @@ torrent_upnp_abrir() {
 
 # Se saca el permiso. Sin salida: se llama tambien cuando nunca hubo ninguno.
 torrent_upnp_cerrar() {
-    command -v upnpc >/dev/null 2>&1 || return 0
     local p proto; p=$(torrent_puerto)
-    for proto in TCP UDP; do
-        timeout 15 upnpc -d "$p" "$proto" >/dev/null 2>&1
-    done
+    if command -v upnpc >/dev/null 2>&1; then
+        for proto in TCP UDP; do
+            timeout 15 upnpc -d "$p" "$proto" >/dev/null 2>&1
+        done
+    fi
+    torrent_upnp_ufw_quitar
     return 0
 }
 
@@ -402,6 +451,19 @@ torrent_asistente() {
 
 # ── Aplicar todo, con los contenedores ya arriba ──────────────────────────────
 
+# El temporizador de renovacion solo corre si el puerto esta abierto por UPnP.
+# Lo prende o apaga instalar_automatismos, pero `pi puerto` cambia la eleccion
+# sin pasar por ahi, asi que se sincroniza tambien desde aca.
+torrent_sincronizar_timer() {
+    if torrent_abierto && torrent_upnp_elegido; then
+        [ -f /etc/systemd/system/pi-upnp.timer ] || instalar_automatismos >/dev/null 2>&1
+        sudo systemctl enable --now pi-upnp.timer >/dev/null 2>&1
+    else
+        sudo systemctl disable --now pi-upnp.timer >/dev/null 2>&1
+    fi
+    return 0
+}
+
 torrent_proteger() {
     esta_arriba qbittorrent || return 0
     local rc
@@ -409,6 +471,7 @@ torrent_proteger() {
     torrent_aislar_host
     torrent_aplicar_refuerzo
     torrent_comprobar_aislamiento || true
+    torrent_sincronizar_timer
 
     if torrent_abierto; then
         if torrent_upnp_elegido; then

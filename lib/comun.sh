@@ -1784,6 +1784,16 @@ cfg_qbittorrent() {
     # la 5.x la renombro a add_stopped_enabled. Mandar solo una hacia que la
     # pausa no se aplicara en la version instalada, y como la API contesta
     # vacio igual, el instalador anunciaba una proteccion que no existia.
+    #
+    # Al llegar al ratio de 1.2 PAUSA, no borra (max_ratio_act 0). Parece lo
+    # mismo y no lo es: Radarr y Sonarr solo se animan a borrar un torrent
+    # cuando esta pausado y ya cumplio la meta, porque un limite propio del
+    # torrent que la API no muestra podria estar pidiendo seguir sembrando. Si
+    # qBittorrent lo borra antes, ellos no limpian nunca, pueden perder un
+    # torrent que todavia no importaron, y avisan con "Download client
+    # qBittorrent is set to remove completed downloads". Pausado, lo importan,
+    # lo sueltan y lo borran ellos con sus archivos; la copia de la biblioteca
+    # es un hardlink y no se toca.
     local pausar="False"
     [ "$MEDIA_MODO" = "pausa" ] && pausar="True"
     prefs=$(CLAVE="$clave" PAUSA="$pausar" python3 -c '
@@ -1797,7 +1807,10 @@ print(json.dumps({
   "temp_path": "/data/downloads/incomplete",
   "create_subfolder_enabled": False,
   "start_paused_enabled": p,
-  "add_stopped_enabled": p}))' 2>/dev/null)
+  "add_stopped_enabled": p,
+  "max_ratio_enabled": True,
+  "max_ratio": 1.2,
+  "max_ratio_act": 0}))' 2>/dev/null)
 
     resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
         -H "Referer: http://localhost:8080" \

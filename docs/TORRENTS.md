@@ -50,6 +50,9 @@ UPnP es un protocolo con el que un aparato de la red le pide al router "abrime e
 - **Implicancia:** cualquier aparato de tu red puede pedirle lo mismo al router, no solo esta máquina. Una cámara, una tele o un programa infectado podrían abrir puertos hacia adentro sin que te enteres. Es la razón por la que muchos lo apagan.
 - **Qué hace este repo:** pide solo el puerto 6881 (TCP y UDP), con una concesión de una hora, y un timer (`pi-upnp.timer`) la renueva cada media hora. Si cambiás a cerrado, el instalador borra la regla; si se apaga la mini PC, la regla vence sola a la hora.
 - **Lo que UPnP no puede hacer:** no toca la configuración de esta máquina. Solo habla con el router.
+- **Un aparato solo puede abrir puertos hacia sí mismo.** Se comprobó en el router de esta casa: pedirle que reenvíe un puerto hacia *otra* IP de la red da `718 ConflictInMappingEntry`. Atenúa el riesgo de arriba: una cámara infectada puede abrirse puertos a sí misma, pero no apuntarlos a tu mini PC ni a otro aparato.
+- **Una regla de firewall más, solo con UPnP.** El router contesta el descubrimiento con un paquete UDP desde su puerto 1900, y UFW lo tira porque la pregunta salió a una dirección multicast: sin esto el programa dice «No IGD UPnP Device found» aunque el router responda. El instalador agrega `ufw allow in proto udp from <router> port 1900` (con el comentario `pi-upnp: respuestas del router`), que admite solo UDP, solo del router, solo de su puerto 1900. Se borra sola al volver a cerrar el puerto.
+- **Con cable y wifi a la vez, el reenvío apunta a la IP que ve el router**, que puede ser la del wifi. Como el router solo acepta abrir puertos hacia quien se lo pide, y el kernel le habla por el wifi cuando está conectado, el destino válido es la IP del wifi. Funciona igual; si el wifi se cae, la renovación de la media hora lo reapunta sola al cable. Lo más limpio es dejar una sola conexión activa.
 
 ### Si tu proveedor comparte la IP
 
@@ -177,6 +180,24 @@ La comprobación "desde internet" se hace con un servicio externo (`ifconfig.co`
 - [../systemd/pi-upnp.service](../systemd/pi-upnp.service) y [../systemd/pi-upnp.timer](../systemd/pi-upnp.timer): la renovación de la concesión de UPnP, activa solo si elegiste esa opción
 - [../media/docker-compose.yml](../media/docker-compose.yml): la red, los permisos y el puerto
 
-## Qué no está probado
+## Qué se probó
 
-El camino de **crear** la regla en el router por UPnP no se probó contra un router real: eso modifica el router, y no se hizo sin autorización. Sí se probó el resto: aislamiento de red, permisos, regla de UFW (incluida su idempotencia), `pi puerto` y el diagnóstico. Si elegís UPnP y algo falla, el instalador lo dice y deja el puerto como reenvío manual.
+Todo el recorrido se probó contra el router real de esta casa (25/10/2026), incluida la parte que modifica el router, con autorización explícita:
+
+- aislamiento de red, permisos, regla de UFW (y que no se duplica) y `pi puerto`;
+- **abrir por UPnP:** el router creó el reenvío de TCP y UDP, `ifconfig.co` confirmó que el 6881 se veía desde internet, y la renovación del timer (`pi-upnp.service`) funcionó corriendo bajo systemd;
+- **cerrar:** el reenvío desapareció del router, se borró la regla de UFW, el puerto volvió a escuchar solo en `127.0.0.1` y el timer quedó desactivado.
+
+Probarlo encontró tres fallas que no se veían leyendo el código, y las tres están corregidas (las explican los puntos de UPnP de arriba): UFW tiraba las respuestas del router, el router rechazaba el reenvío a una IP que no era la suya, y el programa elegía sin avisar la IP del wifi.
+
+**Tené en cuenta que cambiar el estado del puerto recrea qBittorrent y, con él, Radarr, Sonarr y Prowlarr** (unos veinte segundos). Es lo que hace Docker cuando cambia un puerto publicado; las descargas en curso se retoman solas.
+
+## Al llegar al ratio: pausar, no borrar
+
+qBittorrent viene configurado para **pausar** el torrent al llegar a ratio 1,2, no para borrarlo. Parece un detalle y no lo es: Radarr y Sonarr solo borran un torrent cuando está pausado *y* cumplió la meta (un límite propio del torrent, que la API no muestra, podría estar pidiendo seguir sembrando). Si qBittorrent lo borra antes, ellos nunca limpian, pueden perder un torrent que todavía no importaron, y se quejan con «Download client qBittorrent is set to remove completed downloads».
+
+Con pausa, el flujo es: baja → Radarr/Sonarr importan (hardlink a la biblioteca) → siembra hasta 1,2 → qBittorrent pausa → Radarr/Sonarr lo sueltan y lo borran con sus archivos. La copia de la biblioteca es un hardlink y no se toca.
+
+Se validó con una película real ya importada (con el límite del torrent bajado hasta que su meta quedó cumplida): qBittorrent lo pausó, Radarr lo borró junto con sus archivos de descargas en unos treinta segundos, y el archivo de la biblioteca quedó intacto, mismo inodo. Con la acción anterior (borrar), el aviso de salud de Radarr y Sonarr decía exactamente lo contrario de lo que querías; con pausa, ese aviso desapareció.
+
+Los torrents que ya estaban pausados *por debajo* de 1,2 de antes del cambio (hoy hay uno, una temporada vieja en 1,18) no los limpia nadie: no llegaron a la meta, así que Radarr y Sonarr los dejan. Se borran a mano si molestan.
