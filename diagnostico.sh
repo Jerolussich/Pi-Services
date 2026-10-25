@@ -27,8 +27,8 @@
 #
 #  Cada cosa tiene una cadena de eslabones que deben ser ciertos, y el
 #  diagnostico se corta en el PRIMERO roto: lo que sigue es consecuencia. Si
-#  Pi-hole esta caido fallan los quince nombres .pi, y reportar quince
-#  errores esconde el unico que importa.
+#  Pi-hole esta caido fallan todos los nombres .pi, y reportarlos uno por uno
+#  esconde el unico que importa.
 #
 #  REGLAS DE LO QUE IMPRIME
 #
@@ -302,7 +302,7 @@ rev_equipo() {
 
 rev_dns() {
     command -v pihole >/dev/null 2>&1 || return 0
-    seccion "DNS" "· si cae, se caen los quince nombres .pi de golpe"
+    seccion "DNS" "· si cae, se caen todos los nombres .pi de golpe"
 
     if ! systemctl is-active pihole-FTL >/dev/null 2>&1; then
         mal "Pi-hole" "el servicio esta caido"
