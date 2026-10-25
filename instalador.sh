@@ -494,7 +494,7 @@ valor_automatico() {
         # le pregunta a la persona (decidir_puerto_torrent), no un valor por defecto.
         QBIT_ESCUCHA)                  echo "127.0.0.1" ;;
         QBIT_UPNP)                     echo "0" ;;
-        QBIT_LIMITE_SUBIDA)            echo "5120" ;;
+        QBIT_LIMITE_SUBIDA)            echo "2048" ;;
         DAS_ROOT)                      echo "/mnt/das" ;;
         *)                             echo "" ;;
     esac

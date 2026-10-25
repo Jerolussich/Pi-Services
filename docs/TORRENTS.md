@@ -125,13 +125,13 @@ Con una cadena propia se puede rearmar entera de forma idempotente sin tocar lo 
 
 **Persistencia.** Las reglas de iptables no sobreviven a un reinicio. `pi-torrent-red.service` las vuelve a poner al arrancar, después de Docker (la cadena `DOCKER-USER` no existe antes), y se repite sola si Docker se reinicia (`PartOf=docker.service`). No tiene timer: es una tarea de arranque.
 
-**Qué se probó.** Antes y después, desde adentro del contenedor: el router y los puertos publicados dejaron de contestar; DNS, HTTP y HTTPS a internet siguen andando; Radarr y Sonarr siguen conectando con qBittorrent (el `test` del cliente de descargas da 200) y Caddy sigue sirviendo `qbit.pi`. Y lo más importante, que **las conexiones entrantes no se rompieron**: con el puerto publicado en la LAN (sin reenvío en el router), un handshake BitTorrent real mandado desde otra computadora llegó y qBittorrent contestó con el mismo infohash. Se perdieron las reglas a propósito para ver que el diagnóstico lo detecta, que `--arreglar` las repone y que `systemctl restart pi-torrent-red` también. No se probó reiniciar la máquina entera ni Docker.
+**Qué se probó.** Antes y después, desde adentro del contenedor: el router y los puertos publicados dejaron de contestar; DNS, HTTP y HTTPS a internet siguen andando; Radarr y Sonarr siguen conectando con qBittorrent (el `test` del cliente de descargas da 200) y Caddy sigue sirviendo `qbit.pi`. Y lo más importante, que **las conexiones entrantes no se rompieron**: con el puerto publicado en la LAN (sin reenvío en el router), un handshake BitTorrent real mandado desde otra computadora llegó y qBittorrent contestó con el mismo infohash. Se perdieron las reglas a propósito para ver que el diagnóstico lo detecta, que `--arreglar` las repone y que `systemctl restart pi-torrent-red` también. El 25/10/2026 se comprobó también en un reinicio real de la mini PC (y una actualización de Docker): las reglas volvieron solas al arrancar.
 
 **Limitaciones.** Solo IPv4 (Docker no tiene IPv6 activado acá). Y qBittorrent ya no puede conectarse a otros pares que estén en tu red local: no hace falta, pero es un cambio de comportamiento.
 
 ### 6. Un tope a la subida
 
-Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexión, le saca el ancho a Jellyfin desde afuera y a todo lo demás de la casa. Viene en **5 MiB/s** (unos 40 Mbit/s), configurable con `QBIT_LIMITE_SUBIDA` en `media/.env` (en KiB/s; `0` = sin tope). Se aplica al instalar, con `pi puerto` y con `--arreglar`, y se lee de vuelta: qBittorrent ignora en silencio las preferencias que no conoce, y un tope que no se aplicó es peor que no tenerlo.
+Sin tope, con el puerto abierto qBittorrent sube hasta llenar la conexión, le saca el ancho a Jellyfin desde afuera y a todo lo demás de la casa. Viene en **2 MiB/s** (unos 16 Mbit/s), configurable con `QBIT_LIMITE_SUBIDA` en `media/.env` (en KiB/s; `0` = sin tope). Se aplica al instalar, con `pi puerto` y con `--arreglar`, y se lee de vuelta: qBittorrent ignora en silencio las preferencias que no conoce, y un tope que no se aplicó es peor que no tenerlo.
 
 ### 7. El puerto se publica solo donde corresponde
 
@@ -205,7 +205,7 @@ La comprobación "desde internet" se hace con un servicio externo (`ifconfig.co`
 | `QBIT_TORRENT_PORT` | `media/.env` | `6881` | El puerto |
 | `QBIT_ESCUCHA` | `media/.env` | `127.0.0.1` / `0.0.0.0` | Quién puede alcanzar el puerto publicado |
 | `QBIT_UPNP` | `media/.env` | `0` / `1` | Si el timer pide el puerto al router por UPnP |
-| `QBIT_LIMITE_SUBIDA` | `media/.env` | KiB/s, `5120` por defecto | Tope de subida (`0` = sin tope) |
+| `QBIT_LIMITE_SUBIDA` | `media/.env` | KiB/s, `2048` por defecto | Tope de subida (`0` = sin tope) |
 | `QBIT_PUERTO_DECIDIDO` | `media/.env` | `1` | Marca que ya se eligió, para no volver a explicarlo |
 
 ## Archivos

@@ -128,11 +128,11 @@ _qbit_sesion() {
 }
 _qbit_cerrar_sesion() { $DOCKER exec qbittorrent rm -f "$QBIT_COOKIE" 2>/dev/null; }
 
-# KiB/s. 5120 = 5 MiB/s, unos 40 Mbit/s: alcanza para sembrar sin llenar una
+# KiB/s. 2048 = 2 MiB/s, unos 16 Mbit/s: alcanza para sembrar sin llenar una
 # conexion hogarena normal. 0 = sin tope.
 torrent_tope_subida() {
     local v; v=$(leer_var media/.env QBIT_LIMITE_SUBIDA 2>/dev/null)
-    case "$v" in ""|*[!0-9]*) v=5120 ;; esac
+    case "$v" in ""|*[!0-9]*) v=2048 ;; esac
     echo "$v"
 }
 
@@ -529,7 +529,7 @@ _explicar_puerto() {
     info "· Solo ve la carpeta de descargas, no tu biblioteca ni el resto del disco."
     info "· No llega a esta maquina (SSH, Home Assistant, Pi-hole), ni al router, ni a los"
     info "  aparatos de tu red local, ni a los demas servicios: solo a internet."
-    info "· Sube con un tope (5 MiB/s) para no llenarte la conexion."
+    info "· Sube con un tope (2 MiB/s) para no llenarte la conexion."
     gris "     Lo que sigue sin cubrir: si le encontraran una falla, podria romper lo que hay en"
     gris "     la carpeta de descargas y usar tu conexion a internet. Ver docs/TORRENTS.md."
     echo ""

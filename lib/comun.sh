@@ -1816,7 +1816,7 @@ print(json.dumps({
   "max_ratio_enabled": True,
   "max_ratio": 1.2,
   "max_ratio_act": 0,
-  "up_limit": int(os.environ.get("SUBIDA") or 5120) * 1024}))' 2>/dev/null)
+  "up_limit": int(os.environ.get("SUBIDA") or 2048) * 1024}))' 2>/dev/null)
 
     resp=$($DOCKER exec qbittorrent curl -s -b "$ck" -X POST \
         -H "Referer: http://localhost:8080" \
