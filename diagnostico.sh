@@ -479,7 +479,13 @@ revisar_contenedor() {
         bien "$svc" "corriendo, sin IP para consultar"
         return 0
     fi
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://$ip:$puerto/" 2>/dev/null)
+    # La homepage rechaza (400) y deja un error en su log por cada consulta con
+    # un Host que no es de su lista: preguntarle por la IP del contenedor lo
+    # provocaba una vez por hora, con el servicio perfectamente sano. Se le
+    # pregunta con el nombre que si tiene permitido.
+    local host_hdr=()
+    [ "$svc" = "homepage" ] && host_hdr=(-H "Host: homepage.pi")
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "${host_hdr[@]}" "http://$ip:$puerto/" 2>/dev/null)
     # edad ya viene calculada del eslabon 3. Antes se volvia a pedir aca, que
     # eran veintitres docker inspect de mas por corrida.
 
