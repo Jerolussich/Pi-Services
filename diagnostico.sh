@@ -675,6 +675,29 @@ descargas_en_pausa() {
         'grep -qiE "AddTorrentStopped=true|StartInPause=true" /config/qBittorrent/qBittorrent.conf' 2>/dev/null
 }
 
+# Home Assistant y el Bluetooth del equipo. Sin el servicio bluez, Home
+# Assistant no encuentra a quien hablarle y deja un error cada cinco minutos en
+# su log: no rompe nada, pero tapa los errores que si importan.
+rev_ha_bluetooth() {
+    esta_arriba homeassistant || return 0
+    ls /sys/class/bluetooth/hci* >/dev/null 2>&1 || return 0
+    if systemctl is-active --quiet bluetooth 2>/dev/null; then
+        local n
+        n=$($DOCKER logs --since 1h homeassistant 2>&1 | grep -c "Failed to force stop scanner")
+        if [ "${n:-0}" -gt 0 ]; then
+            ojo "Home Assistant" "el Bluetooth falla: $n errores en la ultima hora"
+            implica "los dispositivos Bluetooth no se van a ver, y el log se llena de ruido"
+            probe "docker logs homeassistant 2>&1 | grep -i bluetooth"
+        else
+            bien "Home Assistant" "Bluetooth andando"
+        fi
+    else
+        ojo "Home Assistant" "el servicio Bluetooth del equipo esta apagado o no esta instalado"
+        implica "no ve dispositivos Bluetooth y deja un error cada cinco minutos en su log"
+        arreglo "instalar y prender bluez" "rep_bluetooth"
+    fi
+}
+
 rev_monitoreo() {
     esta_arriba prometheus || return 0
     seccion "Monitoreo" "· que las metricas lleguen, no solo que el grafico exista"
@@ -1289,6 +1312,12 @@ publicar_estado() {
 
 # Reaplica el aislamiento de qBittorrent: la regla del firewall y, si hace
 # falta, recrea los contenedores con su red y sus permisos.
+rep_bluetooth() {
+    cfg_ha_bluetooth >/dev/null 2>&1
+    olvidar_estado
+    systemctl is-active --quiet bluetooth
+}
+
 rep_aislar_torrents() {
     asegurar_redes_docker >/dev/null 2>&1 || return 1
     torrent_aislar_host >/dev/null 2>&1
@@ -1512,6 +1541,7 @@ else
     CONFIRMAR=0
 
     rev_media
+    rev_ha_bluetooth
     rev_monitoreo
     rev_tokens
     rev_nativos

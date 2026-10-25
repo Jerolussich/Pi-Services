@@ -3284,6 +3284,41 @@ ha_regenerar_store() {
     ha_escucha >/dev/null 2>&1
 }
 
+# Home Assistant habla con el Bluetooth por el servicio BlueZ del sistema, que
+# alcanza por D-Bus (el compose monta /run/dbus). Una Ubuntu Server no lo trae:
+# sin el, Home Assistant busca el adaptador, no encuentra a nadie del otro lado
+# y deja un error cada cinco minutos en su log, para siempre.
+#
+# Lo que se instala: bluez, que corre solo en esta maquina, sin escuchar en la
+# red. Lo que no hace: no empareja nada ni deja el equipo visible; eso lo
+# decide cada dispositivo que agregues desde Home Assistant. Y sin adaptador
+# Bluetooth, que es el caso de muchos equipos, no instala nada.
+cfg_ha_bluetooth() {
+    ls /sys/class/bluetooth/hci* >/dev/null 2>&1 || {
+        gris "     Home Assistant: este equipo no tiene adaptador Bluetooth, no hace falta nada"
+        return 0
+    }
+    local cambio=0
+    if ! command -v bluetoothctl >/dev/null 2>&1; then
+        info "Instalando bluez, para que Home Assistant pueda usar el Bluetooth..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y bluez rfkill >/dev/null 2>&1
+        cambio=1
+    fi
+    systemctl is-active --quiet bluetooth || { sudo systemctl enable --now bluetooth >/dev/null 2>&1; cambio=1; }
+    sudo systemctl enable bluetooth >/dev/null 2>&1
+    sudo rfkill unblock bluetooth >/dev/null 2>&1
+
+    if systemctl is-active --quiet bluetooth && bluetoothctl show 2>/dev/null | grep -q "Powered: yes"; then
+        ok "Bluetooth listo para Home Assistant"
+        # Home Assistant solo busca el servicio al arrancar
+        [ "$cambio" = "1" ] && { $DOCKER restart homeassistant >/dev/null 2>&1; olvidar_estado; }
+        return 0
+    fi
+    aviso "No pude dejar el Bluetooth andando"
+    pendiente "Revisar el Bluetooth:  systemctl status bluetooth  y  bluetoothctl show"
+    return 1
+}
+
 cfg_homeassistant() {
     esta_arriba homeassistant || return 0
 
@@ -3295,6 +3330,8 @@ cfg_homeassistant() {
         sudo ufw allow from $red to any port 8123 proto tcp >/dev/null 2>&1
     done
     sudo ufw deny 8123/tcp >/dev/null 2>&1
+
+    cfg_ha_bluetooth || true
 
     ha_escucha || { aviso "Home Assistant no contesta todavia"; \
         pendiente "Entrar a http://casa.pi y revisar que levante"; return 1; }
