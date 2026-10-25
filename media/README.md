@@ -69,7 +69,7 @@ Dos cosas sostienen todo el diseño:
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
 | `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr` | `8191` | — | Resuelve el Cloudflare de los indexers que lo usan |
 
-Ningún contenedor publica su interfaz web al host: todo entra por Caddy, igual que el resto del repo. La única excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares.
+Ningún contenedor publica su interfaz web al host: todo entra por Caddy, igual que el resto del repo. La única excepción es el puerto de torrenting de qBittorrent, que necesita aceptar conexiones entrantes de otros pares. **Viene cerrado** (escucha solo en `127.0.0.1`): abrirlo es opcional y lo decidís en el instalador o después con `pi puerto`. Qué ganás, qué implica y qué protecciones lleva puestas, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
 
 `flaresolverr` no tiene hostname porque no es para vos: no tiene interfaz que visitar. Solo le habla Prowlarr, por la red interna del compose, en `http://flaresolverr:8191`.
 
@@ -262,6 +262,25 @@ Seerr es la excepción: no tiene contraseña propia porque **entra con la de Jel
 
 ---
 
+## El puerto de torrents
+
+qBittorrent es el único servicio de este stack que habla con desconocidos, así que es el único que está encerrado:
+
+- **Red aparte** (`pi-torrent`): no ve a los demás contenedores. Radarr, Sonarr, Caddy y la homepage están en las dos redes, porque son los que le hablan.
+- **Sin privilegios**: `no-new-privileges` y `cap_drop: ALL`, devolviéndole solo cinco capacidades (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETUID`, `SETGID`).
+- **Una regla de UFW** que le impide llegar al SSH, a Home Assistant y a Pi-hole de la mini PC.
+- **El puerto 6881 viene cerrado.** Con `QBIT_ESCUCHA=127.0.0.1` solo lo alcanza la propia máquina; con `0.0.0.0` queda publicado y, para que llegue gente de internet, además hay que reenviarlo en el router (a mano o por UPnP).
+
+Descargar funciona igual abierto o cerrado. Abrirlo sirve para sembrar y para alcanzar torrents con pocos seeds, pero ayuda sobre todo a los demás, y a cambio expone qBittorrent a internet.
+
+```bash
+pi puerto       # ver cómo está, comprobar si se ve desde afuera, y cambiarlo
+```
+
+Las tres opciones, el detalle de UPnP, lo que queda sin cubrir y cómo se vuelve atrás, en [../docs/TORRENTS.md](../docs/TORRENTS.md).
+
+---
+
 ## Acceso desde afuera
 
 Va por **Tailscale**, sin abrir puertos en el router. Para que funcione hacen falta dos cosas de [TAILSCALE.md](../TAILSCALE.md):
@@ -333,6 +352,6 @@ Si el gancho se pierde (pasa si alguien recrea el contenedor desde cero), el dia
 
 ## Notas
 
-**El tráfico de torrents sale directo**, sin VPN. Tu IP es visible para los otros pares del enjambre. Si más adelante querés cambiarlo, el patrón habitual es un contenedor `gluetun` con killswitch y qBittorrent usando su red.
+**El tráfico de torrents sale directo**, sin VPN. Tu IP es visible para los otros pares del enjambre, con el puerto abierto o cerrado. Si más adelante querés cambiarlo, el patrón habitual es un contenedor `gluetun` con killswitch y qBittorrent usando su red.
 
 **El DAS no es un backup.** Son dos discos sin redundancia: si uno muere, se pierde lo que tenía. El otro queda intacto y legible, que ya es mejor que un RAID0, pero lo que no sea reemplazable guardalo en otro lado.

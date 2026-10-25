@@ -9,6 +9,7 @@
 #      pi avisos           el feed de eventos y los avisos al celular
 #      pi respaldo         guardar lo irrecuperable
 #      pi seguridad        firewall y fail2ban
+#      pi puerto           el puerto de torrents: ver como esta, abrirlo o cerrarlo
 #      pi ayuda            esto mismo, con el detalle de cada uno
 #
 #  ── Por que existe ───────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ ayuda() {
     printf "  ${B}%-12s${N} %s\n" "pi respaldo" "guardar lo irrecuperable"
     printf "  ${B}%-12s${N} %s\n" "pi actualizar" "que hay de nuevo, y actualizarlo"
     printf "  ${B}%-12s${N} %s\n" "pi seguridad" "firewall y fail2ban"
+    printf "  ${B}%-12s${N} %s\n" "pi puerto"   "el puerto de torrents: ver como esta, abrirlo o cerrarlo"
     echo ""
     echo "  ${G}Cada uno acepta sus propias opciones y se las paso tal cual:${N}"
     printf "  ${G}%-28s %s${N}\n" "pi estado --breve"   "solo lo que esta mal"
@@ -131,6 +133,20 @@ case "$sub" in
         # shellcheck source=lib/comun.sh
         source "$REPO/lib/comun.sh" >/dev/null 2>&1
         https_renovar_silencioso
+        ;;
+    # pi puerto carga las librerias y no delega en un script, igual que
+    # renovar-https: es un tema acotado y no da para otro archivo en la raiz.
+    puerto)
+        # shellcheck source=lib/comun.sh
+        source "$REPO/lib/comun.sh" >/dev/null 2>&1
+        torrent_comando
+        ;;
+    # Interno: lo llama el timer pi-upnp cada media hora. No se lista en la
+    # ayuda porque no es algo que uno tipee.
+    renovar-puerto)
+        # shellcheck source=lib/comun.sh
+        source "$REPO/lib/comun.sh" >/dev/null 2>&1
+        torrent_upnp_renovar
         ;;
     ayuda|help|-h|--help) ayuda ;;
     "")                   portada ;;

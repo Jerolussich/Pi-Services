@@ -542,6 +542,48 @@ rev_media() {
             "conectarlo y seguir media/DAS.md"
     fi
 
+    # qBittorrent es el unico contenedor que habla con desconocidos de internet.
+    # Que siga aislado es lo que limita el dano si alguien le encuentra una
+    # falla, y es de las cosas que se rompen sin que nada avise: un
+    # `docker compose down` que recrea la red le cambia la subred, y la regla del
+    # firewall queda apuntando a un rango que ya no es el suyo.
+    if esta_arriba qbittorrent; then
+        local redes_q sec_q sub_q rc_p
+        redes_q=$($DOCKER inspect qbittorrent --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null)
+        sec_q=$($DOCKER inspect qbittorrent --format '{{.HostConfig.SecurityOpt}}' 2>/dev/null)
+        sub_q=$(torrent_subred)
+        if [ "${redes_q% }" != "$RED_TORRENT" ]; then
+            ojo "qBittorrent" "no esta aislado: comparte red con otros contenedores"
+            implica "una falla suya le daria acceso de red a todo lo demas del stack"
+            arreglo "ponerlo en su red aparte y recortarle los permisos" "rep_aislar_torrents"
+        elif [[ "$sec_q" != *no-new-privileges* ]]; then
+            ojo "qBittorrent" "puede ganar privilegios adentro del contenedor"
+            implica "una falla suya valdria mas: root del contenedor en vez de un usuario comun"
+            arreglo "recrearlo con los permisos recortados" "rep_aislar_torrents"
+        elif ! sudo ufw status 2>/dev/null | grep "pi-torrent:" | grep -qF "${sub_q:-sin-subred}"; then
+            ojo "qBittorrent" "sin la regla del firewall que lo aisla de este equipo"
+            implica "alcanzaria SSH, Home Assistant y el panel de Pi-hole de esta maquina"
+            arreglo "agregar la regla para $sub_q" "rep_aislar_torrents"
+        else
+            bien "qBittorrent" "aislado: red aparte, permisos recortados y sin acceso al equipo"
+        fi
+
+        if torrent_abierto; then
+            torrent_probar_afuera 6; rc_p=$?
+            if [ "$rc_p" = "0" ]; then
+                bien "puerto de torrents" "abierto y se ve desde internet"
+            elif [ "$rc_p" = "1" ]; then
+                ojo "puerto de torrents" "abierto en esta maquina pero no se ve desde internet"
+                implica "falta el reenvio en el router, o tu proveedor comparte la IP"
+                probe "se prueba con un servicio externo (ifconfig.co); para cambiarlo:  pi puerto"
+            else
+                bien "puerto de torrents" "abierto en esta maquina (sin internet para comprobar desde afuera)"
+            fi
+        else
+            bien "puerto de torrents" "cerrado: solo esta maquina puede conectarse"
+        fi
+    fi
+
     if esta_arriba prowlarr; then
         local n
         n=$(arr_api prowlarr 9696 v1 GET /indexer 2>/dev/null | grep -o '"id"' | wc -l)
@@ -1229,6 +1271,16 @@ publicar_estado() {
 #  verifica despues. Un arreglo que dice haber andado sin comprobarlo es
 #  peor que no tenerlo.
 # ══════════════════════════════════════════════════════════════════════════════
+
+# Reaplica el aislamiento de qBittorrent: la regla del firewall y, si hace
+# falta, recrea los contenedores con su red y sus permisos.
+rep_aislar_torrents() {
+    asegurar_redes_docker >/dev/null 2>&1 || return 1
+    torrent_aislar_host >/dev/null 2>&1
+    torrent_aplicar_refuerzo >/dev/null 2>&1
+    olvidar_estado
+    torrent_comprobar_aislamiento
+}
 
 rep_levantar() { $DOCKER compose up -d "$1" >/dev/null 2>&1; sleep 4; olvidar_estado; esta_arriba "$1"; }
 rep_recrear()  { $DOCKER compose up -d --force-recreate "$1" >/dev/null 2>&1; sleep 6; olvidar_estado; esta_arriba "$1"; }

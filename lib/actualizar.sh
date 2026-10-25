@@ -162,6 +162,10 @@ actualizar_servicios() {
     gris "     version nueva, y hacia atras no migran. Mira los cambios antes."
     echo ""
 
+    # Los composes declaran la red de torrents como externa: en un equipo
+    # instalado antes de que existiera, el up fallaria por una red que falta.
+    asegurar_redes_docker || return 1
+
     for linea in "${ACT_NOVEDADES[@]}"; do
         IFS='|' read -r c img ver url <<< "$linea"
 

@@ -178,6 +178,7 @@ df -h /
 | Todo el HTTP caído | Caddy: `docker logs caddy`. Puede ser un error de sintaxis en el Caddyfile |
 | No entrás por SSH | Ver [MANTENIMIENTO.md](MANTENIMIENTO.md), sección de recuperación |
 | Un contenedor reinicia en bucle | `docker logs --tail 50 <nombre>` |
+| qBittorrent no conecta con pares, o dudás de si el puerto está abierto | `pi puerto`: dice si está abierto, si se ve desde internet y si el aislamiento sigue en pie. Ver [TORRENTS.md](TORRENTS.md) |
 | Disco lleno | `sudo du -xsh /var/log/* \| sort -rh \| head` |
 
 Antes de cambiar el Caddyfile conviene validarlo, así no te quedás sin HTTP por un error de tipeo:

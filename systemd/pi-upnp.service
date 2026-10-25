@@ -1,0 +1,24 @@
+[Unit]
+# Renueva el permiso de UPnP para el puerto de torrents.
+#
+# El instalador lo pide al router con una vigencia de una hora, y esto lo
+# renueva cada media. La vigencia corta es a proposito: si esta maquina se
+# apaga, el permiso vence solo y el router queda como estaba, en vez de quedar
+# abierto para siempre apuntando a una maquina que ya no responde.
+#
+# Solo se prende si elegiste que el router lo abra por UPnP. Ver
+# media/README.md.
+#
+# __REPO__ y __USUARIO__ los reemplaza el instalador. No se copia a mano.
+Description=Renovar el permiso UPnP del puerto de torrents
+Documentation=file:__REPO__/lib/torrents.sh
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USUARIO__
+WorkingDirectory=__REPO__
+ExecStart=__REPO__/pi renovar-puerto
+Nice=10
+IOSchedulingClass=idle

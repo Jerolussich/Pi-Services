@@ -58,11 +58,38 @@ services:
     volumes:
       - qbittorrent-config:/config
       - ${DAS_ROOT:-/mnt/das}:/data
+    # Solo en la red de torrents, NO en la del resto del stack. Es el unico
+    # contenedor que acepta datos de desconocidos, asi que es el que menos
+    # conviene tener al lado de los otros veinte. Los que si le hablan -Radarr,
+    # Sonarr, Caddy y la homepage- estan tambien en esa red.
+    networks:
+      - torrent
+    # Que no pueda ganar privilegios aunque algo lo intente, y sin ninguna de
+    # las capacidades de root salvo las cinco que necesita el arranque de la
+    # imagen de linuxserver para cambiar de usuario y ordenar permisos. Sin
+    # esto un fallo en qBittorrent le da al atacante todo lo que root puede
+    # hacer adentro del contenedor.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
     ports:
       # Unico puerto publicado del stack: conexiones entrantes de pares.
       # La WebUI NO se publica, va por Caddy como todo lo demas.
-      - ${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}
-      - ${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}/udp
+      #
+      # QBIT_ESCUCHA decide quien lo puede alcanzar. Por defecto es 127.0.0.1:
+      # nadie desde afuera de esta maquina, ni siquiera de la red local, que es
+      # el estado "cerrado". El instalador lo pasa a 0.0.0.0 solo si elegis
+      # abrirlo. Publicarlo no alcanza para que llegue gente de internet: falta
+      # reenviar el puerto en el router. Ver media/README.md.
+      - "${QBIT_ESCUCHA:-127.0.0.1}:${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}"
+      - "${QBIT_ESCUCHA:-127.0.0.1}:${QBIT_TORRENT_PORT:-6881}:${QBIT_TORRENT_PORT:-6881}/udp"
     restart: unless-stopped
 
   # Varios indexers -1337x, TorrentGalaxy, DonTorrent- estan detras de
@@ -111,6 +138,11 @@ services:
     depends_on:
       - prowlarr
       - qbittorrent
+    # En las dos redes: la de siempre y la de torrents, que es por donde
+    # le habla a qBittorrent.
+    networks:
+      - default
+      - torrent
     restart: unless-stopped
 
   # Sonarr es a las series lo que Radarr a las peliculas: mismo motor, misma
@@ -134,6 +166,11 @@ services:
     depends_on:
       - prowlarr
       - qbittorrent
+    # En las dos redes: la de siempre y la de torrents, que es por donde
+    # le habla a qBittorrent.
+    networks:
+      - default
+      - torrent
     restart: unless-stopped
 
   # Pedir peliculas y series desde el celular, en una sola pantalla, y que se
@@ -188,3 +225,11 @@ volumes:
   sonarr-config:
   seerr-config:
   bazarr-config:
+
+networks:
+  default:
+    name: pi-services
+    external: true
+  torrent:
+    name: pi-torrent
+    external: true

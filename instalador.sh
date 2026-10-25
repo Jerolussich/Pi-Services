@@ -490,6 +490,10 @@ valor_automatico() {
         # es la misma condicion que ya necesitaba jellyfin.pi para andar remoto.
         JELLYFIN_PublishedServerUrl)   echo "http://$IP_FIJA:8096" ;;
         QBIT_TORRENT_PORT)             echo "6881" ;;
+        # Cerrado: ni la red local alcanza el puerto. Abrirlo es una decision que se
+        # le pregunta a la persona (decidir_puerto_torrent), no un valor por defecto.
+        QBIT_ESCUCHA)                  echo "127.0.0.1" ;;
+        QBIT_UPNP)                     echo "0" ;;
         DAS_ROOT)                      echo "/mnt/das" ;;
         *)                             echo "" ;;
     esac
@@ -1216,30 +1220,55 @@ esperar_servicios() {
     fi
 }
 
+# ── El puerto de torrents ─────────────────────────────────────────────────────
+#
+#  Va en DOS momentos porque necesita dos cosas distintas.
+#
+#  La pregunta va temprano, junto con la del disco: solo escribe la eleccion en
+#  media/.env, y tiene que estar antes de levantar porque el compose la lee para
+#  decidir en que direccion publica el puerto.
+#
+#  Lo que cambia de verdad -la red aparte, el firewall, el permiso en el
+#  router- se aplica despues de levantar, en proteger_torrents, porque necesita
+#  los contenedores arriba y es lo unico que se puede medir (se prueba desde
+#  adentro de qBittorrent que ya no llega al SSH de esta maquina).
+#
+#  Ver lib/torrents.sh y media/README.md.
+_hay_qbittorrent() {
+    [[ " ${SELECCION[*]} " == *" media "* ]] || return 1
+    [[ " $(servicios_elegidos media) " == *" qbittorrent "* ]]
+}
+
+decidir_puerto_torrent() {
+    _hay_qbittorrent || return 0
+
+    # Explicar todo en cada corrida cansa: ya lo decidiste y el texto no cambia.
+    # Se muestra completo la primera vez, y despues una linea con como cambiarlo.
+    if [ "$(leer_var media/.env QBIT_PUERTO_DECIDIDO 2>/dev/null)" = "1" ]; then
+        if torrent_abierto; then
+            gris "     Puerto de torrents: ABIERTO. Para cambiarlo:  pi puerto"
+        else
+            gris "     Puerto de torrents: cerrado. Para cambiarlo:  pi puerto"
+        fi
+        return 0
+    fi
+    torrent_asistente
+}
+
+proteger_torrents() {
+    _hay_qbittorrent || return 0
+    titulo "Aislando qBittorrent"
+    torrent_proteger
+}
+
 levantar_modulo() {
     local mod="$1"
     local servicios; servicios=$(servicios_elegidos "$mod")
     [ -n "$servicios" ] || return 0
 
-    # La red tiene que existir ANTES. Ocho composes la declaran como externa
-    # porque estan pensados para poder correr sueltos; si no existe, el up
-    # construye todo durante una hora y recien al final falla sin levantar nada.
-    #
-    # Se comprueba en cada modulo, no una sola vez al principio: asi da igual
-    # que levantes dos modulos hoy y tres el mes que viene.
-    if ! $DOCKER network ls --format '{{.Name}}' 2>/dev/null | grep -qx "pi-services"; then
-        $DOCKER network create pi-services >/dev/null 2>&1
-        # Sin esta red no se levanta nada, asi que conviene enterarse aca y no
-        # en el primer contenedor que no arranca por un motivo que no menciona
-        # la red.
-        if $DOCKER network ls --format '{{.Name}}' 2>/dev/null | grep -qx "pi-services"; then
-            ok "Red 'pi-services' creada"
-        else
-            falla "No pude crear la red 'pi-services'"
-            gris "     sin ella los contenedores no se ven entre si ni los alcanza Caddy"
-            return 1
-        fi
-    fi
+    # Las redes tienen que existir ANTES de levantar nada: los composes las
+    # declaran como externas. Ver asegurar_redes_docker.
+    asegurar_redes_docker || return 1
 
     # Los que ya estan corriendo no se tocan
     local pendientes="" s
@@ -2002,10 +2031,12 @@ paso "eligiendo modulos";          menu
 paso "eligiendo servicios";        elegir_servicios
 paso "pidiendo los datos";         recolectar
 paso "decidiendo lo del disco";    decidir_das_temprano
+paso "decidiendo lo del puerto";   decidir_puerto_torrent
 # Antes de levantar nada: si Docker monta una carpeta de datos que no existe,
 # la crea el mismo y de root, y despues los contenedores no pueden escribir.
 paso "creando las carpetas";       crear_datos
 paso "levantando los servicios";   ejecutar
+paso "aislando los torrents";      proteger_torrents
 paso "aplicando las contrasenas";  recrear_por_clave
 paso "configurando los servicios"; configurar_servicios
 paso "programando lo automatico";  configurar_automatico

@@ -31,8 +31,21 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # En las dos redes: la de siempre, y la de torrents para llegar a la WebUI
+    # de qBittorrent (qbit.pi), que ya no esta en la red del resto.
+    networks:
+      - default
+      - torrent
     restart: unless-stopped
 
 volumes:
   caddy-data:
   caddy-config:
+
+networks:
+  default:
+    name: pi-services
+    external: true
+  torrent:
+    name: pi-torrent
+    external: true

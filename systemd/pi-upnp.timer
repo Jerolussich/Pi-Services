@@ -1,0 +1,14 @@
+[Unit]
+Description=Renovacion del permiso UPnP del puerto de torrents
+
+[Timer]
+# Dos minutos despues de prender, para que la red este arriba, y despues cada
+# media hora. El permiso dura una: hay margen para que una renovacion falle sin
+# que se cierre el puerto.
+OnBootSec=2min
+OnUnitActiveSec=30min
+# Si la maquina estaba apagada, renueva al prender.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

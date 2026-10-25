@@ -52,7 +52,7 @@ Varias explicaciones más abajo hablan de "la tarjeta". Son ciertas y siguen val
 
 Ningún contenedor publica puertos al host. **Todo el tráfico HTTP entra por Caddy en el puerto 80** y de ahí se reparte según el nombre que pediste.
 
-La única excepción es el puerto de torrenting de qBittorrent, que necesita recibir conexiones entrantes de otros pares y no puede ir por proxy.
+La única excepción es el puerto de torrenting de qBittorrent, que necesita recibir conexiones entrantes de otros pares y no puede ir por proxy. **Y por defecto está cerrado**: escucha solo en `127.0.0.1`, y abrirlo es una decisión que el instalador te hace tomar, explicando qué ganás y qué arriesgás. Además, qBittorrent vive en una red de Docker aparte (`pi-torrent`), con permisos recortados y una regla de firewall que le impide llegar a esta máquina. Todo el detalle está en [TORRENTS.md](TORRENTS.md).
 
 La ventaja práctica: hay un solo lugar donde mirar quién entra, un solo lugar donde poner autenticación, y agregar un servicio nuevo no abre nada nuevo hacia afuera.
 
@@ -106,8 +106,9 @@ La contraseña de esa autenticación básica vive como hash bcrypt en `caddy/.en
 | **fail2ban** | Banea por una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy. Tu LAN y tu tailnet están exentas, porque si no te dejaba afuera a vos |
 | **Caddy** | Punto único de entrada HTTP, con autenticación donde hace falta |
 | **Tailscale** | Acceso remoto sin abrir un solo puerto en el router |
+| **Red `pi-torrent`** | qBittorrent, el único que habla con desconocidos, está aislado del resto de los contenedores, sin privilegios y sin acceso al SSH ni a los paneles del host. Ver [TORRENTS.md](TORRENTS.md) |
 
-Nada de esto está publicado a internet. El router no tiene puertos abiertos hacia el Pi.
+Por defecto, nada de esto está publicado a internet y el router no tiene puertos abiertos hacia el Pi. La excepción es el puerto de torrents, que solo se abre si lo elegís en el instalador (o con `pi puerto`).
 
 ---
 

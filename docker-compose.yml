@@ -14,3 +14,10 @@ include:
 networks:
   default:
     name: pi-services
+  # La red de qBittorrent, aparte del resto. Es el unico contenedor que habla
+  # con desconocidos de internet y, con el puerto abierto, el unico al que se
+  # le puede llamar desde afuera: si alguien lo vulnerara, desde esta red solo
+  # alcanza a quienes realmente le hablan (Radarr, Sonarr, Caddy y la
+  # homepage) y no a los otros veinte contenedores. Ver media/README.md.
+  torrent:
+    name: pi-torrent

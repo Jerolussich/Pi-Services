@@ -66,6 +66,12 @@ GATEWAY="192.168.68.1"
 # shellcheck source=subtitulos.sh
 . "$REPO/lib/subtitulos.sh"
 
+# qBittorrent: su red aparte, el firewall que lo aisla del equipo, y la decision
+# de abrir o no su puerto. Aparte porque es el unico contenedor que habla con
+# desconocidos de internet y conviene leer todo lo que lo rodea en un lugar.
+# shellcheck source=torrents.sh
+. "$REPO/lib/torrents.sh"
+
 V=$'\e[0;32m'; R=$'\e[0;31m'; A=$'\e[1;33m'; C=$'\e[0;36m'
 G=$'\e[0;90m'; B=$'\e[1m'; N=$'\e[0m'
 
@@ -280,6 +286,8 @@ VARIABLES=(
 "media|media/.env|DAS_ROOT|texto|Donde esta montado el disco externo|Si todavia no lo tenes, dejalo en /mnt/das"
 "media|media/.env|JELLYFIN_PublishedServerUrl|auto|URL con la que Jellyfin se anuncia|"
 "media|media/.env|QBIT_TORRENT_PORT|auto|Puerto de conexiones entrantes|"
+"media|media/.env|QBIT_ESCUCHA|auto|Quien puede conectarse al puerto de torrents|"
+"media|media/.env|QBIT_UPNP|auto|Si el router abre el puerto por UPnP|"
 "news|news/news-filter/.env|FRESHRSS_USERNAME|texto|Tu usuario de FreshRSS|El nombre con el que creaste la cuenta. Por defecto: admin"
 "news|news/news-filter/.env|WALLABAG_USERNAME|texto|Tu usuario de Wallabag|El nombre con el que creaste la cuenta. Por defecto: wallabag"
 )
@@ -2281,7 +2289,10 @@ ip_de() {
     local modo; modo=$($DOCKER inspect -f '{{.HostConfig.NetworkMode}}' "$1" 2>/dev/null)
     [ "$modo" = "host" ] && { echo 127.0.0.1; return; }
     local ip
-    ip=$($DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1" 2>/dev/null | awk '{print $1}')
+    # Con un espacio entre redes: Radarr y Sonarr estan en dos (la de siempre y
+    # la de torrents), y sin separador las dos IPs salen pegadas en una sola
+    # palabra que no es ninguna direccion.
+    ip=$($DOCKER inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$1" 2>/dev/null | awk '{print $1}')
     case "$ip" in invalid|"") return 1 ;; esac
     echo "$ip"
 }
@@ -3619,7 +3630,7 @@ instalar_automatismos() {
     _instalar_si_cambio "$REPO/systemd/pi-services.tmpfiles" /etc/tmpfiles.d/pi-services.conf && cambio=1
     sudo systemd-tmpfiles --create /etc/tmpfiles.d/pi-services.conf >/dev/null 2>&1
 
-    for u in pi-estado pi-respaldo pi-media pi-cert; do
+    for u in pi-estado pi-respaldo pi-media pi-cert pi-upnp; do
         _instalar_si_cambio "$REPO/systemd/$u.service" "/etc/systemd/system/$u.service" && cambio=1
         _instalar_si_cambio "$REPO/systemd/$u.timer"   "/etc/systemd/system/$u.timer"   && cambio=1
     done
@@ -3656,11 +3667,21 @@ instalar_automatismos() {
         sudo systemctl disable --now pi-cert.timer >/dev/null 2>&1
     fi
 
+    # La renovacion del permiso de UPnP, solo si elegiste que el router abra el
+    # puerto por ese camino. Sin eso seria un temporizador cada media hora que
+    # no hace nada, y si algun dia lo dejas de usar, este seguiria dando vueltas.
+    if torrent_abierto && torrent_upnp_elegido; then
+        sudo systemctl enable --now pi-upnp.timer >/dev/null 2>&1 && prendidos=$((prendidos+1))
+    else
+        sudo systemctl disable --now pi-upnp.timer >/dev/null 2>&1
+    fi
+
     if [ "$prendidos" -gt 0 ]; then
         ok "$prendidos $(plural "$prendidos" "tarea programada" "tareas programadas")"
         gris "     diagnostico cada $DIAGNOSTICO_CADA  ·  respaldo a las ${HORA_RESPALDO}:00"
         avisos_configurados && gris "     avisos de peliculas y series cada ${MEDIA_CADA_MIN} min"
         [ -f "$REPO/caddy/extra/tailscale.caddy" ] && gris "     renovacion del certificado HTTPS, los domingos"
+        torrent_abierto && torrent_upnp_elegido && gris "     renovacion del permiso UPnP del puerto de torrents, cada media hora"
         gris "     Los horarios se cambian en ${B}ajustes.conf${N} y se aplican al volver a correr esto."
     else
         aviso "No pude programar las tareas automaticas"

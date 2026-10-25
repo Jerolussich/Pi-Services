@@ -27,9 +27,17 @@ services:
       - HOMEPAGE_ALLOWED_HOSTS=homepage.pi,${PI_IP}:3001
     volumes:
       - ./config:/app/config
+    # En las dos redes: la de siempre, y la de torrents para mostrar el estado
+    # y las descargas de qBittorrent.
+    networks:
+      - default
+      - torrent
     restart: unless-stopped
 
 networks:
   default:
     name: pi-services
+    external: true
+  torrent:
+    name: pi-torrent
     external: true

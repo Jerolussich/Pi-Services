@@ -26,7 +26,7 @@ Podés volver a correrlo cuando quieras: detecta lo que ya funciona y no lo toca
 
 ## Qué hay adentro
 
-Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos al host, salvo el de torrenting de qBittorrent.
+Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos al host, salvo el de torrenting de qBittorrent, que viene cerrado (ver [TORRENTS.md](docs/TORRENTS.md)).
 
 ### Multimedia
 
@@ -209,7 +209,8 @@ pi-services/
 ├── lib/actualizar.sh          ← comparar huellas contra lo publicado
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
-├── systemd/                   ← los timers, que instala el instalador
+├── lib/torrents.sh            ← el puerto de torrents: red aparte, firewall, UPnP y `pi puerto`
+├── systemd/                   ← los timers (incluido pi-upnp, solo si elegís UPnP), que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 ├── docs/                      ← toda la documentacion transversal
 │
@@ -231,7 +232,7 @@ Cada carpeta de servicio sigue el mismo patrón: `docker-compose.yml`, un `.env`
 
 ## Seguridad
 
-Es un despliegue de red local, con defensa en capas y **nada publicado a internet**: el router no tiene un solo puerto abierto hacia el Pi.
+Es un despliegue de red local, con defensa en capas y **nada publicado a internet por defecto**: el router no tiene un solo puerto abierto hacia el Pi. La única cosa que podés abrir es el puerto de torrents de qBittorrent, y el instalador te pregunta antes, explicando qué ganás y qué arriesgás: [docs/TORRENTS.md](docs/TORRENTS.md).
 
 | Capa | Qué hace |
 |---|---|
@@ -239,6 +240,7 @@ Es un despliegue de red local, con defensa en capas y **nada publicado a interne
 | **UFW** | Solo deja entrar 22, 80 y 53. Los puertos del host quedan cerrados salvo para Caddy |
 | **fail2ban** | Banea una hora tras 5 intentos fallidos, en SSH y en la autenticación de Caddy |
 | **Tailscale** | Acceso remoto sin abrir puertos |
+| **Red `pi-torrent`** | qBittorrent, el único que acepta datos de desconocidos, va en una red aparte, sin privilegios y sin acceso al SSH ni a los paneles de la máquina |
 
 ```bash
 ./setup-security.sh --dry-run    # muestra todo lo que haria, sin hacer nada

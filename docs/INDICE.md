@@ -47,6 +47,7 @@ pi avisos       # el feed de eventos y los avisos al celular
 pi respaldo     # guardar lo irrecuperable
 pi actualizar   # qué hay de nuevo, y actualizarlo
 pi seguridad    # firewall y fail2ban
+pi puerto       # el puerto de torrents: ver cómo está y cambiarlo
 ```
 
 No duplica lógica: resuelve dónde vive el repo, elige el script de siempre y le pasa los argumentos tal cual, así que `pi avisos --probar` **es** `./avisos.sh --probar`. Todo lo que aprenda cualquiera de esos scripts queda disponible ahí sin tocar nada.
@@ -69,7 +70,7 @@ cd ~/pi-services && docker compose up -d
 
 ## Los servicios
 
-Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos al host, salvo el de torrenting de qBittorrent.
+Todo entra por Caddy en `http://<nombre>.pi`. Ningún contenedor publica puertos al host, salvo el de torrenting de qBittorrent, que viene cerrado (ver [TORRENTS.md](TORRENTS.md)).
 
 ### Red y acceso
 
@@ -157,7 +158,7 @@ El instalador ofrece esto mismo al terminar, justo después de decirte las direc
 
 ## Lo que corre solo
 
-Cinco cosas pasan sin que las pidas. Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
+Cinco cosas pasan sin que las pidas (seis, si elegís UPnP para el puerto de torrents). Están acá porque son justamente las que uno olvida que existen hasta que las necesita.
 
 Todas las instala y las programa el instalador. Los horarios salen de [`ajustes.conf`](../ajustes.conf), un solo archivo, y no de las unidades de systemd.
 
@@ -219,6 +220,10 @@ Caddy se recarga **solo si el certificado cambió**, comparando su huella. Como 
 
 Cada hora corre el diagnóstico y deja el resultado en `/run`, que es RAM. Cuando entrás por SSH, si hay algo mal te lo muestra; si está todo bien, no molesta. Lo dispara el timer `pi-estado`, el mismo que manda los avisos y publica las métricas.
 
+### Renovación del permiso UPnP
+
+Solo si elegiste abrir el puerto de torrents por UPnP. `pi-upnp.timer` le renueva al router el permiso del puerto 6881 cada media hora (el permiso dura una). Si elegís cerrado u otra opción, el instalador lo desactiva. Ver [TORRENTS.md](TORRENTS.md).
+
 ### Límite a los logs
 
 Docker guarda los logs de cada contenedor **sin ningún límite de fábrica**. Un contenedor en bucle de reinicio puede escribir toda la noche y llenar el disco, y un disco lleno corrompe bases de datos al escribir.
@@ -245,6 +250,7 @@ journalctl --disk-usage              # y el journal
 ### Multimedia
 
 - [../media/README.md](../media/README.md): el stack completo y su configuración paso a paso
+- [TORRENTS.md](TORRENTS.md): el puerto de torrents: abrirlo o no, qué implica, y cómo queda aislado qBittorrent
 - [../media/DAS.md](../media/DAS.md): los dos discos unidos con mergerfs
 - [../media/JELLYFIN-PLUGINS.md](../media/JELLYFIN-PLUGINS.md): plugins, cuáles son nativos y cuáles no
 - [PLAN-MEDIA.md](PLAN-MEDIA.md): plan de implementación, con el orden y las dependencias
@@ -283,7 +289,8 @@ pi-services/
 ├── lib/actualizar.sh          ← comparar huellas contra lo publicado
 ├── lib/https.sh               ← el certificado de Tailscale y su renovacion
 ├── lib/discos.sh              ← preparar el disco del DAS: formatear, montar, mergerfs
-├── systemd/                   ← los timers, que instala el instalador
+├── lib/torrents.sh            ← el puerto de torrents: red aparte, firewall, UPnP y `pi puerto`
+├── systemd/                   ← los timers (incluido pi-upnp, solo si elegís UPnP), que instala el instalador
 ├── docker/                    ← daemon.json, el limite a los logs
 │
 ├── caddy/                     ← proxy inverso, la puerta de entrada

@@ -136,15 +136,39 @@ Se escriben ocultas y no quedan en el historial. La de Caddy además se conviert
 
 **Una excepción, y es de qBittorrent, no del instalador:** rechaza contraseñas de menos de 6 caracteres. Si la tuya es más corta y elegiste el módulo de multimedia, te avisa en el momento de elegirla y te deja decidir: cambiarla por una de 6 o más y seguir teniendo una sola, o dejar la corta y ponerle una aparte solo a qBittorrent.
 
+#### El puerto de torrents
+
+Si elegiste multimedia con qBittorrent, el instalador te hace **una pregunta más**, que es de seguridad y no de contraseñas: ¿abrís el puerto 6881 para que otros se conecten a vos?
+
+No lo pregunta a secas. Antes explica en pantalla:
+
+- **qué ganás abriéndolo**: sembrar de verdad y llegar a torrents con pocos seeds. Y aclara lo que *no* cambia: la velocidad de los torrents populares, el espacio, y que el *ratio* solo importa en trackers privados. Ayuda sobre todo a los demás;
+- **qué implica**: qBittorrent queda expuesto a internet, y tu IP no queda más visible de lo que ya está cuando descargás;
+- **qué queda hecho de todos modos**, lo abras o no (red aparte, permisos recortados, firewall), y lo que ese blindaje no cubre.
+
+Después ofrece tres opciones, y **Enter deja cerrado**:
+
+| | |
+|---|---|
+| **1** | Cerrado (recomendado). Se descarga igual, casi no se siembra |
+| **2** | Abierto, y la mini PC se lo pide al router por UPnP. No tocás el router, pero cualquier aparato de tu red podría pedirle lo mismo |
+| **3** | Abierto, con el reenvío creado por vos en el router. El instalador te dice qué puerto y hacia qué IP |
+
+Antes de aceptar la 2 consulta al router **sin cambiarle nada**. Si no contesta por UPnP, o si la IP que reporta es privada o compartida (el proveedor reparte una IP entre varios clientes, y entonces ningún reenvío sirve), no finge: pasa al reenvío manual o lo deja cerrado, y lo dice.
+
+La respuesta queda en `media/.env` y **no se vuelve a preguntar** al correr el instalador de nuevo; para cambiarla está `pi puerto`. Todo el detalle, en [TORRENTS.md](TORRENTS.md).
+
 ### 5. Instala
 
 En orden de dependencias. Para cada módulo:
 
 - Si ya funcionaba, no lo toca.
-- Si es de Docker, baja las imágenes que falten y levanta **solo** los servicios que elegiste, salteando los que ya estaban arriba.
+- Si es de Docker, baja las imágenes que falten y levanta **solo** los servicios que elegiste, salteando los que ya estaban arriba. Antes de cada módulo se asegura de que existan las dos redes de Docker que los composes dan por hechas (`pi-services` y `pi-torrent`): si faltara una, el `up` falla recién al final y sin levantar nada.
 - Si es nativo, corre su instalación específica.
 
 Al terminar cada módulo te dice cuántos contenedores quedaron arriba, y si alguno no levantó, cuál fue y con qué comando ver su log.
+
+Con qBittorrent ya arriba, el instalador aplica además lo de [TORRENTS.md](TORRENTS.md): la regla de UFW que lo deja sin acceso al SSH y a los paneles de la máquina, recrea los contenedores que no tenían el blindaje nuevo, y, si elegiste abrirlo, pide el puerto al router (UPnP) y comprueba desde afuera si se ve.
 
 ### 6. Configura los servicios solo
 
@@ -326,6 +350,8 @@ Es la forma normal de usarlo, no una excepción.
 **Para agregar un módulo:** lo elegís del menú. Los que ya funcionan ni los toca.
 
 **Para completar datos que salteaste:** te pide solo los que falten.
+
+**Para cambiar lo del puerto de torrents:** `pi puerto`. La decisión se recuerda y el instalador no la repite; lo que sí repite, siempre y sin preguntar, es el blindaje (red, permisos, firewall), que es idempotente.
 
 **Para levantar un servicio suelto** que dejaste apagado: elegís su módulo y después solo ese servicio.
 
