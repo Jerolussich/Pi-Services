@@ -78,7 +78,7 @@ Define los links a los servicios organizados por grupo. Estructura actual:
 | Grupo | Servicios |
 |---|---|
 | Estado | Salud del Pi (el score del diagnóstico) |
-| Media | Jellyfin, Seerr, Radarr, Sonarr, qBittorrent, Bazarr, Prowlarr |
+| Media | Jellyfin, Seerr, Radarr, Sonarr, qBittorrent, Bazarr, Prowlarr, Recyclarr |
 | Casa | Home Assistant |
 | Network | Pi-hole, Grafana |
 | FitbitDashboard | Fitbit, Fitbit Insights, Fitbit Ingest |
@@ -130,6 +130,8 @@ Algunos servicios no muestran solo un enlace sino **datos reales**: cuántas pel
 | `HOMEPAGE_VAR_SEERR_KEY` | `settings.json` de Seerr |
 | `HOMEPAGE_VAR_JELLYFIN_KEY` | una clave propia que el instalador crea en Jellyfin |
 | `HOMEPAGE_VAR_QBIT_USER` y `_PASS` | la contraseña que el instalador le acaba de poner |
+
+**Recyclarr no tiene interfaz ni puerto**, así que su recuadro no tiene puntito de "está vivo". Muestra lo que importa de él: cuántos formatos tienen Radarr y Sonarr, con dos `customapi` contra `/api/v3/customformat` y las mismas claves de Radarr y Sonarr. Si alguno muestra 1, es solo el `Upscaled` del instalador y Recyclarr no está llegando. El enlace lleva a `Settings → Custom Formats` de Radarr.
 
 Jellyfin y qBittorrent traían recuadro nativo y estaban apagados: solo mostraban el puntito de "está vivo". Ahora qBittorrent muestra qué se está bajando, y Jellyfin cuántas películas, series y episodios hay.
 

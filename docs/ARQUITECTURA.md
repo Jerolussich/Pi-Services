@@ -193,7 +193,9 @@ En vez de que cada servicio traiga su propio programador, hay uno solo: **Ofelia
 
 Ofelia es para lo que corre **adentro de un contenedor**. Lo que corre en el host (el diagnóstico, el respaldo, el aviso agrupado de media) va por timers de systemd, porque necesita ver el disco, hablar con `smartctl` y conocer el canal de ntfy.
 
-Y en los dos casos vale lo mismo: **el horario no está escrito en el archivo que lo ejecuta**. Los de systemd salen de [`../ajustes.conf`](../ajustes.conf) y el instalador los sustituye al instalar las unidades, igual que deriva los registros DNS del Caddyfile.
+**La excepción es Recyclarr**, que trae su propio programador adentro de la imagen y está pensado para correr así: el contenedor queda prendido y sincroniza según `CRON_SCHEDULE`, que está en [`../media/docker-compose.yml`](../media/docker-compose.yml) (todos los días a las 5, después del respaldo de las 4). Pasarlo a Ofelia no ahorraría nada, porque el contenedor tiene que seguir prendido igual. Qué hace, en [../media/README.md](../media/README.md#recyclarr-la-guía-de-trash-aplicada-sola).
+
+Y en los demás casos vale lo mismo: **el horario no está escrito en el archivo que lo ejecuta**. Los de systemd salen de [`../ajustes.conf`](../ajustes.conf) y el instalador los sustituye al instalar las unidades, igual que deriva los registros DNS del Caddyfile.
 
 ### La cadencia de lo pesado
 

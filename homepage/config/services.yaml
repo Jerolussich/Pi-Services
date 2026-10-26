@@ -102,6 +102,30 @@
         href: http://prowlarr.pi
         description: Indexers (se configura una vez)
         siteMonitor: http://prowlarr:9696
+    # Recyclarr no tiene interfaz ni puerto: corre una vez por dia y termina.
+    # Por eso no hay siteMonitor, y el recuadro muestra lo que importa de el:
+    # cuantos formatos de la guia de TRaSH tienen Radarr y Sonarr. Si un dia
+    # aparece 1, es solo el Upscaled del instalador y Recyclarr no esta
+    # llegando. El enlace lleva a donde se ven esos formatos.
+    - Recyclarr:
+        icon: recyclarr.png
+        href: http://radarr.pi/settings/customformats
+        description: Calidad segun la guia de TRaSH, todos los dias a las 5
+        widgets:
+          - type: customapi
+            url: http://radarr:7878/api/v3/customformat
+            headers:
+              X-Api-Key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+            mappings:
+              - label: Formatos en Radarr
+                format: size
+          - type: customapi
+            url: http://sonarr:8989/api/v3/customformat
+            headers:
+              X-Api-Key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+            mappings:
+              - label: Formatos en Sonarr
+                format: size
 
 - Casa:
     - Home Assistant:

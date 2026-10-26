@@ -30,7 +30,8 @@ Stack multimedia del Pi. Descarga, organiza, subtitula y reproduce, con todo el 
                     ┌──────────┐   ┌──────────┐
    Prowlarr ───────▶│  Radarr  │   │  Sonarr  │◀─────── Prowlarr
   (indexers)        │peliculas │   │  series  │        (los mismos)
-                    └────┬─────┘   └─────┬────┘
+   Recyclarr ──────▶│          │   │          │◀─────── Recyclarr
+  (guia de TRaSH)   └────┬─────┘   └─────┬────┘        (a las 5)
                          │  envian el torrent │
                          └─────────┬─────────-┘
                                    ▼
@@ -60,7 +61,19 @@ Stack multimedia del Pi. Descarga, organiza, subtitula y reproduce, con todo el 
 
 **Radarr y Sonarr son el mismo motor con distinto contenido.** Misma API, mismos endpoints, misma forma de configurarse. Cambian la carpeta y poco más: Sonarr además entiende de temporadas, episodios y calendario de emisión, que es lo que justifica que sean dos y no uno.
 
-Comparten indexers (los de Prowlarr), cliente de descargas (qBittorrent) y subtitulador (Bazarr). Lo único que no comparten es la carpeta de destino, y eso es lo que le permite a Jellyfin tener dos bibliotecas distintas.
+Comparten indexers (los de Prowlarr), cliente de descargas (qBittorrent), subtitulador (Bazarr) y criterio de calidad (Recyclarr). Lo único que no comparten es la carpeta de destino, y eso es lo que le permite a Jellyfin tener dos bibliotecas distintas.
+
+### Quién decide qué se baja
+
+Cuando pedís algo, la elección pasa por tres capas, y cada una la pone una pieza distinta del repo:
+
+| Capa | Qué decide | Quién la pone | Dónde se cambia |
+|---|---|---|---|
+| **Calidad** | qué calidades se aceptan y hasta cuál mejora sola (de 480p a Remux-2160p) | el instalador, al crear el perfil Perfeccionista | `cfg_perfil_calidad` en [`lib/comun.sh`](../lib/comun.sh), o en Radarr: `Settings → Profiles` |
+| **Descartes propios** | rechazar los "4K" reescalados con IA | el instalador (formato `Upscaled`) | `cfg_rechazar_reescalados` en [`lib/comun.sh`](../lib/comun.sh) |
+| **Release** | cuál de los releases de una misma calidad: grupo bueno o malo, HDR real o no | Recyclarr, con la guía de TRaSH, todos los días a las 5 | [`recyclarr/recyclarr.yml`](recyclarr/recyclarr.yml) |
+
+Radarr las aplica en ese orden: primero filtra por calidad, después descarta lo que tenga −10000 (el `Upscaled` o los grupos de baja calidad de la guía) y entre lo que queda elige por puntaje. Lo ya descargado solo se reemplaza por una calidad mejor, nunca por un grupo mejor (ver [Recyclarr](#recyclarr-la-guía-de-trash-aplicada-sola)).
 
 Dos cosas sostienen todo el diseño:
 

@@ -162,7 +162,7 @@ El instalador ofrece esto mismo al terminar, justo después de decirte las direc
 
 ## Lo que corre solo
 
-Hay varias cosas que pasan sin que las pidas, y están acá porque son justamente las que uno olvida que existen hasta que las necesita. Unas corren siempre (el diagnóstico cada hora, el feed y el respaldo), otras dependen de lo que hayas elegido (los avisos al celular, el certificado HTTPS, el permiso UPnP) y hay una tarea de arranque que no es periódica (`pi-torrent-red`).
+Hay varias cosas que pasan sin que las pidas, y están acá porque son justamente las que uno olvida que existen hasta que las necesita. Unas corren siempre (el diagnóstico cada hora, el feed, el respaldo y Recyclarr), otras dependen de lo que hayas elegido (los avisos al celular, el certificado HTTPS, el permiso UPnP) y hay una tarea de arranque que no es periódica (`pi-torrent-red`).
 
 Las instala y las programa el instalador, salvo el límite a los logs de Docker, que hoy hay que poner a mano (ver más abajo). Los horarios salen de [`ajustes.conf`](../ajustes.conf), un solo archivo, y no de las unidades de systemd. Los timers son `pi-estado`, `pi-respaldo`, `pi-media` (solo con avisos), `pi-cert` (solo con HTTPS) y `pi-upnp` (solo con UPnP); se ven con `systemctl list-timers 'pi-*'`.
 
@@ -231,6 +231,10 @@ Solo si elegiste abrir el puerto de torrents por UPnP. `pi-upnp.timer` le renuev
 ### Aislamiento de qBittorrent al arrancar
 
 Las reglas de iptables que le cierran a qBittorrent el acceso a la red local no sobreviven a un reinicio. `pi-torrent-red.service` las vuelve a poner en cada arranque, **después** de Docker (antes la cadena `DOCKER-USER` no existe), y se repite sola si Docker se reinicia. No tiene horario: es una tarea de arranque. Ver [TORRENTS.md](TORRENTS.md).
+
+### Calidad de las descargas (Recyclarr)
+
+Todos los días a las 5, después del respaldo, Recyclarr lee la guía de TRaSH y se la aplica al perfil Perfeccionista de Radarr y Sonarr: qué grupos preferir, cuáles descartar, qué HDR es real. No es un timer de systemd sino un contenedor con su propio programador (`CRON_SCHEDULE` en `media/docker-compose.yml`). Lo que hace y lo que no toca, en [../media/README.md](../media/README.md#recyclarr-la-guía-de-trash-aplicada-sola).
 
 ### Límite a los logs (se aplica a mano)
 
@@ -309,7 +313,8 @@ pi-services/
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio
 ├── monitoring/                ← Prometheus, Grafana y exporters
-├── media/                     ← Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent
+├── media/                     ← Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent, Recyclarr
+│   └── recyclarr/             ← qué formatos de la guía de TRaSH se aplican, y por qué
 ├── home/                      ← Home Assistant, la automatizacion de la casa
 ├── news/                      ← FreshRSS, Wallabag, news-filter
 ├── finance/                   ← lector de mails del banco

@@ -293,15 +293,16 @@ Nunca se commitean, y están en `.gitignore`. Son también **lo primero que hay 
 
 ## 🔄 Lo que corre solo
 
-Tres cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
+Cuatro cosas pasan sin que las pidas, y están acá porque son justo las que uno olvida que existen hasta que las necesita.
 
 | | Qué | Cuándo |
 |---|---|---|
 | **Feed** | lo que no merece interrumpirte pero sí recordarse, en `eventos.pi` | siempre |
 | **Respaldo** | [`respaldo.sh`](respaldo.sh) guarda los `.env`, los tokens y todas las bases de datos en `~/respaldos` | todos los días a las 04:00 |
 | **Diagnóstico** | [`diagnostico.sh`](diagnostico.sh) revisa todo, avisa, anota y publica métricas a Grafana. Ver [docs/DIAGNOSTICO.md](docs/DIAGNOSTICO.md) | cada hora |
+| **Calidad de las descargas** | Recyclarr le aplica a Radarr y Sonarr la guía de TRaSH: qué release elegir dentro de cada calidad. Ver [media/README.md](media/README.md#recyclarr-la-guía-de-trash-aplicada-sola) | todos los días a las 05:00 |
 
-Los timers los instala y los programa el instalador, desde [`systemd/`](systemd/). Además de esos tres, según lo que hayas elegido, deja otros: `pi-media` (agrupa los avisos de importaciones, solo con avisos), `pi-cert` (renueva el HTTPS, solo con HTTPS), `pi-upnp` (renueva el permiso del puerto de torrents, solo con UPnP) y `pi-torrent-red`, una tarea de arranque que vuelve a poner las reglas que aíslan a qBittorrent. **Los horarios y los umbrales se cambian en un solo archivo**, [`ajustes.conf`](ajustes.conf), y no adentro de las unidades ni del código.
+Los timers los instala y los programa el instalador, desde [`systemd/`](systemd/); Recyclarr es un contenedor con su propio programador. Además de esos, según lo que hayas elegido, deja otros: `pi-media` (agrupa los avisos de importaciones, solo con avisos), `pi-cert` (renueva el HTTPS, solo con HTTPS), `pi-upnp` (renueva el permiso del puerto de torrents, solo con UPnP) y `pi-torrent-red`, una tarea de arranque que vuelve a poner las reglas que aíslan a qBittorrent. **Los horarios y los umbrales se cambian en un solo archivo**, [`ajustes.conf`](ajustes.conf), y no adentro de las unidades ni del código.
 
 **Una que NO se hace sola: el límite a los logs.** [`docker/daemon.json`](docker/README.md) acota los logs de Docker, que de fábrica no tienen tope y pueden llenar el disco, pero el instalador no lo copia: hay que ponerlo a mano (los dos comandos están en [docker/README.md](docker/README.md)).
 
@@ -403,7 +404,8 @@ pi-services/
 ├── caddy/                     ← proxy inverso, la puerta de entrada
 ├── homepage/                  ← panel de inicio
 ├── monitoring/                ← Prometheus, Grafana y exporters
-├── media/                     ← Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent
+├── media/                     ← Jellyfin, Seerr, Radarr, Sonarr, Prowlarr, Bazarr, qBittorrent, Recyclarr
+│   └── recyclarr/             ← qué formatos de la guía de TRaSH se aplican, y por qué
 ├── home/                      ← Home Assistant
 ├── news/                      ← FreshRSS, Wallabag, news-filter
 ├── finance/                   ← lector de mails del banco
