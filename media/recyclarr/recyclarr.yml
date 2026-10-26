@@ -10,10 +10,11 @@
 #
 #   - Solo el perfil "Perfeccionista", que es el que crea el instalador y el que
 #     usan los pedidos de Seerr. Le suma formatos y puntajes.
-#   - NO le cambia las calidades aceptadas ni la mejora automatica: no hay
-#     `quality_profiles` en este archivo, y lo que no se nombra no se toca. El
-#     perfil sigue aceptando todo, para que una pelicula rara que solo existe
-#     en 480p igual se baje.
+#   - NO le cambia las calidades aceptadas ni la mejora por calidad: el perfil
+#     se nombra solo para una cosa (que lo descargado no se reemplace por un
+#     grupo mejor, ver abajo), y lo que no se nombra no se toca. Sigue
+#     aceptando todo, para que una pelicula rara que solo existe en 480p igual
+#     se baje.
 #   - NO toca el formato "Upscaled" que crea el instalador. La guia tiene uno
 #     con el mismo nombre, y Recyclarr adopta y PISA cualquier formato que se
 #     llame igual que uno de la lista. El nuestro atrapa tambien "AI" y "Topaz",
@@ -39,6 +40,24 @@ radarr:
     base_url: http://radarr:7878
     api_key: !env_var RADARR_API_KEY
     delete_old_custom_formats: true
+
+    # Lo que ya esta descargado NO se reemplaza por tener un grupo mejor: solo
+    # por una calidad mejor (1080p -> 2160p), que es como venia funcionando el
+    # perfil. Sin esto, al aplicar la guia por primera vez, 11 peliculas y 8
+    # episodios de grupos LQ quedaban con -10000 y Radarr salia a buscarles
+    # reemplazo de la misma calidad (verificado: Inception, I Am Legend, El
+    # Padrino III tenian candidatos aprobados; Hang 'em High iba a cambiar un
+    # HDR por un SDR a 60 cuadros interpolados).
+    #
+    # El mecanismo: para mejorar SIN subir de calidad, Radarr y Sonarr exigen
+    # que el puntaje nuevo supere al actual por al menos este numero. 100000 es
+    # mas que cualquier diferencia posible entre dos releases, asi que esa
+    # mejora no ocurre nunca. Las mejoras de calidad no miran este numero, y los
+    # REPACK/PROPER del mismo release tampoco. El resto del perfil no se nombra
+    # y por eso no se toca.
+    quality_profiles:
+      - name: Perfeccionista
+        min_upgrade_format_score: 100000
 
     # SIN quality_definition, a proposito. La guia trae tamanos minimos por
     # calidad pensados para quien quiere lo mas grande: un Bluray-1080p de
@@ -117,6 +136,24 @@ sonarr:
     base_url: http://sonarr:8989
     api_key: !env_var SONARR_API_KEY
     delete_old_custom_formats: true
+
+    # Lo que ya esta descargado NO se reemplaza por tener un grupo mejor: solo
+    # por una calidad mejor (1080p -> 2160p), que es como venia funcionando el
+    # perfil. Sin esto, al aplicar la guia por primera vez, 11 peliculas y 8
+    # episodios de grupos LQ quedaban con -10000 y Radarr salia a buscarles
+    # reemplazo de la misma calidad (verificado: Inception, I Am Legend, El
+    # Padrino III tenian candidatos aprobados; Hang 'em High iba a cambiar un
+    # HDR por un SDR a 60 cuadros interpolados).
+    #
+    # El mecanismo: para mejorar SIN subir de calidad, Radarr y Sonarr exigen
+    # que el puntaje nuevo supere al actual por al menos este numero. 100000 es
+    # mas que cualquier diferencia posible entre dos releases, asi que esa
+    # mejora no ocurre nunca. Las mejoras de calidad no miran este numero, y los
+    # REPACK/PROPER del mismo release tampoco. El resto del perfil no se nombra
+    # y por eso no se toca.
+    quality_profiles:
+      - name: Perfeccionista
+        min_upgrade_format_score: 100000
 
     # Sin quality_definition, por lo mismo que en Radarr.
 

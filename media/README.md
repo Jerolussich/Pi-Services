@@ -264,7 +264,9 @@ El perfil Perfeccionista decide **qué calidades** se aceptan. Lo que no decidí
 - Los tamaños mínimos por calidad de la guía. Rechazarían un Bluray-1080p de menos de ~6 GB para dos horas, o sea los buenos encodes x265, que para una película rara pueden ser lo único que existe. Se vio con una prueba en seco antes de decidirlo.
 - Los otros perfiles (`Any`, `HD-1080p`, etc.): reciben los formatos nuevos con puntaje 0, que es lo que hace Radarr con todo perfil cuando se crea un formato, y nada más.
 
-**Ojo con lo que ya tenías.** Al aplicarlo, 11 de 31 películas y 8 episodios quedaron marcados como de grupos `LQ` (FGT, BTM, AOC, YIFY y un reescalado). No se borra nada, pero como el perfil mejora solo, Radarr y Sonarr van a reemplazarlos cuando encuentren un release de la **misma calidad** de un grupo mejor. No es una descarga masiva de golpe: pasa de a uno, a medida que aparecen. Para que una película no se toque, desmarcá su monitoreo en Radarr.
+**Lo que ya está descargado no se reemplaza por un grupo mejor.** Al aplicarlo, 11 de 31 películas y 8 episodios quedaron marcados como de grupos `LQ` (FGT, BTM, AOC, YIFY y reescalados), y Radarr salió a buscarles reemplazo de la misma calidad: para *Inception*, *I Am Legend* y *El Padrino III* tenía candidatos aprobados, y a *Hang 'em High* le iba a cambiar un HDR por un SDR a 60 cuadros interpolados. Para que eso no pase, el perfil exige que, para mejorar **sin subir de calidad**, el puntaje nuevo supere al actual por 100000 (`min_upgrade_format_score`), algo que nunca ocurre. Se verificó preguntándole a Radarr qué bajaría: los mismos candidatos pasaron a rechazados con *"Existing file on disk has Custom Format score within Custom Format score increment"*.
+
+Lo que **sí** sigue: la mejora por calidad (un 1080p que pasa a 2160p cuando aparece), que es como funcionaba el perfil desde antes, y los `REPACK`/`PROPER` del mismo release. Y la guía sigue eligiendo el mejor release para todo lo que se baje de acá en adelante.
 
 ```bash
 docker exec recyclarr recyclarr sync --preview   # qué cambiaría, sin aplicar nada
