@@ -257,8 +257,13 @@ services:
       # Lo que Recyclarr baja y anota (la guia clonada, su estado) va en un
       # volumen; la configuracion, que es lo que se versiona, entra de solo
       # lectura desde el repo.
+      #
+      # La carpeta y no el archivo: montar un archivo suelto ata el contenedor
+      # a ESE archivo en disco, y un `git pull` que lo actualiza crea otro.
+      # El contenedor seguia leyendo la version vieja sin decir nada (paso al
+      # instalarlo). Recyclarr lee todo *.yml de /config/configs.
       - recyclarr-config:/config
-      - ./recyclarr/recyclarr.yml:/config/recyclarr.yml:ro
+      - ./recyclarr:/config/configs:ro
     depends_on:
       - radarr
       - sonarr
