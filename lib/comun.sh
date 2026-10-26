@@ -196,7 +196,7 @@ declare -A SERVICIOS=(
   [news]="freshrss wallabag news-filter news-filter-ui"
   [finance]="itau-email-tracker finance-tracker-ui"
   [fitbit]="fitbit-exporter fitbit-exporter-ui"
-  [media]="jellyfin qbittorrent prowlarr radarr sonarr bazarr seerr"
+  [media]="jellyfin qbittorrent prowlarr radarr sonarr bazarr seerr recyclarr"
   [home]="homeassistant"
   [ofelia]="ofelia"
 )
@@ -226,6 +226,7 @@ declare -A QUE_HACE=(
   [sonarr]="Automatiza series"
   [seerr]="Pedir peliculas y series desde el celular"
   [bazarr]="Descarga subtitulos"
+  [recyclarr]="Mantiene la calidad de Radarr y Sonarr al dia con la guia de TRaSH"
   [homeassistant]="Domotica: automatiza luces, sensores y enchufes"
   [ofelia]="Programador de tareas"
 )
@@ -1349,6 +1350,85 @@ sys.exit(0 if any(f.get("format") == i and f.get("score") == -10000
         aviso "$nombre: el perfil no quedo rechazando reescalados"
         pendiente "Revisar el formato Upscaled en http://$svc.pi, Settings, Custom Formats"
     fi
+}
+
+# ── Recyclarr ─────────────────────────────────────────────────────────────────
+#
+#  Le aplica al perfil Perfeccionista los formatos de la guia de TRaSH: que
+#  grupos encodean bien, cuales son de baja calidad, que HDR es real. Que toca
+#  y que no esta explicado en media/recyclarr/recyclarr.yml, que es lo unico
+#  que hay que editar para cambiarlo.
+#
+#  Lo que hace falta aca es lo que no puede ir en el repo: las API keys. Se
+#  leen de Radarr y Sonarr y se escriben en media/recyclarr/.env, igual que las
+#  de la homepage, sin pasar por la pantalla. Van en un archivo aparte porque
+#  media/.env lo cargan todos los contenedores del modulo, qBittorrent incluido.
+#
+#  Despues corre una sincronizacion y la verifica leyendo el perfil: el
+#  contenedor solo sincroniza a las 5 de la manana, y esperar a manana para
+#  saber si anda no sirve.
+RECYCLARR_ENV="media/recyclarr/.env"
+
+cfg_recyclarr() {
+    esta_arriba radarr || esta_arriba sonarr || return 0
+    local rk sk cambio=0 salida
+    rk=$(api_key_arr radarr 2>/dev/null)
+    sk=$(api_key_arr sonarr 2>/dev/null)
+    if [ -z "$rk" ] && [ -z "$sk" ]; then
+        aviso "Recyclarr: no pude leer las API keys de Radarr ni de Sonarr"
+        return 1
+    fi
+
+    [ -f "$RECYCLARR_ENV" ] || { : > "$RECYCLARR_ENV"; chmod 600 "$RECYCLARR_ENV"; }
+    if [ -n "$rk" ] && [ "$(leer_var "$RECYCLARR_ENV" RADARR_API_KEY)" != "$rk" ]; then
+        escribir_var "$RECYCLARR_ENV" RADARR_API_KEY "$rk"; cambio=1
+    fi
+    if [ -n "$sk" ] && [ "$(leer_var "$RECYCLARR_ENV" SONARR_API_KEY)" != "$sk" ]; then
+        escribir_var "$RECYCLARR_ENV" SONARR_API_KEY "$sk"; cambio=1
+    fi
+
+    # Un contenedor ya levantado tiene las claves viejas en memoria: si
+    # cambiaron, hay que recrearlo para que las lea.
+    if [ "$cambio" = "1" ] || ! esta_arriba recyclarr; then
+        $DOCKER compose up -d --force-recreate recyclarr >/dev/null 2>&1
+        olvidar_estado
+        sleep 3
+    fi
+    esta_arriba recyclarr || { aviso "Recyclarr no levanto"; gris "     los logs:  docker logs recyclarr"; return 1; }
+
+    info "Recyclarr: aplicando la guia de TRaSH (la primera vez clona la guia, tarda)..."
+    salida=$($DOCKER exec recyclarr recyclarr sync 2>&1)
+    if echo "$salida" | grep -qE "^\[(ERR|FTL)\]"; then
+        aviso "Recyclarr: la sincronizacion dio errores"
+        echo "$salida" | grep -E "^\[(ERR|FTL)\]" | head -3 | sed 's/^/       /'
+        pendiente "Revisar Recyclarr:  docker exec recyclarr recyclarr sync"
+        return 1
+    fi
+
+    local svc puerto nombre n
+    for svc in radarr:7878:Radarr sonarr:8989:Sonarr; do
+        IFS=: read -r svc puerto nombre <<< "$svc"
+        esta_arriba "$svc" || continue
+        n=$(recyclarr_formatos "$svc" "$puerto")
+        if [ "${n:-0}" -gt 0 ]; then
+            ok "$nombre: perfil $PERFIL_CALIDAD con $n formatos de la guia de TRaSH"
+        else
+            aviso "$nombre: el perfil $PERFIL_CALIDAD no quedo con los formatos de TRaSH"
+            pendiente "Revisar Recyclarr:  docker exec recyclarr recyclarr sync $svc"
+        fi
+    done
+    gris "     se mantiene solo: vuelve a sincronizar todos los dias a las 5"
+}
+
+# Cuantos formatos con puntaje tiene el perfil, sin contar el Upscaled que pone
+# el instalador. La prueba de que Recyclarr llego: sin el, el unico es ese.
+recyclarr_formatos() {
+    arr_api "$1" "$2" v3 GET /qualityprofile 2>/dev/null | NOMBRE="$PERFIL_CALIDAD" python3 -c '
+import sys, json, os
+try: d = json.load(sys.stdin)
+except Exception: print(0); sys.exit()
+p = next((x for x in d if x.get("name") == os.environ["NOMBRE"]), {})
+print(sum(1 for f in p.get("formatItems", []) if f.get("score") and f.get("name") != "Upscaled"))' 2>/dev/null
 }
 
 # ── FlareSolverr ──────────────────────────────────────────────────────────────
@@ -3912,6 +3992,10 @@ configurar_servicios() {
         # Despues del perfil y no antes: el formato se engancha a ese perfil.
         cfg_rechazar_reescalados radarr 7878 Radarr
         cfg_rechazar_reescalados sonarr 8989 Sonarr
+        # Despues del perfil y del Upscaled: Recyclarr le suma sus formatos a
+        # ese perfil, y el Upscaled tiene que existir antes para que quede
+        # claro que es nuestro y no de la guia.
+        [[ " $elegidos_media " == *" recyclarr "* ]] && cfg_recyclarr
         if esta_arriba prowlarr && [[ " $elegidos_media " == *" prowlarr "* ]]; then
             cfg_prowlarr "$(clave_para 'Prowlarr')"
             # Despues de Prowlarr y no antes: FlareSolverr se da de alta

@@ -80,6 +80,7 @@ Dos cosas sostienen todo el diseño:
 | `sonarr` | `lscr.io/linuxserver/sonarr` | `8989` | `sonarr.pi` | Lo mismo para series, con temporadas y calendario |
 | `prowlarr` | `lscr.io/linuxserver/prowlarr` | `9696` | `prowlarr.pi` | Gestor central de indexers |
 | `bazarr` | `lscr.io/linuxserver/bazarr` | `6767` | `bazarr.pi` | Descarga automática de subtítulos |
+| `recyclarr` | `ghcr.io/recyclarr/recyclarr:8` | — | — | Mantiene la calidad de Radarr y Sonarr al día con la guía de TRaSH. Sin interfaz |
 | `qbittorrent` | `lscr.io/linuxserver/qbittorrent` | `8080` | `qbit.pi` | Cliente de descargas |
 | `flaresolverr` | `ghcr.io/flaresolverr/flaresolverr` | `8191` | — | Resuelve el Cloudflare de los indexers que lo usan |
 
@@ -98,6 +99,9 @@ media/
 ├── .env.example
 ├── README.md
 ├── DAS.md                  ← los dos discos con mergerfs
+├── recyclarr/
+│   ├── recyclarr.yml       ← qué formatos de TRaSH se aplican, y por qué
+│   └── .env                ← las API keys de Radarr y Sonarr, gitignored
 └── JELLYFIN-PLUGINS.md     ← plugins, cuáles son nativos y cuáles no
 ```
 
@@ -241,6 +245,34 @@ Quedan afuera dos calidades a propósito: **BR-DISK** y **Raw-HD**, que son la i
 | Mejora automática | sí | sí |
 
 **Ojo con el espacio.** Este perfil pide lo mejor que exista, y lo mejor que existe pesa: un remux 2160p son entre 40 y 80 GB. Con la mejora automática además baja de nuevo lo que ya tenías. Si estás corto de disco, en `Settings → Profiles` bajá el corte a `Bluray-1080p` y la cosa se vuelve mucho más razonable.
+
+### Recyclarr: la guía de TRaSH aplicada sola
+
+El perfil Perfeccionista decide **qué calidades** se aceptan. Lo que no decidía era **cuál de los releases** de una misma calidad conviene: dos "2160p Remux" pueden ser uno impecable de un grupo serio y otro mal hecho, y para Radarr eran iguales.
+
+[TRaSH](https://trash-guides.info) es la guía que la comunidad de los *arr mantiene sobre eso: qué grupos encodean bien, cuáles tienen historial de releases malos, qué es un HDR de verdad. Recyclarr la lee una vez por día, a las 5 (después del respaldo de las 4), y le aplica al perfil Perfeccionista lo que dice [recyclarr/recyclarr.yml](recyclarr/recyclarr.yml). Si la comunidad descubre un grupo malo nuevo, llega solo.
+
+**Qué hace con el perfil:**
+
+- **Descarta** (−10000) los releases de grupos de baja calidad (`LQ`), la imagen de disco entera (`BR-DISK`), los extras, el 3D, el HDR dinámico inventado y el **Dolby Vision sin HDR10 de respaldo**, que en una tele sin Dolby Vision se ve con colores violetas o verdes.
+- **Prefiere**, dentro de una misma calidad, los grupos que la guía tiene en sus listas de calidad (Remux, UHD Bluray, HD Bluray y WEB, en tres niveles), los HDR reales y las correcciones (`REPACK`/`PROPER`).
+
+**Qué no toca, a propósito:**
+
+- Las calidades aceptadas ni la mejora automática del perfil: siguen como las deja el instalador. Radarr decide primero por calidad y después por puntaje, así que esto no cambia qué tan grande es lo que se baja.
+- El formato `Upscaled` del instalador. La guía tiene uno con el mismo nombre, y Recyclarr pisa cualquier formato que se llame igual; el nuestro atrapa también "AI" y "Topaz", así que el de la guía queda afuera.
+- Los tamaños mínimos por calidad de la guía. Rechazarían un Bluray-1080p de menos de ~6 GB para dos horas, o sea los buenos encodes x265, que para una película rara pueden ser lo único que existe. Se vio con una prueba en seco antes de decidirlo.
+- Los otros perfiles (`Any`, `HD-1080p`, etc.): reciben los formatos nuevos con puntaje 0, que es lo que hace Radarr con todo perfil cuando se crea un formato, y nada más.
+
+**Ojo con lo que ya tenías.** Al aplicarlo, 11 de 31 películas y 8 episodios quedaron marcados como de grupos `LQ` (FGT, BTM, AOC, YIFY y un reescalado). No se borra nada, pero como el perfil mejora solo, Radarr y Sonarr van a reemplazarlos cuando encuentren un release de la **misma calidad** de un grupo mejor. No es una descarga masiva de golpe: pasa de a uno, a medida que aparecen. Para que una película no se toque, desmarcá su monitoreo en Radarr.
+
+```bash
+docker exec recyclarr recyclarr sync --preview   # qué cambiaría, sin aplicar nada
+docker exec recyclarr recyclarr sync             # aplicarlo ahora
+docker logs recyclarr                            # cómo salió la última
+```
+
+El diagnóstico lo controla leyendo el perfil (si no tiene los formatos de la guía, o si la última sincronización dio errores, lo dice y lo arregla con `--arreglar`). Las API keys las escribe el instalador en `recyclarr/.env`, aparte de `.env` para que no las cargue qBittorrent. Antes de la primera sincronización se guardó una copia de los perfiles en `~/respaldos/antes-recyclarr/`.
 
 ### Con varios indexers, ¿cuál se usa?
 

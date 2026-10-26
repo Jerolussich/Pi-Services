@@ -284,6 +284,8 @@ Al perfil se le suma además un formato personalizado, **Upscaled**, con puntaje
 
 No lo escribe a mano. Le pide a cada servicio su propio esquema de calidades con `GET /qualityprofile/schema`, lo marca entero y devuelve el resultado. Así el perfil sale correcto aunque Radarr y Sonarr tengan listas distintas, que es el caso, y sigue saliendo correcto cuando una versión nueva agregue calidades.
 
+Además del perfil, lo engancha con **Recyclarr**: lee las API keys de Radarr y Sonarr, las deja en `media/recyclarr/.env` sin mostrarlas, corre la primera sincronización con la guía de TRaSH y verifica que el perfil haya quedado con los formatos. Qué aplica y qué no, en [../media/README.md](../media/README.md#recyclarr-la-guía-de-trash-aplicada-sola).
+
 #### Las claves de la homepage
 
 Los recuadros de la homepage muestran datos en vivo (cuántas películas tenés, qué se está bajando) solo si tienen la API key del servicio. Copiarlas a mano son cuatro viajes de ida y vuelta entre paneles.
@@ -407,7 +409,7 @@ Es la forma normal de usarlo, no una excepción.
 | Noticias | `freshrss`, `wallabag`, `news-filter`, `news-filter-ui` |
 | Finanzas | `itau-email-tracker`, `finance-tracker-ui` |
 | Fitbit | `fitbit-exporter`, `fitbit-exporter-ui` |
-| Multimedia | `jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr`. Además `flaresolverr`, que no se elige solo: sube con Prowlarr, que depende de él |
+| Multimedia | `jellyfin`, `seerr`, `qbittorrent`, `prowlarr`, `radarr`, `sonarr`, `bazarr`, `recyclarr`. Además `flaresolverr`, que no se elige solo: sube con Prowlarr, que depende de él |
 | Casa | `homeassistant` |
 | Ofelia | `ofelia` |
 | Avisos | nativo: crea los dos canales de ntfy (`alertas` y `media`) y te guía para suscribirte. No instala nada |

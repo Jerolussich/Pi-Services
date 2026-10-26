@@ -152,6 +152,7 @@ Todo entra por Caddy en `http://<nombre>.pi` (puertos 80 y 443). Las únicas exc
 | Sonarr | `sonarr.pi` | Automatiza series, con temporadas y calendario |
 | Prowlarr | `prowlarr.pi` | Gestor central de indexers |
 | Bazarr | `bazarr.pi` | Subtítulos automáticos |
+| Recyclarr | interno | Elige el mejor release según la guía de TRaSH, y se actualiza solo. Sin interfaz |
 | qBittorrent | `qbit.pi` | Cliente de descargas |
 | FlareSolverr | interno | Resuelve el Cloudflare de los indexers que lo usan. Sin interfaz: solo le habla Prowlarr |
 

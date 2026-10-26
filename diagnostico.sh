@@ -599,6 +599,27 @@ rev_media() {
         fi
     fi
 
+    # Recyclarr no tiene puerto ni interfaz: que el contenedor este arriba no
+    # dice nada. Lo que prueba que anda es que el perfil tenga los formatos de
+    # la guia, y que su sincronizacion diaria no haya fallado.
+    if esta_arriba recyclarr; then
+        local rc_r rc_s err_r
+        rc_r=$(recyclarr_formatos radarr 7878); rc_s=$(recyclarr_formatos sonarr 8989)
+        err_r=$($DOCKER logs --since 26h recyclarr 2>&1 | grep -cE "\[(ERR|FTL)\]")
+        if [ "${rc_r:-0}" -eq 0 ] && [ "${rc_s:-0}" -eq 0 ]; then
+            ojo "Recyclarr" "corre, pero el perfil $PERFIL_CALIDAD no tiene los formatos de la guia"
+            implica "Radarr y Sonarr eligen sin distinguir los grupos buenos de los malos"
+            arreglo "sincronizar ahora" "rep_recyclarr"
+        elif [ "${err_r:-0}" -gt 0 ]; then
+            ojo "Recyclarr" "la ultima sincronizacion dio errores"
+            implica "los perfiles quedan como estaban, sin las novedades de la guia"
+            probe "docker logs recyclarr"
+            arreglo "sincronizar ahora" "rep_recyclarr"
+        else
+            bien "Recyclarr" "guia de TRaSH aplicada: $rc_r formatos en Radarr, $rc_s en Sonarr"
+        fi
+    fi
+
     if esta_arriba prowlarr; then
         local n
         n=$(arr_api prowlarr 9696 v1 GET /indexer 2>/dev/null | grep -o '"id"' | wc -l)
@@ -1316,6 +1337,11 @@ rep_bluetooth() {
     cfg_ha_bluetooth >/dev/null 2>&1
     olvidar_estado
     systemctl is-active --quiet bluetooth
+}
+
+rep_recyclarr() {
+    $DOCKER exec recyclarr recyclarr sync >/dev/null 2>&1
+    [ "$(recyclarr_formatos radarr 7878)" -gt 0 ] 2>/dev/null
 }
 
 rep_aislar_torrents() {

@@ -229,7 +229,43 @@ services:
       - sonarr
     restart: unless-stopped
 
+  # Mantiene la calidad de Radarr y Sonarr al dia con la guia de TRaSH: que
+  # grupos encodean bien, cuales son de baja calidad, que HDR es real. Corre
+  # una vez por dia y no tiene interfaz. Que toca y que no, en
+  # recyclarr/recyclarr.yml y en el README.
+  recyclarr:
+    # Por version mayor y no "latest", que esta imagen no publica: recibe las
+    # correcciones sola y un cambio de formato de configuracion solo llega si
+    # se sube el numero a mano.
+    image: ghcr.io/recyclarr/recyclarr:8
+    container_name: recyclarr
+    user: "${PUID:-1000}:${PGID:-1000}"
+    env_file:
+      - .env
+      # Las API keys de Radarr y Sonarr, en un archivo aparte y no en .env:
+      # .env lo cargan todos los contenedores de este compose, y la clave de
+      # Radarr no tiene por que estar al alcance de qBittorrent. Lo escribe el
+      # instalador; sin el, el contenedor arranca igual y la sincronizacion
+      # falla hasta que exista.
+      - path: recyclarr/.env
+        required: false
+    environment:
+      # A las 5, despues del respaldo de las 4: si un cambio de la guia saliera
+      # mal, el respaldo de esa noche tiene los perfiles como estaban.
+      - CRON_SCHEDULE=0 5 * * *
+    volumes:
+      # Lo que Recyclarr baja y anota (la guia clonada, su estado) va en un
+      # volumen; la configuracion, que es lo que se versiona, entra de solo
+      # lectura desde el repo.
+      - recyclarr-config:/config
+      - ./recyclarr/recyclarr.yml:/config/recyclarr.yml:ro
+    depends_on:
+      - radarr
+      - sonarr
+    restart: unless-stopped
+
 volumes:
+  recyclarr-config:
   jellyfin-config:
   jellyfin-cache:
   qbittorrent-config:

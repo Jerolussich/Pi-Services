@@ -115,6 +115,7 @@ Todo entra por Caddy en `http://<nombre>.pi` (puertos 80 y 443). Las únicas exc
 | Sonarr | `sonarr.pi` | Automatiza series, con temporadas y calendario | [../media/README.md](../media/README.md) |
 | Prowlarr | `prowlarr.pi` | Gestor de indexers | [../media/README.md](../media/README.md) |
 | Bazarr | `bazarr.pi` | Subtítulos automáticos | [../media/README.md](../media/README.md) |
+| Recyclarr | interno | Elige el mejor release según la guía de TRaSH, y se actualiza solo | [../media/README.md](../media/README.md) |
 | qBittorrent | `qbit.pi` | Cliente de descargas | [../media/README.md](../media/README.md) |
 
 ### Casa
